@@ -17,30 +17,33 @@ export default async function AccountsPage() {
     .reduce((sum, a) => sum + a.balance, 0);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-300">
       <div>
-        <h1 className="text-2xl font-semibold">Accounts</h1>
-        <p className="text-sm text-slate-500">
+        <h1 className="text-h1 text-neutral-800">Accounts</h1>
+        <p className="text-body text-neutral-600">
           On-budget total: {formatMilliunits(totalOnBudget, budget.currency)}
         </p>
       </div>
 
-      <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+      <ul className="divide-y divide-neutral-200 rounded-lg border border-neutral-200 bg-neutral-0">
         {accounts.map((account) => (
           <li
             key={account.id}
-            className="flex items-center justify-between px-4 py-3"
+            className="flex items-center justify-between px-200 py-3"
           >
             <div>
-              <div className="font-medium">{account.name}</div>
-              <div className="text-xs uppercase tracking-wide text-slate-400">
+              <div className="text-body font-medium text-neutral-800">
+                {account.name}
+              </div>
+              <div className="text-small uppercase tracking-wide text-neutral-600">
                 {account.type.replace(/_/g, " ")}
                 {!account.onBudget && " · off budget"}
               </div>
             </div>
             <div
               className={
-                account.balance < 0 ? "text-red-600" : "text-slate-900"
+                "text-body font-medium " +
+                (account.balance < 0 ? "text-danger" : "text-neutral-800")
               }
             >
               {formatMilliunits(account.balance, budget.currency)}
@@ -48,7 +51,7 @@ export default async function AccountsPage() {
           </li>
         ))}
         {accounts.length === 0 && (
-          <li className="px-4 py-6 text-sm text-slate-500">
+          <li className="px-200 py-300 text-body text-neutral-600">
             No accounts yet — add one below.
           </li>
         )}
@@ -56,28 +59,28 @@ export default async function AccountsPage() {
 
       <form
         action={createAccount}
-        className="max-w-sm space-y-3 rounded-lg border border-slate-200 bg-white p-4"
+        className="max-w-sm space-y-3 rounded-lg border border-neutral-200 bg-neutral-0 p-200"
       >
-        <h2 className="font-medium">Add account</h2>
+        <h2 className="text-h3 text-neutral-800">Add account</h2>
         <div>
-          <label className="block text-sm text-slate-600" htmlFor="name">
+          <label className="block text-small text-neutral-600" htmlFor="name">
             Name
           </label>
           <input
             id="name"
             name="name"
             required
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            className="mt-1 w-full rounded border border-neutral-200 px-3 py-2 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
           />
         </div>
         <div>
-          <label className="block text-sm text-slate-600" htmlFor="type">
+          <label className="block text-small text-neutral-600" htmlFor="type">
             Type
           </label>
           <select
             id="type"
             name="type"
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            className="mt-1 w-full rounded border border-neutral-200 px-3 py-2 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
           >
             <option value="CHECKING">Checking</option>
             <option value="SAVINGS">Savings</option>
@@ -88,7 +91,10 @@ export default async function AccountsPage() {
           </select>
         </div>
         <div>
-          <label className="block text-sm text-slate-600" htmlFor="balance">
+          <label
+            className="block text-small text-neutral-600"
+            htmlFor="balance"
+          >
             Starting balance
           </label>
           <input
@@ -97,12 +103,12 @@ export default async function AccountsPage() {
             type="number"
             step="0.01"
             defaultValue={0}
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            className="mt-1 w-full rounded border border-neutral-200 px-3 py-2 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
           />
         </div>
         <button
           type="submit"
-          className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+          className="rounded bg-brand-700 px-4 py-2 text-body font-medium text-white hover:bg-brand-800 active:bg-brand-900"
         >
           Add account
         </button>

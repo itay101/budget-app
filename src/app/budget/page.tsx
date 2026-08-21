@@ -36,16 +36,16 @@ export default async function BudgetPage() {
   });
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-300">
       <div>
-        <h1 className="text-2xl font-semibold">Budget</h1>
-        <p className="text-sm text-slate-500">
+        <h1 className="text-h1 text-neutral-800">Budget</h1>
+        <p className="text-body text-neutral-600">
           {month.toLocaleString("en-US", { month: "long", year: "numeric" })}
         </p>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <div className="grid grid-cols-[1fr_120px_120px_120px] gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+      <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-0">
+        <div className="grid grid-cols-[1fr_120px_120px_120px] gap-2 border-b border-neutral-200 bg-neutral-100 px-200 py-2 text-small font-medium uppercase tracking-wide text-neutral-600">
           <div>Category</div>
           <div className="text-right">Budgeted</div>
           <div className="text-right">Activity</div>
@@ -54,7 +54,7 @@ export default async function BudgetPage() {
 
         {groups.map((group) => (
           <div key={group.id}>
-            <div className="bg-slate-100 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600">
+            <div className="bg-neutral-100 px-200 py-1.5 text-small font-semibold uppercase tracking-wide text-neutral-600">
               {group.name}
             </div>
             {group.categories.map((category) => {
@@ -70,9 +70,9 @@ export default async function BudgetPage() {
               return (
                 <div
                   key={category.id}
-                  className="grid grid-cols-[1fr_120px_120px_120px] items-center gap-2 border-b border-slate-100 px-4 py-2 text-sm last:border-b-0"
+                  className="grid grid-cols-[1fr_120px_120px_120px] items-center gap-2 border-b border-neutral-100 px-200 py-2 text-body last:border-b-0"
                 >
-                  <div>{category.name}</div>
+                  <div className="text-neutral-800">{category.name}</div>
                   <form
                     action={setBudgeted}
                     className="flex items-center justify-end gap-1"
@@ -88,23 +88,23 @@ export default async function BudgetPage() {
                       type="number"
                       step="0.01"
                       defaultValue={milliunitsToNumber(budgeted)}
-                      className="w-20 rounded border border-slate-300 px-2 py-1 text-right text-sm"
+                      className="w-20 rounded border border-neutral-200 px-2 py-1 text-right text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
                     />
                     <button
                       type="submit"
-                      className="rounded px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-100"
+                      className="rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10"
                       title="Save"
                     >
                       ✓
                     </button>
                   </form>
-                  <div className="text-right">
+                  <div className="text-right text-neutral-800">
                     {formatMilliunits(activity, budget.currency)}
                   </div>
                   <div
                     className={
                       "text-right font-medium " +
-                      (available < 0 ? "text-red-600" : "text-emerald-600")
+                      (available < 0 ? "text-danger" : "text-success")
                     }
                   >
                     {formatMilliunits(available, budget.currency)}
@@ -116,9 +116,11 @@ export default async function BudgetPage() {
         ))}
 
         {groups.length === 0 && (
-          <div className="px-4 py-6 text-sm text-slate-500">
+          <div className="px-200 py-300 text-body text-neutral-600">
             No category groups yet. Run{" "}
-            <code className="rounded bg-slate-100 px-1">npm run db:seed</code>{" "}
+            <code className="rounded bg-neutral-100 px-1">
+              npm run db:seed
+            </code>{" "}
             to add starter categories, or add them directly in Prisma Studio.
           </div>
         )}

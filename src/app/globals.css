@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Fonts per design.md: Atlassian Sans is proprietary, so we fall back to
+   the closest available system fonts. */
 body {
-  @apply bg-slate-50 text-slate-900;
+  @apply bg-neutral-100 text-neutral-800 text-body;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
 }

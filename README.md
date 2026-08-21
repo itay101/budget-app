@@ -14,6 +14,14 @@ Money is stored as integer **milliunits** (`amount * 1000`) everywhere, the
 same convention YNAB's own API uses — `$12.34` is `12340`. See
 [`src/lib/money.ts`](./src/lib/money.ts).
 
+## Design system
+
+UI colors, typography, and spacing follow [`design.md`](./design.md) (the
+Atlassian Design System), applied as Tailwind tokens in
+[`tailwind.config.ts`](./tailwind.config.ts) — `brand`/`neutral`/`success`/
+`warning`/`danger`/`discovery`/`info` colors, and `display`/`h1`/`h2`/`h3`/
+`body`/`small` text sizes.
+
 ## Data model
 
 See [`prisma/schema.prisma`](./prisma/schema.prisma):
