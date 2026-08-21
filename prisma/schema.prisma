@@ -1,0 +1,128 @@
+// Prisma schema for a personal YNAB-style budgeting app.
+//
+// Money is stored as integer "milliunits" everywhere (amount * 1000), the
+// same convention YNAB's own API uses — it avoids floating point rounding
+// issues and keeps three decimal places of precision. $12.34 == 12340.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Budget {
+  id             String          @id @default(cuid())
+  name           String
+  currency       String          @default("USD")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  accounts       Account[]
+  categoryGroups CategoryGroup[]
+  payees         Payee[]
+}
+
+enum AccountType {
+  CHECKING
+  SAVINGS
+  CREDIT_CARD
+  CASH
+  LINE_OF_CREDIT
+  OTHER
+}
+
+model Account {
+  id           String        @id @default(cuid())
+  budgetId     String
+  budget       Budget        @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  name         String
+  type         AccountType   @default(CHECKING)
+  onBudget     Boolean       @default(true)
+  closed       Boolean       @default(false)
+  // Cached running balance in milliunits, kept in sync when transactions change.
+  balance      Int           @default(0)
+  transactions Transaction[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([budgetId])
+}
+
+model CategoryGroup {
+  id         String     @id @default(cuid())
+  budgetId   String
+  budget     Budget     @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  name       String
+  sortOrder  Int        @default(0)
+  categories Category[]
+
+  @@index([budgetId])
+}
+
+model Category {
+  id              String          @id @default(cuid())
+  categoryGroupId String
+  categoryGroup   CategoryGroup   @relation(fields: [categoryGroupId], references: [id], onDelete: Cascade)
+  name            String
+  sortOrder       Int             @default(0)
+  months          CategoryMonth[]
+  transactions    Transaction[]
+
+  @@index([categoryGroupId])
+}
+
+// One row per (category, month): how much was budgeted ("assigned") to a
+// category in a given month. Activity and available-to-spend are derived
+// at read time from budgeted amounts + transactions, rather than stored.
+model CategoryMonth {
+  id         String   @id @default(cuid())
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  // Always normalized to the first of the month.
+  month      DateTime
+  budgeted   Int      @default(0)
+
+  @@unique([categoryId, month])
+  @@index([month])
+}
+
+model Payee {
+  id           String        @id @default(cuid())
+  budgetId     String
+  budget       Budget        @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  name         String
+  transactions Transaction[]
+
+  @@index([budgetId])
+}
+
+enum ClearedStatus {
+  UNCLEARED
+  CLEARED
+  RECONCILED
+}
+
+model Transaction {
+  id         String        @id @default(cuid())
+  accountId  String
+  account    Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  payeeId    String?
+  payee      Payee?        @relation(fields: [payeeId], references: [id])
+  categoryId String?
+  category   Category?     @relation(fields: [categoryId], references: [id])
+  date       DateTime
+  // Milliunits. Negative = outflow, positive = inflow.
+  amount     Int
+  memo       String?
+  cleared    ClearedStatus @default(UNCLEARED)
+  approved   Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([accountId])
+  @@index([categoryId])
+  @@index([payeeId])
+  @@index([date])
+}
