@@ -3,6 +3,7 @@ import { getCurrentBudget } from "@/lib/budget";
 import { formatMilliunits, milliunitsToNumber } from "@/lib/money";
 import { MoveMoneyPopover } from "@/components/MoveMoneyPopover";
 import { AddCategoryGroupPopover } from "@/components/AddCategoryGroupPopover";
+import { AddCategoryPopover } from "@/components/AddCategoryPopover";
 import { MoneyInput } from "@/components/MoneyInput";
 import {
   createCategory,
@@ -112,30 +113,12 @@ export default async function BudgetPage() {
 
         {groups.map((group) => (
           <div key={group.id}>
-            <div className="flex items-center justify-between gap-2 bg-neutral-100 px-200 py-1.5 text-small font-semibold uppercase tracking-wide text-neutral-600">
+            <div className="flex items-center gap-2 bg-neutral-100 px-200 py-1.5 text-small font-semibold uppercase tracking-wide text-neutral-600">
               <span>{group.name}</span>
-              <form
-                action={createCategory}
-                className="flex items-center gap-1 normal-case tracking-normal"
-              >
-                <input
-                  type="hidden"
-                  name="categoryGroupId"
-                  value={group.id}
-                />
-                <input
-                  name="name"
-                  placeholder="Add category"
-                  required
-                  className="w-36 rounded border border-neutral-200 bg-neutral-0 px-2 py-1 text-small font-normal text-neutral-800 focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-                />
-                <button
-                  type="submit"
-                  className="rounded px-1.5 py-1 text-small font-medium text-brand-700 hover:bg-brand-700/10"
-                >
-                  + Add
-                </button>
-              </form>
+              <AddCategoryPopover
+                categoryGroupId={group.id}
+                createCategory={createCategory}
+              />
             </div>
             {group.categories.map((category) => {
               const budgeted = category.months[0]?.budgeted ?? 0;
