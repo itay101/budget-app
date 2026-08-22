@@ -2,6 +2,8 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getOrCreateDefaultBudget } from "@/lib/budget";
 import { formatMilliunits } from "@/lib/money";
+import { createAccount } from "@/app/accounts/actions";
+import { AddAccountPopover } from "@/components/AddAccountPopover";
 import { SidebarNav } from "./SidebarNav";
 
 export async function Sidebar() {
@@ -66,12 +68,7 @@ export async function Sidebar() {
             </li>
           )}
         </ul>
-        <Link
-          href="/accounts"
-          className="mt-1 block rounded px-3 py-1.5 text-small font-medium text-brand-700 hover:bg-brand-700/10"
-        >
-          + Add account
-        </Link>
+        <AddAccountPopover createAccount={createAccount} />
       </div>
     </nav>
   );
