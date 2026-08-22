@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getOrCreateDefaultBudget } from "@/lib/budget";
 import { formatMilliunits } from "@/lib/money";
@@ -27,27 +28,29 @@ export default async function AccountsPage() {
 
       <ul className="divide-y divide-neutral-200 rounded-lg border border-neutral-200 bg-neutral-0">
         {accounts.map((account) => (
-          <li
-            key={account.id}
-            className="flex items-center justify-between px-200 py-3"
-          >
-            <div>
-              <div className="text-body font-medium text-neutral-800">
-                {account.name}
-              </div>
-              <div className="text-small uppercase tracking-wide text-neutral-600">
-                {account.type.replace(/_/g, " ")}
-                {!account.onBudget && " · off budget"}
-              </div>
-            </div>
-            <div
-              className={
-                "text-body font-medium " +
-                (account.balance < 0 ? "text-danger" : "text-neutral-800")
-              }
+          <li key={account.id}>
+            <Link
+              href={`/accounts/${account.id}`}
+              className="flex items-center justify-between px-200 py-3 hover:bg-neutral-100"
             >
-              {formatMilliunits(account.balance, budget.currency)}
-            </div>
+              <div>
+                <div className="text-body font-medium text-neutral-800">
+                  {account.name}
+                </div>
+                <div className="text-small uppercase tracking-wide text-neutral-600">
+                  {account.type.replace(/_/g, " ")}
+                  {!account.onBudget && " · off budget"}
+                </div>
+              </div>
+              <div
+                className={
+                  "text-body font-medium " +
+                  (account.balance < 0 ? "text-danger" : "text-neutral-800")
+                }
+              >
+                {formatMilliunits(account.balance, budget.currency)}
+              </div>
+            </Link>
           </li>
         ))}
         {accounts.length === 0 && (

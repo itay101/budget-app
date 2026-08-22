@@ -30,6 +30,35 @@ async function main() {
     },
   });
 
+  const startingBalance = await prisma.payee.create({
+    data: { budgetId: budget.id, name: "Starting Balance" },
+  });
+
+  // Starting-balance transactions, so each account's transaction list sums
+  // to its cached balance instead of the balance being an unexplained
+  // number with nothing behind it. Checking's is offset by the grocery
+  // purchase below so the account still ends up at $1,500.00.
+  await prisma.transaction.createMany({
+    data: [
+      {
+        accountId: checking.id,
+        payeeId: startingBalance.id,
+        date: new Date(),
+        amount: 1_584_990,
+        memo: "Starting balance",
+        cleared: "RECONCILED",
+      },
+      {
+        accountId: creditCard.id,
+        payeeId: startingBalance.id,
+        date: new Date(),
+        amount: -250_000,
+        memo: "Starting balance",
+        cleared: "RECONCILED",
+      },
+    ],
+  });
+
   const groceries = await prisma.payee.create({
     data: { budgetId: budget.id, name: "Grocery Store" },
   });
