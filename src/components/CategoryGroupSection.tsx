@@ -138,6 +138,7 @@ export function CategoryGroupSection({
     formData.set("hidden", "true");
     startTransition(async () => {
       await setCategoryHidden(formData);
+      setRenamingCategoryId(null);
     });
   }
 
@@ -303,6 +304,15 @@ export function CategoryGroupSection({
               </button>
               <button
                 type="button"
+                onClick={() => handleHideCategory(category.id)}
+                disabled={pending}
+                title="Hide category"
+                className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 disabled:opacity-50"
+              >
+                🙈
+              </button>
+              <button
+                type="button"
                 onClick={cancelCategoryRename}
                 title="Cancel"
                 className="shrink-0 rounded px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
@@ -311,7 +321,7 @@ export function CategoryGroupSection({
               </button>
             </form>
           ) : (
-            <div className="flex items-center gap-1.5 text-neutral-800">
+            <div className="group flex items-center gap-1.5 text-neutral-800">
               <span
                 draggable
                 onDragStart={(e) => {
@@ -327,19 +337,10 @@ export function CategoryGroupSection({
               <button
                 type="button"
                 onClick={() => startCategoryRename(category)}
-                title="Rename category"
-                className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+                title="Rename or hide category"
+                className="shrink-0 rounded p-1 text-neutral-400 opacity-0 hover:bg-neutral-100 hover:text-neutral-600 focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
               >
                 ✎
-              </button>
-              <button
-                type="button"
-                onClick={() => handleHideCategory(category.id)}
-                disabled={pending}
-                title="Hide category"
-                className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 disabled:opacity-50"
-              >
-                🙈
               </button>
             </div>
           )}
