@@ -74,6 +74,7 @@ export default async function AccountPage({
         categoryGroups={categoryGroups}
         payeeNames={payeeNames}
         updateTransaction={updateTransaction}
+        currency={budget.currency}
       />
     </div>
   );

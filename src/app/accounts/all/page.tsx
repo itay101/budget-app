@@ -62,6 +62,7 @@ export default async function AllAccountsPage() {
         categoryGroups={categoryGroups}
         payeeNames={payeeNames}
         updateTransaction={updateTransaction}
+        currency={budget.currency}
         showAccount
       />
     </div>

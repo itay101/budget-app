@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { ACCOUNT_TYPE_OPTIONS } from "@/lib/accountTypes";
+import { MoneyInput } from "@/components/MoneyInput";
 
 /**
  * The sidebar's "+ Add account" button, opening a small popover (same
@@ -11,8 +12,10 @@ import { ACCOUNT_TYPE_OPTIONS } from "@/lib/accountTypes";
  */
 export function AddAccountPopover({
   createAccount,
+  currency,
 }: {
   createAccount: (formData: FormData) => Promise<void>;
+  currency: string;
 }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -137,11 +140,10 @@ export function AddAccountPopover({
                 >
                   Starting balance
                 </label>
-                <input
+                <MoneyInput
                   id="new-account-balance"
                   name="balance"
-                  type="number"
-                  step="0.01"
+                  currency={currency}
                   defaultValue={0}
                   className="mt-1 w-full rounded border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
                 />

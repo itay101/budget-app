@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { milliunitsToNumber } from "@/lib/money";
+import { MoneyInput } from "@/components/MoneyInput";
 
 type CategoryOption = { id: string; name: string };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
@@ -49,12 +50,14 @@ export function TransactionsTable({
   payeeNames,
   updateTransaction,
   showAccount = false,
+  currency = "USD",
 }: {
   transactions: TransactionRowData[];
   categoryGroups: GroupOption[];
   payeeNames: string[];
   updateTransaction: (formData: FormData) => Promise<void>;
   showAccount?: boolean;
+  currency?: string;
 }) {
   const gridCols = showAccount ? GRID_COLS_WITH_ACCOUNT : GRID_COLS;
 
@@ -87,6 +90,7 @@ export function TransactionsTable({
           updateTransaction={updateTransaction}
           showAccount={showAccount}
           gridCols={gridCols}
+          currency={currency}
         />
       ))}
 
@@ -105,12 +109,14 @@ function TransactionRow({
   updateTransaction,
   showAccount,
   gridCols,
+  currency,
 }: {
   transaction: TransactionRowData;
   categoryGroups: GroupOption[];
   updateTransaction: (formData: FormData) => Promise<void>;
   showAccount: boolean;
   gridCols: string;
+  currency: string;
 }) {
   const [pending, startTransition] = useTransition();
 
@@ -209,18 +215,16 @@ function TransactionRow({
         className={inputClass}
       />
 
-      <input
-        type="number"
-        step="0.01"
+      <MoneyInput
+        currency={currency}
         value={draft.inflow}
         placeholder="0.00"
         onChange={(e) => patch({ inflow: e.target.value, outflow: "" })}
         className={inputClass + " text-right text-success"}
       />
 
-      <input
-        type="number"
-        step="0.01"
+      <MoneyInput
+        currency={currency}
         value={draft.outflow}
         placeholder="0.00"
         onChange={(e) => patch({ outflow: e.target.value, inflow: "" })}
