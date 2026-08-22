@@ -230,7 +230,7 @@ export function BudgetSwitcherPopover({
           <div
             ref={popoverRef}
             style={{ position: "fixed", top: position.top, left: position.left }}
-            className="z-50 w-64 rounded-lg border border-neutral-200 bg-neutral-0 p-3 text-left shadow-lg"
+            className="z-50 w-64 max-w-[calc(100vw-1rem)] rounded-lg border border-neutral-200 bg-neutral-0 p-3 text-left shadow-lg"
           >
             <p className="mb-2 text-small font-medium text-neutral-800">
               Budgets

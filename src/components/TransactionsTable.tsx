@@ -42,8 +42,8 @@ const inputClass =
   "w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-body hover:border-neutral-200 focus:border-brand-700 focus:bg-neutral-0 focus:outline-none focus:ring-1 focus:ring-brand-700";
 
 const GRID_COLS_WITH_ACCOUNT =
-  "grid-cols-[130px_110px_1fr_1fr_1fr_100px_100px_150px]";
-const GRID_COLS = "grid-cols-[130px_1fr_1fr_1fr_100px_100px_150px]";
+  "md:grid-cols-[130px_110px_1fr_1fr_1fr_100px_100px_150px]";
+const GRID_COLS = "md:grid-cols-[130px_1fr_1fr_1fr_100px_100px_150px]";
 
 export function TransactionsTable({
   transactions,
@@ -73,7 +73,7 @@ export function TransactionsTable({
       </datalist>
 
       <div
-        className={`grid ${gridCols} gap-2 border-b border-neutral-200 bg-neutral-100 px-200 py-2 text-small font-medium uppercase tracking-wide text-neutral-600`}
+        className={`hidden gap-2 border-b border-neutral-200 bg-neutral-100 px-200 py-2 text-small font-medium uppercase tracking-wide text-neutral-600 md:grid ${gridCols}`}
       >
         <div>Date</div>
         {showAccount && <div>Account</div>}
@@ -181,74 +181,105 @@ function TransactionRow({
   return (
     <div
       className={
-        `grid ${gridCols} items-center gap-2 border-b border-neutral-100 px-200 py-1 text-body last:border-b-0 ` +
+        `grid grid-cols-2 gap-x-3 gap-y-2 border-b border-neutral-100 px-200 py-3 text-body last:border-b-0 md:items-center md:gap-2 md:py-1 ${gridCols} ` +
         (isDirty ? "bg-brand-700/5" : "")
       }
     >
-      <input
-        type="date"
-        value={draft.date}
-        onChange={(e) => patch({ date: e.target.value })}
-        className={inputClass}
-      />
+      <div className="col-span-2 md:col-span-1">
+        <label className="mb-1 block text-small text-neutral-600 md:hidden">
+          Date
+        </label>
+        <input
+          type="date"
+          value={draft.date}
+          onChange={(e) => patch({ date: e.target.value })}
+          className={inputClass}
+        />
+      </div>
 
       {showAccount && (
-        <div className="truncate px-1 text-neutral-600">
+        <div className="col-span-2 truncate text-neutral-600 md:col-span-1 md:px-1">
+          <span className="mr-1 text-small md:hidden">Account:</span>
           {transaction.accountName}
         </div>
       )}
 
-      <input
-        type="text"
-        value={draft.payeeName}
-        list="payee-suggestions"
-        placeholder="Payee"
-        onChange={(e) => patch({ payeeName: e.target.value })}
-        className={inputClass}
-      />
+      <div className="col-span-2 md:col-span-1">
+        <label className="mb-1 block text-small text-neutral-600 md:hidden">
+          Payee
+        </label>
+        <input
+          type="text"
+          value={draft.payeeName}
+          list="payee-suggestions"
+          placeholder="Payee"
+          onChange={(e) => patch({ payeeName: e.target.value })}
+          className={inputClass}
+        />
+      </div>
 
-      <select
-        value={draft.categoryId}
-        onChange={(e) => patch({ categoryId: e.target.value })}
-        className={inputClass}
-      >
-        <option value="">Uncategorized</option>
-        {categoryGroups.map((group) => (
-          <optgroup key={group.id} label={group.name}>
-            {group.categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
+      <div className="col-span-2 md:col-span-1">
+        <label className="mb-1 block text-small text-neutral-600 md:hidden">
+          Category
+        </label>
+        <select
+          value={draft.categoryId}
+          onChange={(e) => patch({ categoryId: e.target.value })}
+          className={inputClass}
+        >
+          <option value="">Uncategorized</option>
+          {categoryGroups.map((group) => (
+            <optgroup key={group.id} label={group.name}>
+              {group.categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </div>
 
-      <input
-        type="text"
-        value={draft.memo}
-        placeholder="Memo"
-        onChange={(e) => patch({ memo: e.target.value })}
-        className={inputClass}
-      />
+      <div className="col-span-2 md:col-span-1">
+        <label className="mb-1 block text-small text-neutral-600 md:hidden">
+          Memo
+        </label>
+        <input
+          type="text"
+          value={draft.memo}
+          placeholder="Memo"
+          onChange={(e) => patch({ memo: e.target.value })}
+          className={inputClass}
+        />
+      </div>
 
-      <MoneyInput
-        currency={currency}
-        value={draft.inflow}
-        placeholder="0.00"
-        onChange={(e) => patch({ inflow: e.target.value, outflow: "" })}
-        className={inputClass + " text-right text-success"}
-      />
+      <div>
+        <label className="mb-1 block text-small text-neutral-600 md:hidden">
+          Inflow
+        </label>
+        <MoneyInput
+          currency={currency}
+          value={draft.inflow}
+          placeholder="0.00"
+          onChange={(e) => patch({ inflow: e.target.value, outflow: "" })}
+          className={inputClass + " text-right text-success"}
+        />
+      </div>
 
-      <MoneyInput
-        currency={currency}
-        value={draft.outflow}
-        placeholder="0.00"
-        onChange={(e) => patch({ outflow: e.target.value, inflow: "" })}
-        className={inputClass + " text-right text-danger"}
-      />
+      <div>
+        <label className="mb-1 block text-small text-neutral-600 md:hidden">
+          Outflow
+        </label>
+        <MoneyInput
+          currency={currency}
+          value={draft.outflow}
+          placeholder="0.00"
+          onChange={(e) => patch({ outflow: e.target.value, inflow: "" })}
+          className={inputClass + " text-right text-danger"}
+        />
+      </div>
 
-      <div className="flex justify-end gap-1">
+      <div className="col-span-2 flex justify-end gap-1 md:col-span-1">
         {isDirty && (
           <>
             <button

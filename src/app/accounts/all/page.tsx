@@ -31,9 +31,11 @@ export default async function AllAccountsPage() {
 
   return (
     <div className="space-y-300">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <div>
-          <h1 className="text-h1 text-neutral-800">All Accounts</h1>
+          <h1 className="text-h2 text-neutral-800 sm:text-h1">
+            All Accounts
+          </h1>
           <p className="text-body text-neutral-600">
             Every transaction across all {accounts.length} account
             {accounts.length === 1 ? "" : "s"}
@@ -41,7 +43,7 @@ export default async function AllAccountsPage() {
         </div>
         <div
           className={
-            "text-h2 font-semibold " +
+            "text-h3 font-semibold sm:text-h2 " +
             (total < 0 ? "text-danger" : "text-neutral-800")
           }
         >

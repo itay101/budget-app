@@ -43,9 +43,11 @@ export default async function AccountPage({
         >
           <Icon name="arrow_back" /> Accounts
         </Link>
-        <div className="mt-1 flex items-center justify-between gap-4">
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
           <div>
-            <h1 className="text-h1 text-neutral-800">{account.name}</h1>
+            <h1 className="text-h2 text-neutral-800 sm:text-h1">
+              {account.name}
+            </h1>
             <p className="text-body text-neutral-600">
               {account.type.replace(/_/g, " ")}
               {!account.onBudget && " · off budget"}
@@ -54,7 +56,7 @@ export default async function AccountPage({
           </div>
           <div
             className={
-              "text-h2 font-semibold " +
+              "text-h3 font-semibold sm:text-h2 " +
               (account.balance < 0 ? "text-danger" : "text-neutral-800")
             }
           >

@@ -121,21 +121,21 @@ export default async function BudgetPage() {
   return (
     <div className="space-y-300">
       <div>
-        <h1 className="text-h1 text-neutral-800">Budget</h1>
+        <h1 className="text-h2 text-neutral-800 sm:text-h1">Budget</h1>
         <p className="text-body text-neutral-600">
           {month.toLocaleString("en-US", { month: "long", year: "numeric" })}
         </p>
       </div>
 
       <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-0">
-        <div className="grid grid-cols-[1fr_120px_120px_120px] items-center gap-2 border-b border-neutral-200 bg-neutral-100 px-200 py-2 text-small font-medium uppercase tracking-wide text-neutral-600">
+        <div className="flex items-center justify-between gap-2 border-b border-neutral-200 bg-neutral-100 px-200 py-2 text-small font-medium uppercase tracking-wide text-neutral-600 sm:grid sm:grid-cols-[1fr_120px_120px_120px]">
           <div className="flex items-center gap-2">
             <span>Category</span>
             <AddCategoryGroupPopover createCategoryGroup={createCategoryGroup} />
           </div>
-          <div className="text-right">Budgeted</div>
-          <div className="text-right">Activity</div>
-          <div className="text-right">Available</div>
+          <div className="hidden text-right sm:block">Budgeted</div>
+          <div className="hidden text-right sm:block">Activity</div>
+          <div className="hidden text-right sm:block">Available</div>
         </div>
 
         {groups.map((group) => (
