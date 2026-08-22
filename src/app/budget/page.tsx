@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getOrCreateDefaultBudget } from "@/lib/budget";
 import { formatMilliunits, milliunitsToNumber } from "@/lib/money";
-import { setBudgeted } from "./actions";
+import { createCategory, createCategoryGroup, setBudgeted } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -54,8 +54,30 @@ export default async function BudgetPage() {
 
         {groups.map((group) => (
           <div key={group.id}>
-            <div className="bg-neutral-100 px-200 py-1.5 text-small font-semibold uppercase tracking-wide text-neutral-600">
-              {group.name}
+            <div className="flex items-center justify-between gap-2 bg-neutral-100 px-200 py-1.5 text-small font-semibold uppercase tracking-wide text-neutral-600">
+              <span>{group.name}</span>
+              <form
+                action={createCategory}
+                className="flex items-center gap-1 normal-case tracking-normal"
+              >
+                <input
+                  type="hidden"
+                  name="categoryGroupId"
+                  value={group.id}
+                />
+                <input
+                  name="name"
+                  placeholder="Add category"
+                  required
+                  className="w-36 rounded border border-neutral-200 bg-neutral-0 px-2 py-1 text-small font-normal text-neutral-800 focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                />
+                <button
+                  type="submit"
+                  className="rounded px-1.5 py-1 text-small font-medium text-brand-700 hover:bg-brand-700/10"
+                >
+                  + Add
+                </button>
+              </form>
             </div>
             {group.categories.map((category) => {
               const budgeted = category.months[0]?.budgeted ?? 0;
@@ -117,14 +139,37 @@ export default async function BudgetPage() {
 
         {groups.length === 0 && (
           <div className="px-200 py-300 text-body text-neutral-600">
-            No category groups yet. Run{" "}
-            <code className="rounded bg-neutral-100 px-1">
-              npm run db:seed
-            </code>{" "}
-            to add starter categories, or add them directly in Prisma Studio.
+            No category groups yet. Add one below to get started.
           </div>
         )}
       </div>
+
+      <form
+        action={createCategoryGroup}
+        className="max-w-sm space-y-3 rounded-lg border border-neutral-200 bg-neutral-0 p-200"
+      >
+        <h2 className="text-h3 text-neutral-800">Add category group</h2>
+        <div>
+          <label
+            className="block text-small text-neutral-600"
+            htmlFor="group-name"
+          >
+            Name
+          </label>
+          <input
+            id="group-name"
+            name="name"
+            required
+            className="mt-1 w-full rounded border border-neutral-200 px-3 py-2 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+          />
+        </div>
+        <button
+          type="submit"
+          className="rounded bg-brand-700 px-4 py-2 text-body font-medium text-white hover:bg-brand-800 active:bg-brand-900"
+        >
+          Add category group
+        </button>
+      </form>
     </div>
   );
 }
