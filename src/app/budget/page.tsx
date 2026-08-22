@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentBudget } from "@/lib/budget";
 import { formatMilliunits, milliunitsToNumber } from "@/lib/money";
 import { MoveMoneyPopover } from "@/components/MoveMoneyPopover";
+import { AddCategoryGroupPopover } from "@/components/AddCategoryGroupPopover";
 import { MoneyInput } from "@/components/MoneyInput";
 import {
   createCategory,
@@ -99,8 +100,11 @@ export default async function BudgetPage() {
       </div>
 
       <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-0">
-        <div className="grid grid-cols-[1fr_120px_120px_120px] gap-2 border-b border-neutral-200 bg-neutral-100 px-200 py-2 text-small font-medium uppercase tracking-wide text-neutral-600">
-          <div>Category</div>
+        <div className="grid grid-cols-[1fr_120px_120px_120px] items-center gap-2 border-b border-neutral-200 bg-neutral-100 px-200 py-2 text-small font-medium uppercase tracking-wide text-neutral-600">
+          <div className="flex items-center gap-2">
+            <span>Category</span>
+            <AddCategoryGroupPopover createCategoryGroup={createCategoryGroup} />
+          </div>
           <div className="text-right">Budgeted</div>
           <div className="text-right">Activity</div>
           <div className="text-right">Available</div>
@@ -193,37 +197,11 @@ export default async function BudgetPage() {
 
         {groups.length === 0 && (
           <div className="px-200 py-300 text-body text-neutral-600">
-            No category groups yet. Add one below to get started.
+            No category groups yet. Use the &ldquo;+ Add&rdquo; button above
+            to get started.
           </div>
         )}
       </div>
-
-      <form
-        action={createCategoryGroup}
-        className="max-w-sm space-y-3 rounded-lg border border-neutral-200 bg-neutral-0 p-200"
-      >
-        <h2 className="text-h3 text-neutral-800">Add category group</h2>
-        <div>
-          <label
-            className="block text-small text-neutral-600"
-            htmlFor="group-name"
-          >
-            Name
-          </label>
-          <input
-            id="group-name"
-            name="name"
-            required
-            className="mt-1 w-full rounded border border-neutral-200 px-3 py-2 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-          />
-        </div>
-        <button
-          type="submit"
-          className="rounded bg-brand-700 px-4 py-2 text-body font-medium text-white hover:bg-brand-800 active:bg-brand-900"
-        >
-          Add category group
-        </button>
-      </form>
     </div>
   );
 }
