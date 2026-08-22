@@ -4,15 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getOrCreateDefaultBudget } from "@/lib/budget";
 import { numberToMilliunits } from "@/lib/money";
-
-const ACCOUNT_TYPES = [
-  "CHECKING",
-  "SAVINGS",
-  "CREDIT_CARD",
-  "CASH",
-  "LINE_OF_CREDIT",
-  "OTHER",
-] as const;
+import { ACCOUNT_TYPES, type AccountType } from "@/lib/accountTypes";
 
 export async function createAccount(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
@@ -23,8 +15,8 @@ export async function createAccount(formData: FormData) {
     throw new Error("Account name is required");
   }
 
-  const type = ACCOUNT_TYPES.includes(typeInput as (typeof ACCOUNT_TYPES)[number])
-    ? (typeInput as (typeof ACCOUNT_TYPES)[number])
+  const type = ACCOUNT_TYPES.includes(typeInput as AccountType)
+    ? (typeInput as AccountType)
     : "CHECKING";
 
   const balance = numberToMilliunits(Number(balanceInput) || 0);
@@ -160,5 +152,61 @@ export async function updateTransaction(formData: FormData) {
   revalidatePath(`/accounts/${transaction.accountId}`);
   revalidatePath("/accounts/all");
   revalidatePath("/accounts");
+  revalidatePath("/budget");
+}
+
+/**
+ * Updates one or more metadata fields of an account (name, type, on-budget,
+ * closed) — each editable cell on the Accounts page commits independently,
+ * same pattern as updateTransaction. Balance isn't editable here: it's
+ * derived from the account's transactions (see createAccount's Starting
+ * Balance transaction), not a bare field to overwrite.
+ */
+export async function updateAccount(formData: FormData) {
+  const accountId = String(formData.get("accountId") ?? "");
+  if (!accountId) {
+    throw new Error("accountId is required");
+  }
+
+  const data: {
+    name?: string;
+    type?: AccountType;
+    onBudget?: boolean;
+    closed?: boolean;
+  } = {};
+
+  if (formData.has("name")) {
+    const name = String(formData.get("name") ?? "").trim();
+    if (!name) {
+      throw new Error("Account name is required");
+    }
+    data.name = name;
+  }
+
+  if (formData.has("type")) {
+    const typeInput = String(formData.get("type") ?? "");
+    if (!ACCOUNT_TYPES.includes(typeInput as AccountType)) {
+      throw new Error("Invalid account type");
+    }
+    data.type = typeInput as AccountType;
+  }
+
+  if (formData.has("onBudget")) {
+    data.onBudget = formData.get("onBudget") === "true";
+  }
+
+  if (formData.has("closed")) {
+    data.closed = formData.get("closed") === "true";
+  }
+
+  if (Object.keys(data).length === 0) {
+    return;
+  }
+
+  await prisma.account.update({ where: { id: accountId }, data });
+
+  revalidatePath("/accounts");
+  revalidatePath("/accounts/all");
+  revalidatePath(`/accounts/${accountId}`);
   revalidatePath("/budget");
 }
