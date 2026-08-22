@@ -13,22 +13,31 @@ type TransactionRowData = {
   categoryId: string;
   memo: string;
   amount: number; // milliunits
+  accountName?: string;
 };
 
 const inputClass =
   "w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-body hover:border-neutral-200 focus:border-brand-700 focus:bg-neutral-0 focus:outline-none focus:ring-1 focus:ring-brand-700";
+
+const GRID_COLS_WITH_ACCOUNT =
+  "grid-cols-[130px_110px_1fr_1fr_1fr_100px_100px]";
+const GRID_COLS = "grid-cols-[130px_1fr_1fr_1fr_100px_100px]";
 
 export function TransactionsTable({
   transactions,
   categoryGroups,
   payeeNames,
   updateTransaction,
+  showAccount = false,
 }: {
   transactions: TransactionRowData[];
   categoryGroups: GroupOption[];
   payeeNames: string[];
   updateTransaction: (formData: FormData) => Promise<void>;
+  showAccount?: boolean;
 }) {
+  const gridCols = showAccount ? GRID_COLS_WITH_ACCOUNT : GRID_COLS;
+
   return (
     <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-0">
       <datalist id="payee-suggestions">
@@ -37,8 +46,11 @@ export function TransactionsTable({
         ))}
       </datalist>
 
-      <div className="grid grid-cols-[130px_1fr_1fr_1fr_100px_100px] gap-2 border-b border-neutral-200 bg-neutral-100 px-200 py-2 text-small font-medium uppercase tracking-wide text-neutral-600">
+      <div
+        className={`grid ${gridCols} gap-2 border-b border-neutral-200 bg-neutral-100 px-200 py-2 text-small font-medium uppercase tracking-wide text-neutral-600`}
+      >
         <div>Date</div>
+        {showAccount && <div>Account</div>}
         <div>Payee</div>
         <div>Category</div>
         <div>Memo</div>
@@ -52,12 +64,14 @@ export function TransactionsTable({
           transaction={t}
           categoryGroups={categoryGroups}
           updateTransaction={updateTransaction}
+          showAccount={showAccount}
+          gridCols={gridCols}
         />
       ))}
 
       {transactions.length === 0 && (
         <div className="px-200 py-300 text-body text-neutral-600">
-          No transactions yet for this account.
+          No transactions yet.
         </div>
       )}
     </div>
@@ -68,10 +82,14 @@ function TransactionRow({
   transaction,
   categoryGroups,
   updateTransaction,
+  showAccount,
+  gridCols,
 }: {
   transaction: TransactionRowData;
   categoryGroups: GroupOption[];
   updateTransaction: (formData: FormData) => Promise<void>;
+  showAccount: boolean;
+  gridCols: string;
 }) {
   const [, startTransition] = useTransition();
 
@@ -98,7 +116,9 @@ function TransactionRow({
   }
 
   return (
-    <div className="grid grid-cols-[130px_1fr_1fr_1fr_100px_100px] items-center gap-2 border-b border-neutral-100 px-200 py-1 text-body last:border-b-0">
+    <div
+      className={`grid ${gridCols} items-center gap-2 border-b border-neutral-100 px-200 py-1 text-body last:border-b-0`}
+    >
       <input
         type="date"
         value={date}
@@ -106,6 +126,12 @@ function TransactionRow({
         onBlur={() => commit("date", date)}
         className={inputClass}
       />
+
+      {showAccount && (
+        <div className="truncate px-1 text-neutral-600">
+          {transaction.accountName}
+        </div>
+      )}
 
       <input
         type="text"

@@ -11,6 +11,8 @@ export async function Sidebar() {
     orderBy: { createdAt: "asc" },
   });
 
+  const total = accounts.reduce((sum, a) => sum + a.balance, 0);
+
   return (
     <nav className="w-56 shrink-0 border-r border-neutral-200 bg-neutral-0 p-200">
       <div className="mb-300 text-h3 text-neutral-800">Budget App</div>
@@ -22,6 +24,22 @@ export async function Sidebar() {
           Accounts
         </div>
         <ul className="mt-1 space-y-0.5">
+          <li>
+            <Link
+              href="/accounts/all"
+              className="flex items-center justify-between gap-2 rounded px-3 py-1.5 text-small font-medium hover:bg-neutral-100"
+            >
+              <span className="text-neutral-800">All Accounts</span>
+              <span
+                className={
+                  "shrink-0 " +
+                  (total < 0 ? "text-danger" : "text-neutral-600")
+                }
+              >
+                {formatMilliunits(total, budget.currency)}
+              </span>
+            </Link>
+          </li>
           {accounts.map((account) => (
             <li key={account.id}>
               <Link

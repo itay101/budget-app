@@ -3,8 +3,9 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getOrCreateDefaultBudget } from "@/lib/budget";
 import { formatMilliunits } from "@/lib/money";
+import { getTransactionEditOptions } from "@/lib/transactionOptions";
 import { TransactionsTable } from "@/components/TransactionsTable";
-import { updateTransaction } from "./actions";
+import { updateTransaction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -23,27 +24,13 @@ export default async function AccountPage({
     notFound();
   }
 
-  const [transactions, categoryGroups, payees] = await Promise.all([
+  const [transactions, { categoryGroups, payeeNames }] = await Promise.all([
     prisma.transaction.findMany({
       where: { accountId: account.id },
       orderBy: { date: "desc" },
       include: { payee: true, category: true },
     }),
-    prisma.categoryGroup.findMany({
-      where: { budgetId: budget.id },
-      orderBy: { sortOrder: "asc" },
-      include: {
-        categories: {
-          orderBy: { sortOrder: "asc" },
-          select: { id: true, name: true },
-        },
-      },
-    }),
-    prisma.payee.findMany({
-      where: { budgetId: budget.id },
-      orderBy: { name: "asc" },
-      select: { name: true },
-    }),
+    getTransactionEditOptions(budget.id),
   ]);
 
   return (
@@ -84,12 +71,8 @@ export default async function AccountPage({
           memo: t.memo ?? "",
           amount: t.amount,
         }))}
-        categoryGroups={categoryGroups.map((group) => ({
-          id: group.id,
-          name: group.name,
-          categories: group.categories,
-        }))}
-        payeeNames={payees.map((p) => p.name)}
+        categoryGroups={categoryGroups}
+        payeeNames={payeeNames}
         updateTransaction={updateTransaction}
       />
     </div>
