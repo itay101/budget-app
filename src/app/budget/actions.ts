@@ -54,6 +54,75 @@ export async function createCategory(formData: FormData) {
   revalidatePath("/budget");
 }
 
+export async function deleteCategoryGroup(formData: FormData) {
+  const categoryGroupId = String(formData.get("categoryGroupId") ?? "");
+
+  if (!categoryGroupId) {
+    throw new Error("categoryGroupId is required");
+  }
+
+  const categoryCount = await prisma.category.count({
+    where: { categoryGroupId },
+  });
+  if (categoryCount > 0) {
+    throw new Error("Only empty category groups can be deleted");
+  }
+
+  await prisma.categoryGroup.delete({ where: { id: categoryGroupId } });
+
+  revalidatePath("/budget");
+}
+
+// Drag-and-drop reorder/move: a category can be dragged to a new position
+// within its group, or dropped into a different group entirely. Both are
+// the same operation — place it in `targetGroupId`, immediately before
+// `beforeCategoryId` (or at the end, if that's omitted) — so one action
+// covers both. Rather than juggle fractional sort keys, the whole target
+// group's order is recomputed and renumbered 0..n on every move; a
+// personal budget's category groups are small enough that this is cheap.
+export async function moveCategory(formData: FormData) {
+  const categoryId = String(formData.get("categoryId") ?? "");
+  const targetGroupId = String(formData.get("targetGroupId") ?? "");
+  const beforeCategoryId =
+    String(formData.get("beforeCategoryId") ?? "") || null;
+
+  if (!categoryId || !targetGroupId) {
+    throw new Error("categoryId and targetGroupId are required");
+  }
+  if (categoryId === beforeCategoryId) {
+    return;
+  }
+
+  const targetCategories = await prisma.category.findMany({
+    where: { categoryGroupId: targetGroupId, id: { not: categoryId } },
+    orderBy: { sortOrder: "asc" },
+    select: { id: true },
+  });
+
+  const insertAt = beforeCategoryId
+    ? targetCategories.findIndex((c) => c.id === beforeCategoryId)
+    : -1;
+  const ordered =
+    insertAt === -1
+      ? [...targetCategories, { id: categoryId }]
+      : [
+          ...targetCategories.slice(0, insertAt),
+          { id: categoryId },
+          ...targetCategories.slice(insertAt),
+        ];
+
+  await prisma.$transaction(
+    ordered.map((c, index) =>
+      prisma.category.update({
+        where: { id: c.id },
+        data: { sortOrder: index, categoryGroupId: targetGroupId },
+      }),
+    ),
+  );
+
+  revalidatePath("/budget");
+}
+
 export async function transferAvailable(formData: FormData) {
   const fromCategoryId = String(formData.get("fromCategoryId") ?? "");
   const toCategoryId = String(formData.get("toCategoryId") ?? "");

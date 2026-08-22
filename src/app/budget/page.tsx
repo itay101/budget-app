@@ -1,13 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { getCurrentBudget } from "@/lib/budget";
-import { formatMilliunits, milliunitsToNumber } from "@/lib/money";
-import { MoveMoneyPopover } from "@/components/MoveMoneyPopover";
 import { AddCategoryGroupPopover } from "@/components/AddCategoryGroupPopover";
-import { AddCategoryPopover } from "@/components/AddCategoryPopover";
-import { MoneyInput } from "@/components/MoneyInput";
+import { CategoryGroupSection } from "@/components/CategoryGroupSection";
 import {
   createCategory,
   createCategoryGroup,
+  deleteCategoryGroup,
+  moveCategory,
   setBudgeted,
   transferAvailable,
 } from "./actions";
@@ -112,70 +111,29 @@ export default async function BudgetPage() {
         </div>
 
         {groups.map((group) => (
-          <div key={group.id}>
-            <div className="flex items-center gap-2 bg-neutral-100 px-200 py-1.5 text-small font-semibold uppercase tracking-wide text-neutral-600">
-              <span>{group.name}</span>
-              <AddCategoryPopover
-                categoryGroupId={group.id}
-                createCategory={createCategory}
-              />
-            </div>
-            {group.categories.map((category) => {
-              const budgeted = category.months[0]?.budgeted ?? 0;
-              const activity = category.transactions.reduce(
+          <CategoryGroupSection
+            key={group.id}
+            groupId={group.id}
+            groupName={group.name}
+            month={month.toISOString()}
+            currency={budget.currency}
+            createCategory={createCategory}
+            deleteCategoryGroup={deleteCategoryGroup}
+            moveCategory={moveCategory}
+            setBudgeted={setBudgeted}
+            transferAvailable={transferAvailable}
+            categoryOptions={categoryOptions}
+            categories={group.categories.map((category) => ({
+              id: category.id,
+              name: category.name,
+              budgeted: category.months[0]?.budgeted ?? 0,
+              activity: category.transactions.reduce(
                 (sum, t) => sum + t.amount,
                 0,
-              );
-              const available = availableFor(category.id);
-
-              return (
-                <div
-                  key={category.id}
-                  className="grid grid-cols-[1fr_120px_120px_120px] items-center gap-2 border-b border-neutral-100 px-200 py-2 text-body last:border-b-0"
-                >
-                  <div className="text-neutral-800">{category.name}</div>
-                  <form
-                    action={setBudgeted}
-                    className="flex items-center justify-end gap-1"
-                  >
-                    <input type="hidden" name="categoryId" value={category.id} />
-                    <input
-                      type="hidden"
-                      name="month"
-                      value={month.toISOString()}
-                    />
-                    <MoneyInput
-                      name="amount"
-                      currency={budget.currency}
-                      defaultValue={milliunitsToNumber(budgeted)}
-                      className="w-24 rounded border border-neutral-200 px-2 py-1 text-right text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-                    />
-                    <button
-                      type="submit"
-                      className="rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10"
-                      title="Save"
-                    >
-                      ✓
-                    </button>
-                  </form>
-                  <div className="text-right text-neutral-800">
-                    {formatMilliunits(activity, budget.currency)}
-                  </div>
-                  <div className="text-right">
-                    <MoveMoneyPopover
-                      categoryId={category.id}
-                      categoryName={category.name}
-                      month={month.toISOString()}
-                      currency={budget.currency}
-                      available={available}
-                      groups={categoryOptions}
-                      transferAvailable={transferAvailable}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+              ),
+              available: availableFor(category.id),
+            }))}
+          />
         ))}
 
         {groups.length === 0 && (
