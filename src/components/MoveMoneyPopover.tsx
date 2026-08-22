@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { formatMilliunits } from "@/lib/money";
 
-type CategoryOption = { id: string; name: string };
+type CategoryOption = { id: string; name: string; available: number };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
 
 /**
@@ -165,7 +165,7 @@ export function MoveMoneyPopover({
                       <optgroup key={group.id} label={group.name}>
                         {options.map((c) => (
                           <option key={c.id} value={c.id}>
-                            {c.name}
+                            {c.name} — {formatMilliunits(c.available, currency)}
                           </option>
                         ))}
                       </optgroup>

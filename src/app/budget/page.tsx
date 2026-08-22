@@ -52,12 +52,16 @@ export default async function BudgetPage() {
     },
   });
 
-  // Slimmed-down category list (no months/transactions) for the "move
+  // Slimmed-down category list (just id/name/available) for the "move
   // money to…" popover on each Available cell.
   const categoryOptions = groups.map((group) => ({
     id: group.id,
     name: group.name,
-    categories: group.categories.map((c) => ({ id: c.id, name: c.name })),
+    categories: group.categories.map((c) => ({
+      id: c.id,
+      name: c.name,
+      available: availableFor(c),
+    })),
   }));
 
   return (
