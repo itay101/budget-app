@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { formatMilliunits } from "@/lib/money";
+import { MoneyInput } from "@/components/MoneyInput";
 
 type CategoryOption = { id: string; name: string; available: number };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
@@ -132,11 +133,10 @@ export function MoveMoneyPopover({
                 >
                   Amount
                 </label>
-                <input
+                <MoneyInput
                   id={`amount-${categoryId}`}
                   name="amount"
-                  type="number"
-                  step="0.01"
+                  currency={currency}
                   min="0.01"
                   required
                   autoFocus

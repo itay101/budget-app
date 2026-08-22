@@ -10,3 +10,16 @@ body {
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
     sans-serif;
 }
+
+/* Money inputs use type="number" for the numeric keyboard/validation, but
+   the browser's built-in increment/decrement spinner doesn't fit the
+   currency-prefixed layout, so it's hidden here for every input that opts
+   in via this class. */
+.no-spinner {
+  -moz-appearance: textfield;
+}
+.no-spinner::-webkit-outer-spin-button,
+.no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

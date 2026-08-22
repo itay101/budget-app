@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentBudget } from "@/lib/budget";
 import { formatMilliunits, milliunitsToNumber } from "@/lib/money";
 import { MoveMoneyPopover } from "@/components/MoveMoneyPopover";
+import { MoneyInput } from "@/components/MoneyInput";
 import {
   createCategory,
   createCategoryGroup,
@@ -156,12 +157,11 @@ export default async function BudgetPage() {
                       name="month"
                       value={month.toISOString()}
                     />
-                    <input
+                    <MoneyInput
                       name="amount"
-                      type="number"
-                      step="0.01"
+                      currency={budget.currency}
                       defaultValue={milliunitsToNumber(budgeted)}
-                      className="w-20 rounded border border-neutral-200 px-2 py-1 text-right text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                      className="w-24 rounded border border-neutral-200 px-2 py-1 text-right text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
                     />
                     <button
                       type="submit"

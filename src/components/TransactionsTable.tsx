@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { milliunitsToNumber } from "@/lib/money";
+import { MoneyInput } from "@/components/MoneyInput";
 
 type CategoryOption = { id: string; name: string };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
@@ -48,13 +49,17 @@ export function TransactionsTable({
   categoryGroups,
   payeeNames,
   updateTransaction,
+  deleteTransaction,
   showAccount = false,
+  currency = "USD",
 }: {
   transactions: TransactionRowData[];
   categoryGroups: GroupOption[];
   payeeNames: string[];
   updateTransaction: (formData: FormData) => Promise<void>;
+  deleteTransaction: (formData: FormData) => Promise<void>;
   showAccount?: boolean;
+  currency?: string;
 }) {
   const gridCols = showAccount ? GRID_COLS_WITH_ACCOUNT : GRID_COLS;
 
@@ -85,8 +90,10 @@ export function TransactionsTable({
           transaction={t}
           categoryGroups={categoryGroups}
           updateTransaction={updateTransaction}
+          deleteTransaction={deleteTransaction}
           showAccount={showAccount}
           gridCols={gridCols}
+          currency={currency}
         />
       ))}
 
@@ -103,14 +110,18 @@ function TransactionRow({
   transaction,
   categoryGroups,
   updateTransaction,
+  deleteTransaction,
   showAccount,
   gridCols,
+  currency,
 }: {
   transaction: TransactionRowData;
   categoryGroups: GroupOption[];
   updateTransaction: (formData: FormData) => Promise<void>;
+  deleteTransaction: (formData: FormData) => Promise<void>;
   showAccount: boolean;
   gridCols: string;
+  currency: string;
 }) {
   const [pending, startTransition] = useTransition();
 
@@ -152,6 +163,17 @@ function TransactionRow({
     startTransition(async () => {
       await updateTransaction(formData);
       setCommitted(draft);
+    });
+  }
+
+  function handleDelete() {
+    if (!window.confirm("Delete this transaction? This can't be undone.")) {
+      return;
+    }
+    const formData = new FormData();
+    formData.set("transactionId", transaction.id);
+    startTransition(async () => {
+      await deleteTransaction(formData);
     });
   }
 
@@ -209,18 +231,16 @@ function TransactionRow({
         className={inputClass}
       />
 
-      <input
-        type="number"
-        step="0.01"
+      <MoneyInput
+        currency={currency}
         value={draft.inflow}
         placeholder="0.00"
         onChange={(e) => patch({ inflow: e.target.value, outflow: "" })}
         className={inputClass + " text-right text-success"}
       />
 
-      <input
-        type="number"
-        step="0.01"
+      <MoneyInput
+        currency={currency}
         value={draft.outflow}
         placeholder="0.00"
         onChange={(e) => patch({ outflow: e.target.value, inflow: "" })}
@@ -234,20 +254,31 @@ function TransactionRow({
               type="button"
               onClick={handleCancel}
               disabled={pending}
+              title="Cancel"
               className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
             >
-              Cancel
+              ✕
             </button>
             <button
               type="button"
               onClick={handleSubmit}
               disabled={pending}
+              title="Save"
               className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
             >
-              {pending ? "Saving…" : "Submit"}
+              {pending ? "…" : "✓"}
             </button>
           </>
         )}
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={pending}
+          title="Delete transaction"
+          className="rounded p-1 text-neutral-400 hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+        >
+          🗑
+        </button>
       </div>
     </div>
   );

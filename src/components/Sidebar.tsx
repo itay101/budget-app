@@ -98,7 +98,10 @@ export async function Sidebar() {
             </li>
           )}
         </ul>
-        <AddAccountPopover createAccount={createAccount} />
+        <AddAccountPopover
+          createAccount={createAccount}
+          currency={budget.currency}
+        />
 
         {closedAccounts.length > 0 && (
           <>
