@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getCurrentBudget, listBudgets } from "@/lib/budget";
-import { formatMilliunits } from "@/lib/money";
+import { formatMilliunits, getCurrencySymbol } from "@/lib/money";
 import { CURRENCY_OPTIONS } from "@/lib/currencies";
 import { createAccount } from "@/app/accounts/actions";
-import { createBudget, switchBudget } from "@/app/budgets/actions";
+import { createBudget, renameBudget, switchBudget } from "@/app/budgets/actions";
 import { AddAccountPopover } from "@/components/AddAccountPopover";
 import { BudgetSwitcherPopover } from "@/components/BudgetSwitcherPopover";
 import { SidebarNav } from "./SidebarNav";
@@ -32,10 +32,12 @@ export async function Sidebar() {
       <div className="mb-300">
         <BudgetSwitcherPopover
           currentBudget={budget}
+          currencySymbol={getCurrencySymbol(budget.currency)}
           budgets={budgets}
           availableCurrencies={availableCurrencies}
           switchBudget={switchBudget}
           createBudget={createBudget}
+          renameBudget={renameBudget}
         />
       </div>
 

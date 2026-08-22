@@ -48,6 +48,24 @@ export async function createBudget(formData: FormData) {
   revalidatePath("/", "layout");
 }
 
+/** Renames a budget. The currency isn't editable here — it's fixed for a
+ * budget's lifetime by the uniqueness guard in createBudget. */
+export async function renameBudget(formData: FormData) {
+  const budgetId = String(formData.get("budgetId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+
+  if (!budgetId) {
+    throw new Error("budgetId is required");
+  }
+  if (!name) {
+    throw new Error("Budget name is required");
+  }
+
+  await prisma.budget.update({ where: { id: budgetId }, data: { name } });
+
+  revalidatePath("/", "layout");
+}
+
 /** Switches which budget the app renders against. */
 export async function switchBudget(formData: FormData) {
   const budgetId = String(formData.get("budgetId") ?? "");

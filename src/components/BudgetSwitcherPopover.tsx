@@ -15,22 +15,33 @@ type CurrencyOption = { code: string; name: string };
  * has claimed yet (`availableCurrencies`, computed server-side from the
  * full budget list), so a duplicate currency can't even be submitted from
  * this form — createBudget's own check is what actually enforces it.
+ *
+ * The header button doubles as a rename control for the current budget
+ * (via the pencil icon beside it) — e.g. "My main budget (₪)", where the
+ * currency symbol is shown but not itself editable: it's fixed for a
+ * budget's lifetime by createBudget's uniqueness guard.
  */
 export function BudgetSwitcherPopover({
   currentBudget,
+  currencySymbol,
   budgets,
   availableCurrencies,
   switchBudget,
   createBudget,
+  renameBudget,
 }: {
   currentBudget: BudgetOption;
+  currencySymbol: string;
   budgets: BudgetOption[];
   availableCurrencies: CurrencyOption[];
   switchBudget: (formData: FormData) => Promise<void>;
   createBudget: (formData: FormData) => Promise<void>;
+  renameBudget: (formData: FormData) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(currentBudget.name);
   const [pending, startTransition] = useTransition();
   const [position, setPosition] = useState<{ top: number; left: number } | null>(
     null,
@@ -38,6 +49,10 @@ export function BudgetSwitcherPopover({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    setNameDraft(currentBudget.name);
+  }, [currentBudget.id, currentBudget.name]);
 
   useEffect(() => {
     if (!open) return;
@@ -106,19 +121,84 @@ export function BudgetSwitcherPopover({
     });
   }
 
+  function cancelRename() {
+    setRenaming(false);
+    setNameDraft(currentBudget.name);
+  }
+
+  function handleRenameSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const trimmed = nameDraft.trim();
+    if (!trimmed || trimmed === currentBudget.name) {
+      cancelRename();
+      return;
+    }
+    const formData = new FormData();
+    formData.set("budgetId", currentBudget.id);
+    formData.set("name", trimmed);
+    startTransition(async () => {
+      await renameBudget(formData);
+      setRenaming(false);
+    });
+  }
+
   return (
     <>
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between gap-2 rounded border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-left text-small font-medium hover:bg-neutral-100"
-      >
-        <span className="truncate text-neutral-800">{currentBudget.name}</span>
-        <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-neutral-600">
-          {currentBudget.currency}
-        </span>
-      </button>
+      {renaming ? (
+        <form onSubmit={handleRenameSubmit} className="flex items-center gap-1">
+          <input
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") cancelRename();
+            }}
+            autoFocus
+            aria-label="Budget name"
+            className="min-w-0 flex-1 rounded border border-neutral-200 px-2 py-1 text-small focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+          />
+          <button
+            type="submit"
+            disabled={pending}
+            title="Save"
+            className="shrink-0 rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10"
+          >
+            ✓
+          </button>
+          <button
+            type="button"
+            onClick={cancelRename}
+            title="Cancel"
+            className="shrink-0 rounded px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+          >
+            ✕
+          </button>
+        </form>
+      ) : (
+        <div className="flex items-center gap-1">
+          <button
+            ref={buttonRef}
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="flex min-w-0 flex-1 items-center rounded border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-left text-small font-medium hover:bg-neutral-100"
+          >
+            <span className="truncate text-neutral-800">
+              {currentBudget.name}{" "}
+              <span className="text-neutral-600">({currencySymbol})</span>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              setRenaming(true);
+            }}
+            title="Rename budget"
+            className="shrink-0 rounded p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+          >
+            ✎
+          </button>
+        </div>
+      )}
 
       {open &&
         position &&
