@@ -3,7 +3,7 @@ import { getCurrentBudget } from "@/lib/budget";
 import { formatMilliunits } from "@/lib/money";
 import { getTransactionEditOptions } from "@/lib/transactionOptions";
 import { TransactionsTable } from "@/components/TransactionsTable";
-import { updateTransaction } from "../actions";
+import { updateTransaction, deleteTransaction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +62,7 @@ export default async function AllAccountsPage() {
         categoryGroups={categoryGroups}
         payeeNames={payeeNames}
         updateTransaction={updateTransaction}
+        deleteTransaction={deleteTransaction}
         currency={budget.currency}
         showAccount
       />

@@ -156,6 +156,36 @@ export async function updateTransaction(formData: FormData) {
 }
 
 /**
+ * Deletes a transaction outright and backs its amount out of the owning
+ * account's cached `balance` — the inverse of the balance bookkeeping in
+ * updateTransaction/createAccount.
+ */
+export async function deleteTransaction(formData: FormData) {
+  const transactionId = String(formData.get("transactionId") ?? "");
+  if (!transactionId) {
+    throw new Error("transactionId is required");
+  }
+
+  const transaction = await prisma.transaction.findUniqueOrThrow({
+    where: { id: transactionId },
+    select: { accountId: true, amount: true },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.transaction.delete({ where: { id: transactionId } });
+    await tx.account.update({
+      where: { id: transaction.accountId },
+      data: { balance: { decrement: transaction.amount } },
+    });
+  });
+
+  revalidatePath(`/accounts/${transaction.accountId}`);
+  revalidatePath("/accounts/all");
+  revalidatePath("/accounts");
+  revalidatePath("/budget");
+}
+
+/**
  * Updates one or more metadata fields of an account (name, type, on-budget,
  * closed) — each editable cell on the Accounts page commits independently,
  * same pattern as updateTransaction. Balance isn't editable here: it's

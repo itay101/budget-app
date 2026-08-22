@@ -49,6 +49,7 @@ export function TransactionsTable({
   categoryGroups,
   payeeNames,
   updateTransaction,
+  deleteTransaction,
   showAccount = false,
   currency = "USD",
 }: {
@@ -56,6 +57,7 @@ export function TransactionsTable({
   categoryGroups: GroupOption[];
   payeeNames: string[];
   updateTransaction: (formData: FormData) => Promise<void>;
+  deleteTransaction: (formData: FormData) => Promise<void>;
   showAccount?: boolean;
   currency?: string;
 }) {
@@ -88,6 +90,7 @@ export function TransactionsTable({
           transaction={t}
           categoryGroups={categoryGroups}
           updateTransaction={updateTransaction}
+          deleteTransaction={deleteTransaction}
           showAccount={showAccount}
           gridCols={gridCols}
           currency={currency}
@@ -107,6 +110,7 @@ function TransactionRow({
   transaction,
   categoryGroups,
   updateTransaction,
+  deleteTransaction,
   showAccount,
   gridCols,
   currency,
@@ -114,6 +118,7 @@ function TransactionRow({
   transaction: TransactionRowData;
   categoryGroups: GroupOption[];
   updateTransaction: (formData: FormData) => Promise<void>;
+  deleteTransaction: (formData: FormData) => Promise<void>;
   showAccount: boolean;
   gridCols: string;
   currency: string;
@@ -158,6 +163,17 @@ function TransactionRow({
     startTransition(async () => {
       await updateTransaction(formData);
       setCommitted(draft);
+    });
+  }
+
+  function handleDelete() {
+    if (!window.confirm("Delete this transaction? This can't be undone.")) {
+      return;
+    }
+    const formData = new FormData();
+    formData.set("transactionId", transaction.id);
+    startTransition(async () => {
+      await deleteTransaction(formData);
     });
   }
 
@@ -238,20 +254,31 @@ function TransactionRow({
               type="button"
               onClick={handleCancel}
               disabled={pending}
+              title="Cancel"
               className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
             >
-              Cancel
+              ✕
             </button>
             <button
               type="button"
               onClick={handleSubmit}
               disabled={pending}
+              title="Save"
               className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
             >
-              {pending ? "Saving…" : "Submit"}
+              {pending ? "…" : "✓"}
             </button>
           </>
         )}
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={pending}
+          title="Delete transaction"
+          className="rounded p-1 text-neutral-400 hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+        >
+          🗑
+        </button>
       </div>
     </div>
   );
