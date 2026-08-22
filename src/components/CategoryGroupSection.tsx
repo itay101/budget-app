@@ -22,6 +22,9 @@ type CategoryRow = {
 // drag started in one has to be readable by the onDrop of any other.
 const DRAG_TYPE = "application/x-category-id";
 
+const nameInputClass =
+  "min-w-0 flex-1 rounded border border-neutral-200 px-2 py-1 text-small focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700";
+
 /**
  * One category group's header + category rows on the budget page.
  *
@@ -31,6 +34,10 @@ const DRAG_TYPE = "application/x-category-id";
  * by the `moveCategory` action. This covers both reordering within a group
  * and moving a category into a different group — dropping into another
  * group's section calls the same action with that group's id.
+ *
+ * Also owns renaming, both for the group itself and for each category —
+ * a pencil icon toggles an inline input + ✓/✕ (same pattern as the
+ * sidebar's budget rename control).
  */
 export function CategoryGroupSection({
   groupId,
@@ -39,6 +46,8 @@ export function CategoryGroupSection({
   month,
   currency,
   createCategory,
+  renameCategoryGroup,
+  renameCategory,
   deleteCategoryGroup,
   moveCategory,
   setBudgeted,
@@ -51,6 +60,8 @@ export function CategoryGroupSection({
   month: string;
   currency: string;
   createCategory: (formData: FormData) => Promise<void>;
+  renameCategoryGroup: (formData: FormData) => Promise<void>;
+  renameCategory: (formData: FormData) => Promise<void>;
   deleteCategoryGroup: (formData: FormData) => Promise<void>;
   moveCategory: (formData: FormData) => Promise<void>;
   setBudgeted: (formData: FormData) => Promise<void>;
@@ -60,6 +71,14 @@ export function CategoryGroupSection({
   const [pending, startTransition] = useTransition();
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [groupDragOver, setGroupDragOver] = useState(false);
+
+  const [groupRenaming, setGroupRenaming] = useState(false);
+  const [groupNameDraft, setGroupNameDraft] = useState(groupName);
+
+  const [renamingCategoryId, setRenamingCategoryId] = useState<string | null>(
+    null,
+  );
+  const [categoryNameDraft, setCategoryNameDraft] = useState("");
 
   function move(categoryId: string, beforeCategoryId: string | null) {
     const formData = new FormData();
@@ -84,6 +103,55 @@ export function CategoryGroupSection({
     });
   }
 
+  function cancelGroupRename() {
+    setGroupRenaming(false);
+    setGroupNameDraft(groupName);
+  }
+
+  function handleGroupRenameSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const trimmed = groupNameDraft.trim();
+    if (!trimmed || trimmed === groupName) {
+      cancelGroupRename();
+      return;
+    }
+    const formData = new FormData();
+    formData.set("categoryGroupId", groupId);
+    formData.set("name", trimmed);
+    startTransition(async () => {
+      await renameCategoryGroup(formData);
+      setGroupRenaming(false);
+    });
+  }
+
+  function startCategoryRename(category: CategoryRow) {
+    setRenamingCategoryId(category.id);
+    setCategoryNameDraft(category.name);
+  }
+
+  function cancelCategoryRename() {
+    setRenamingCategoryId(null);
+  }
+
+  function handleCategoryRenameSubmit(
+    e: React.FormEvent<HTMLFormElement>,
+    category: CategoryRow,
+  ) {
+    e.preventDefault();
+    const trimmed = categoryNameDraft.trim();
+    if (!trimmed || trimmed === category.name) {
+      cancelCategoryRename();
+      return;
+    }
+    const formData = new FormData();
+    formData.set("categoryId", category.id);
+    formData.set("name", trimmed);
+    startTransition(async () => {
+      await renameCategory(formData);
+      setRenamingCategoryId(null);
+    });
+  }
+
   return (
     <div
       onDragOver={(e) => {
@@ -102,21 +170,68 @@ export function CategoryGroupSection({
       className={groupDragOver ? "bg-brand-700/5" : undefined}
     >
       <div className="flex items-center gap-2 bg-neutral-100 px-200 py-1.5 text-small font-semibold uppercase tracking-wide text-neutral-600">
-        <span>{groupName}</span>
-        <AddCategoryPopover
-          categoryGroupId={groupId}
-          createCategory={createCategory}
-        />
-        {categories.length === 0 && (
-          <button
-            type="button"
-            onClick={handleDeleteGroup}
-            disabled={pending}
-            title="Delete empty category group"
-            className="rounded p-1 text-neutral-400 normal-case tracking-normal hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+        {groupRenaming ? (
+          <form
+            onSubmit={handleGroupRenameSubmit}
+            className="flex min-w-0 flex-1 items-center gap-1 normal-case tracking-normal"
           >
-            🗑
-          </button>
+            <input
+              value={groupNameDraft}
+              onChange={(e) => setGroupNameDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") cancelGroupRename();
+              }}
+              autoFocus
+              aria-label="Category group name"
+              className={nameInputClass}
+            />
+            <button
+              type="submit"
+              disabled={pending}
+              title="Save"
+              className="shrink-0 rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
+            >
+              ✓
+            </button>
+            <button
+              type="button"
+              onClick={cancelGroupRename}
+              title="Cancel"
+              className="shrink-0 rounded px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+            >
+              ✕
+            </button>
+          </form>
+        ) : (
+          <>
+            <span>{groupName}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setGroupNameDraft(groupName);
+                setGroupRenaming(true);
+              }}
+              title="Rename category group"
+              className="rounded p-1 text-neutral-400 normal-case tracking-normal hover:bg-neutral-200 hover:text-neutral-600"
+            >
+              ✎
+            </button>
+            <AddCategoryPopover
+              categoryGroupId={groupId}
+              createCategory={createCategory}
+            />
+            {categories.length === 0 && (
+              <button
+                type="button"
+                onClick={handleDeleteGroup}
+                disabled={pending}
+                title="Delete empty category group"
+                className="rounded p-1 text-neutral-400 normal-case tracking-normal hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+              >
+                🗑
+              </button>
+            )}
+          </>
         )}
       </div>
 
@@ -146,20 +261,62 @@ export function CategoryGroupSection({
               : "")
           }
         >
-          <div className="flex items-center gap-1.5 text-neutral-800">
-            <span
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData(DRAG_TYPE, category.id);
-                e.dataTransfer.effectAllowed = "move";
-              }}
-              title="Drag to reorder or move to another group"
-              className="cursor-grab select-none text-neutral-400 hover:text-neutral-600 active:cursor-grabbing"
+          {renamingCategoryId === category.id ? (
+            <form
+              onSubmit={(e) => handleCategoryRenameSubmit(e, category)}
+              className="flex items-center gap-1"
             >
-              ⠿
-            </span>
-            <span className="truncate">{category.name}</span>
-          </div>
+              <input
+                value={categoryNameDraft}
+                onChange={(e) => setCategoryNameDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") cancelCategoryRename();
+                }}
+                autoFocus
+                aria-label="Category name"
+                className={nameInputClass}
+              />
+              <button
+                type="submit"
+                disabled={pending}
+                title="Save"
+                className="shrink-0 rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
+              >
+                ✓
+              </button>
+              <button
+                type="button"
+                onClick={cancelCategoryRename}
+                title="Cancel"
+                className="shrink-0 rounded px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+              >
+                ✕
+              </button>
+            </form>
+          ) : (
+            <div className="flex items-center gap-1.5 text-neutral-800">
+              <span
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData(DRAG_TYPE, category.id);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                title="Drag to reorder or move to another group"
+                className="shrink-0 cursor-grab select-none text-neutral-400 hover:text-neutral-600 active:cursor-grabbing"
+              >
+                ⠿
+              </span>
+              <span className="truncate">{category.name}</span>
+              <button
+                type="button"
+                onClick={() => startCategoryRename(category)}
+                title="Rename category"
+                className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+              >
+                ✎
+              </button>
+            </div>
+          )}
           <form
             action={setBudgeted}
             className="flex items-center justify-end gap-1"

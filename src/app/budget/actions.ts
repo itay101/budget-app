@@ -54,6 +54,44 @@ export async function createCategory(formData: FormData) {
   revalidatePath("/budget");
 }
 
+export async function renameCategoryGroup(formData: FormData) {
+  const categoryGroupId = String(formData.get("categoryGroupId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+
+  if (!categoryGroupId) {
+    throw new Error("categoryGroupId is required");
+  }
+  if (!name) {
+    throw new Error("Category group name is required");
+  }
+
+  await prisma.categoryGroup.update({
+    where: { id: categoryGroupId },
+    data: { name },
+  });
+
+  revalidatePath("/budget");
+}
+
+export async function renameCategory(formData: FormData) {
+  const categoryId = String(formData.get("categoryId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+
+  if (!categoryId) {
+    throw new Error("categoryId is required");
+  }
+  if (!name) {
+    throw new Error("Category name is required");
+  }
+
+  await prisma.category.update({
+    where: { id: categoryId },
+    data: { name },
+  });
+
+  revalidatePath("/budget");
+}
+
 export async function deleteCategoryGroup(formData: FormData) {
   const categoryGroupId = String(formData.get("categoryGroupId") ?? "");
 

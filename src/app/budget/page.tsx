@@ -7,6 +7,8 @@ import {
   createCategoryGroup,
   deleteCategoryGroup,
   moveCategory,
+  renameCategory,
+  renameCategoryGroup,
   setBudgeted,
   transferAvailable,
 } from "./actions";
@@ -118,6 +120,8 @@ export default async function BudgetPage() {
             month={month.toISOString()}
             currency={budget.currency}
             createCategory={createCategory}
+            renameCategoryGroup={renameCategoryGroup}
+            renameCategory={renameCategory}
             deleteCategoryGroup={deleteCategoryGroup}
             moveCategory={moveCategory}
             setBudgeted={setBudgeted}
