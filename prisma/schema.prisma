@@ -16,20 +16,26 @@ datasource db {
 // A budget is also the unit a currency lives in: every account, category,
 // and transaction hangs off exactly one budget, so they all share that
 // budget's currency. A user who wants to track money in more than one
-// currency opens a separate budget per currency (see the `currency`
-// unique constraint below, enforced both here and in
-// src/app/budgets/actions.ts) rather than mixing currencies within one.
+// currency opens a separate budget per currency (see the partial unique
+// index on `currency` added in migrations — "partial" because it only
+// applies `WHERE deleted = false`, so a deleted budget frees its currency
+// up for reuse; Prisma's schema DSL can't express that, which is why it
+// isn't declared as an `@@unique` here) rather than mixing currencies
+// within one.
 model Budget {
   id             String          @id @default(cuid())
   name           String
   currency       String          @default("USD")
+  // Soft delete: deleteBudget (src/app/budgets/actions.ts) sets this and
+  // closes the budget's accounts, but never removes rows — actual removal
+  // is left to a future cleanup job that doesn't exist yet. A deleted
+  // budget is invisible to every query in src/lib/budget.ts.
+  deleted        Boolean         @default(false)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   accounts       Account[]
   categoryGroups CategoryGroup[]
   payees         Payee[]
-
-  @@unique([currency])
 }
 
 enum AccountType {

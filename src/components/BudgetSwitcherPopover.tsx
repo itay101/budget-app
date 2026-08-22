@@ -20,6 +20,11 @@ type CurrencyOption = { code: string; name: string };
  * (via the pencil icon beside it) — e.g. "My main budget (₪)", where the
  * currency symbol is shown but not itself editable: it's fixed for a
  * budget's lifetime by createBudget's uniqueness guard.
+ *
+ * Each row in the budget list also has a delete (trash) icon — deletion
+ * is deliberately hard to trigger by accident, requiring you to type the
+ * budget's exact name to confirm (deleteBudget enforces the same check
+ * server-side, since this popover isn't the only way to call it).
  */
 export function BudgetSwitcherPopover({
   currentBudget,
@@ -29,6 +34,7 @@ export function BudgetSwitcherPopover({
   switchBudget,
   createBudget,
   renameBudget,
+  deleteBudget,
 }: {
   currentBudget: BudgetOption;
   currencySymbol: string;
@@ -37,11 +43,14 @@ export function BudgetSwitcherPopover({
   switchBudget: (formData: FormData) => Promise<void>;
   createBudget: (formData: FormData) => Promise<void>;
   renameBudget: (formData: FormData) => Promise<void>;
+  deleteBudget: (formData: FormData) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState(currentBudget.name);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmText, setConfirmText] = useState("");
   const [pending, startTransition] = useTransition();
   const [position, setPosition] = useState<{ top: number; left: number } | null>(
     null,
@@ -77,11 +86,13 @@ export function BudgetSwitcherPopover({
       }
       setOpen(false);
       setAdding(false);
+      setDeletingId(null);
     }
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
         setOpen(false);
         setAdding(false);
+        setDeletingId(null);
       }
     }
 
@@ -139,6 +150,18 @@ export function BudgetSwitcherPopover({
     startTransition(async () => {
       await renameBudget(formData);
       setRenaming(false);
+    });
+  }
+
+  function handleDelete(budgetId: string) {
+    const formData = new FormData();
+    formData.set("budgetId", budgetId);
+    formData.set("confirmName", confirmText);
+    startTransition(async () => {
+      await deleteBudget(formData);
+      setDeletingId(null);
+      setConfirmText("");
+      setOpen(false);
     });
   }
 
@@ -212,26 +235,78 @@ export function BudgetSwitcherPopover({
               Budgets
             </p>
             <ul className="mb-2 space-y-0.5">
-              {budgets.map((b) => (
-                <li key={b.id}>
-                  <button
-                    type="button"
-                    disabled={pending}
-                    onClick={() => handleSwitch(b.id)}
-                    className={
-                      "flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-small " +
-                      (b.id === currentBudget.id
-                        ? "bg-brand-700/10 font-medium text-brand-700"
-                        : "text-neutral-800 hover:bg-neutral-100")
-                    }
+              {budgets.map((b) =>
+                deletingId === b.id ? (
+                  <li
+                    key={b.id}
+                    className="space-y-1.5 rounded border border-danger/40 bg-danger/5 p-2"
                   >
-                    <span className="truncate">{b.name}</span>
-                    <span className="shrink-0 text-neutral-600">
-                      {b.currency}
-                    </span>
-                  </button>
-                </li>
-              ))}
+                    <p className="text-small text-neutral-800">
+                      Type <span className="font-semibold">{b.name}</span> to
+                      delete it. Its accounts will be closed; nothing is
+                      removed from the database yet.
+                    </p>
+                    <input
+                      value={confirmText}
+                      onChange={(e) => setConfirmText(e.target.value)}
+                      autoFocus
+                      placeholder={b.name}
+                      aria-label={`Type "${b.name}" to confirm deletion`}
+                      className="w-full rounded border border-neutral-200 px-2 py-1 text-small focus:border-danger focus:outline-none focus:ring-1 focus:ring-danger"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeletingId(null);
+                          setConfirmText("");
+                        }}
+                        className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={confirmText !== b.name || pending}
+                        onClick={() => handleDelete(b.id)}
+                        className="rounded bg-danger px-2 py-1 text-small font-medium text-white hover:bg-danger/90 disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </li>
+                ) : (
+                  <li key={b.id} className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() => handleSwitch(b.id)}
+                      className={
+                        "flex min-w-0 flex-1 items-center justify-between gap-2 rounded px-2 py-1 text-small " +
+                        (b.id === currentBudget.id
+                          ? "bg-brand-700/10 font-medium text-brand-700"
+                          : "text-neutral-800 hover:bg-neutral-100")
+                      }
+                    >
+                      <span className="truncate">{b.name}</span>
+                      <span className="shrink-0 text-neutral-600">
+                        {b.currency}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeletingId(b.id);
+                        setConfirmText("");
+                      }}
+                      title="Delete budget"
+                      className="shrink-0 rounded p-1 text-neutral-400 hover:bg-danger/10 hover:text-danger"
+                    >
+                      🗑
+                    </button>
+                  </li>
+                ),
+              )}
             </ul>
 
             {!adding && availableCurrencies.length > 0 && (

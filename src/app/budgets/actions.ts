@@ -27,7 +27,9 @@ export async function createBudget(formData: FormData) {
     throw new Error("Choose a currency");
   }
 
-  const existing = await prisma.budget.findFirst({ where: { currency } });
+  const existing = await prisma.budget.findFirst({
+    where: { currency, deleted: false },
+  });
   if (existing) {
     throw new Error(
       `"${existing.name}" already uses ${currency} — each currency can only be open in one budget.`,
@@ -73,11 +75,62 @@ export async function switchBudget(formData: FormData) {
     throw new Error("budgetId is required");
   }
 
-  const budget = await prisma.budget.findUnique({ where: { id: budgetId } });
+  const budget = await prisma.budget.findFirst({
+    where: { id: budgetId, deleted: false },
+  });
   if (!budget) {
     throw new Error("Budget not found");
   }
 
   cookies().set(CURRENT_BUDGET_COOKIE, budget.id, { path: "/" });
+  revalidatePath("/", "layout");
+}
+
+/**
+ * Soft-deletes a budget — marks it `deleted` and closes every one of its
+ * accounts (so they drop out of the open-accounts totals and move to the
+ * sidebar's "Closed" section), but doesn't remove anything from the
+ * database. That's left to a future cleanup job; until then the data is
+ * just inaccessible through the app, the same way a deleted budget's
+ * currency becomes available again for a new budget (see the partial
+ * unique index in prisma/schema.prisma) without the old row actually
+ * going away.
+ *
+ * Deliberately hard to trigger by accident: the caller must submit the
+ * budget's exact current name as `confirmName`, mirroring the "type the
+ * name to confirm" pattern for destructive actions elsewhere (GitHub repo
+ * deletion, etc.) — enforced here, not just in the UI, since this is a
+ * server action any client could call directly.
+ */
+export async function deleteBudget(formData: FormData) {
+  const budgetId = String(formData.get("budgetId") ?? "");
+  const confirmName = String(formData.get("confirmName") ?? "").trim();
+
+  if (!budgetId) {
+    throw new Error("budgetId is required");
+  }
+
+  const budget = await prisma.budget.findFirst({
+    where: { id: budgetId, deleted: false },
+  });
+  if (!budget) {
+    throw new Error("Budget not found");
+  }
+  if (confirmName !== budget.name) {
+    throw new Error("Typed name doesn't match the budget's name");
+  }
+
+  await prisma.$transaction([
+    prisma.budget.update({ where: { id: budgetId }, data: { deleted: true } }),
+    prisma.account.updateMany({
+      where: { budgetId },
+      data: { closed: true },
+    }),
+  ]);
+
+  if (cookies().get(CURRENT_BUDGET_COOKIE)?.value === budgetId) {
+    cookies().delete(CURRENT_BUDGET_COOKIE);
+  }
+
   revalidatePath("/", "layout");
 }

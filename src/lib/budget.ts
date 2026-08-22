@@ -12,22 +12,23 @@ export const CURRENT_BUDGET_COOKIE = "budgetId";
 
 /**
  * The budget every page renders against. Honors the cookie set by
- * switchBudget/createBudget when it points at a budget that still exists,
- * otherwise falls back to the oldest budget — creating a default USD one
- * on first run, so the app still works before any budget has been
- * explicitly created.
+ * switchBudget/createBudget when it points at a budget that still exists
+ * and isn't deleted, otherwise falls back to the oldest non-deleted
+ * budget — creating a default USD one on first run (or if every budget
+ * has since been deleted), so the app still works either way.
  */
 export async function getCurrentBudget() {
   const selectedId = cookies().get(CURRENT_BUDGET_COOKIE)?.value;
 
   if (selectedId) {
-    const selected = await prisma.budget.findUnique({
-      where: { id: selectedId },
+    const selected = await prisma.budget.findFirst({
+      where: { id: selectedId, deleted: false },
     });
     if (selected) return selected;
   }
 
   const first = await prisma.budget.findFirst({
+    where: { deleted: false },
     orderBy: { createdAt: "asc" },
   });
   if (first) return first;
@@ -35,7 +36,10 @@ export async function getCurrentBudget() {
   return prisma.budget.create({ data: { name: "My Budget", currency: "USD" } });
 }
 
-/** Every budget, for the sidebar's budget switcher. */
+/** Every non-deleted budget, for the sidebar's budget switcher. */
 export async function listBudgets() {
-  return prisma.budget.findMany({ orderBy: { createdAt: "asc" } });
+  return prisma.budget.findMany({
+    where: { deleted: false },
+    orderBy: { createdAt: "asc" },
+  });
 }
