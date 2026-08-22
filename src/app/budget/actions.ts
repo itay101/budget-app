@@ -92,6 +92,26 @@ export async function renameCategory(formData: FormData) {
   revalidatePath("/budget");
 }
 
+// Hiding is purely presentational — the category keeps its real
+// categoryGroupId and sortOrder, so unhiding puts it right back where it
+// was. The budget page is what collects every hidden category into the
+// synthetic "Hidden" section at read time.
+export async function setCategoryHidden(formData: FormData) {
+  const categoryId = String(formData.get("categoryId") ?? "");
+  const hidden = String(formData.get("hidden") ?? "") === "true";
+
+  if (!categoryId) {
+    throw new Error("categoryId is required");
+  }
+
+  await prisma.category.update({
+    where: { id: categoryId },
+    data: { hidden },
+  });
+
+  revalidatePath("/budget");
+}
+
 export async function deleteCategoryGroup(formData: FormData) {
   const categoryGroupId = String(formData.get("categoryGroupId") ?? "");
 

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentBudget } from "@/lib/budget";
 import { AddCategoryGroupPopover } from "@/components/AddCategoryGroupPopover";
 import { CategoryGroupSection } from "@/components/CategoryGroupSection";
+import { HiddenCategoriesSection } from "@/components/HiddenCategoriesSection";
 import {
   createCategory,
   createCategoryGroup,
@@ -10,6 +11,7 @@ import {
   renameCategory,
   renameCategoryGroup,
   setBudgeted,
+  setCategoryHidden,
   transferAvailable,
 } from "./actions";
 
@@ -80,8 +82,20 @@ export default async function BudgetPage() {
     );
   }
 
+  function rowFor(category: (typeof groups)[number]["categories"][number]) {
+    return {
+      id: category.id,
+      name: category.name,
+      budgeted: category.months[0]?.budgeted ?? 0,
+      activity: category.transactions.reduce((sum, t) => sum + t.amount, 0),
+      available: availableFor(category.id),
+    };
+  }
+
   // Slimmed-down category list (just id/name/available) for the "move
-  // money to…" popover on each Available cell.
+  // money to…" popover on each Available cell. Includes hidden categories
+  // too — they still have money in them, and still need somewhere to move
+  // it to/from.
   const categoryOptions = groups.map((group) => ({
     id: group.id,
     name: group.name,
@@ -91,6 +105,18 @@ export default async function BudgetPage() {
       available: availableFor(c.id),
     })),
   }));
+
+  // Hiding is presentational only — a hidden category keeps its real
+  // categoryGroupId/sortOrder (see the `hidden` field's doc comment in
+  // schema.prisma) — so it's filtered out of its real group's rendered
+  // rows here and collected into one synthetic "Hidden" section instead,
+  // appended after every real group. That section only renders at all
+  // when it's non-empty.
+  const hiddenCategories = groups.flatMap((group) =>
+    group.categories
+      .filter((c) => c.hidden)
+      .map((category) => ({ ...rowFor(category), groupName: group.name })),
+  );
 
   return (
     <div className="space-y-300">
@@ -119,24 +145,19 @@ export default async function BudgetPage() {
             groupName={group.name}
             month={month.toISOString()}
             currency={budget.currency}
+            isEmpty={group.categories.length === 0}
             createCategory={createCategory}
             renameCategoryGroup={renameCategoryGroup}
             renameCategory={renameCategory}
             deleteCategoryGroup={deleteCategoryGroup}
             moveCategory={moveCategory}
             setBudgeted={setBudgeted}
+            setCategoryHidden={setCategoryHidden}
             transferAvailable={transferAvailable}
             categoryOptions={categoryOptions}
-            categories={group.categories.map((category) => ({
-              id: category.id,
-              name: category.name,
-              budgeted: category.months[0]?.budgeted ?? 0,
-              activity: category.transactions.reduce(
-                (sum, t) => sum + t.amount,
-                0,
-              ),
-              available: availableFor(category.id),
-            }))}
+            categories={group.categories
+              .filter((c) => !c.hidden)
+              .map(rowFor)}
           />
         ))}
 
@@ -145,6 +166,19 @@ export default async function BudgetPage() {
             No category groups yet. Use the &ldquo;+ Add&rdquo; button above
             to get started.
           </div>
+        )}
+
+        {hiddenCategories.length > 0 && (
+          <HiddenCategoriesSection
+            month={month.toISOString()}
+            currency={budget.currency}
+            renameCategory={renameCategory}
+            setBudgeted={setBudgeted}
+            setCategoryHidden={setCategoryHidden}
+            transferAvailable={transferAvailable}
+            categoryOptions={categoryOptions}
+            categories={hiddenCategories}
+          />
         )}
       </div>
     </div>

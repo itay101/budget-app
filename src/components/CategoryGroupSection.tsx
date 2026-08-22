@@ -43,6 +43,7 @@ export function CategoryGroupSection({
   groupId,
   groupName,
   categories,
+  isEmpty,
   month,
   currency,
   createCategory,
@@ -51,12 +52,18 @@ export function CategoryGroupSection({
   deleteCategoryGroup,
   moveCategory,
   setBudgeted,
+  setCategoryHidden,
   transferAvailable,
   categoryOptions,
 }: {
   groupId: string;
   groupName: string;
   categories: CategoryRow[];
+  // Whether the group has *no* categories at all — including hidden ones,
+  // which are filtered out of `categories` for display but still count.
+  // Drives the delete button: a group holding only hidden categories isn't
+  // really empty, even though it renders with no visible rows.
+  isEmpty: boolean;
   month: string;
   currency: string;
   createCategory: (formData: FormData) => Promise<void>;
@@ -65,6 +72,7 @@ export function CategoryGroupSection({
   deleteCategoryGroup: (formData: FormData) => Promise<void>;
   moveCategory: (formData: FormData) => Promise<void>;
   setBudgeted: (formData: FormData) => Promise<void>;
+  setCategoryHidden: (formData: FormData) => Promise<void>;
   transferAvailable: (formData: FormData) => Promise<void>;
   categoryOptions: GroupOption[];
 }) {
@@ -121,6 +129,15 @@ export function CategoryGroupSection({
     startTransition(async () => {
       await renameCategoryGroup(formData);
       setGroupRenaming(false);
+    });
+  }
+
+  function handleHideCategory(categoryId: string) {
+    const formData = new FormData();
+    formData.set("categoryId", categoryId);
+    formData.set("hidden", "true");
+    startTransition(async () => {
+      await setCategoryHidden(formData);
     });
   }
 
@@ -220,7 +237,7 @@ export function CategoryGroupSection({
               categoryGroupId={groupId}
               createCategory={createCategory}
             />
-            {categories.length === 0 && (
+            {isEmpty && (
               <button
                 type="button"
                 onClick={handleDeleteGroup}
@@ -314,6 +331,15 @@ export function CategoryGroupSection({
                 className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
               >
                 ✎
+              </button>
+              <button
+                type="button"
+                onClick={() => handleHideCategory(category.id)}
+                disabled={pending}
+                title="Hide category"
+                className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 disabled:opacity-50"
+              >
+                🙈
               </button>
             </div>
           )}

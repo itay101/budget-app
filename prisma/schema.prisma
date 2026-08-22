@@ -81,6 +81,11 @@ model Category {
   categoryGroup   CategoryGroup   @relation(fields: [categoryGroupId], references: [id], onDelete: Cascade)
   name            String
   sortOrder       Int             @default(0)
+  // A hidden category keeps its real categoryGroupId/sortOrder — hiding
+  // is purely presentational. The budget page groups every hidden
+  // category (from any group) under a synthetic "Hidden" section at the
+  // end, and unhiding puts it right back where it was.
+  hidden          Boolean         @default(false)
   months          CategoryMonth[]
   transactions    Transaction[]
 
