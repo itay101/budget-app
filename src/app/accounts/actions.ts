@@ -30,17 +30,47 @@ export async function createAccount(formData: FormData) {
   const balance = numberToMilliunits(Number(balanceInput) || 0);
   const budget = await getOrCreateDefaultBudget();
 
-  await prisma.account.create({
-    data: {
-      budgetId: budget.id,
-      name,
-      type,
-      balance,
-      onBudget: type !== "CREDIT_CARD" && type !== "LINE_OF_CREDIT",
-    },
+  await prisma.$transaction(async (tx) => {
+    const account = await tx.account.create({
+      data: {
+        budgetId: budget.id,
+        name,
+        type,
+        balance,
+        onBudget: type !== "CREDIT_CARD" && type !== "LINE_OF_CREDIT",
+      },
+    });
+
+    if (balance !== 0) {
+      // A nonzero starting balance is recorded as a real transaction (the
+      // same "Starting Balance" convention YNAB itself uses) so the
+      // account's transaction list always sums to its balance, instead of
+      // showing a balance with nothing behind it.
+      const payeeName = "Starting Balance";
+      const payee =
+        (await tx.payee.findFirst({
+          where: { budgetId: budget.id, name: payeeName },
+        })) ??
+        (await tx.payee.create({
+          data: { budgetId: budget.id, name: payeeName },
+        }));
+
+      await tx.transaction.create({
+        data: {
+          accountId: account.id,
+          payeeId: payee.id,
+          date: new Date(),
+          amount: balance,
+          memo: "Starting balance",
+          cleared: "RECONCILED",
+        },
+      });
+    }
   });
 
   revalidatePath("/accounts");
+  revalidatePath("/accounts/all");
+  revalidatePath("/budget");
 }
 
 /**
