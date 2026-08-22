@@ -16,12 +16,32 @@ type TransactionRowData = {
   accountName?: string;
 };
 
+type Draft = {
+  date: string;
+  payeeName: string;
+  categoryId: string;
+  memo: string;
+  inflow: string;
+  outflow: string;
+};
+
+function draftFrom(t: TransactionRowData): Draft {
+  return {
+    date: t.date.slice(0, 10),
+    payeeName: t.payeeName,
+    categoryId: t.categoryId,
+    memo: t.memo,
+    inflow: t.amount > 0 ? String(milliunitsToNumber(t.amount)) : "",
+    outflow: t.amount < 0 ? String(milliunitsToNumber(-t.amount)) : "",
+  };
+}
+
 const inputClass =
   "w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-body hover:border-neutral-200 focus:border-brand-700 focus:bg-neutral-0 focus:outline-none focus:ring-1 focus:ring-brand-700";
 
 const GRID_COLS_WITH_ACCOUNT =
-  "grid-cols-[130px_110px_1fr_1fr_1fr_100px_100px]";
-const GRID_COLS = "grid-cols-[130px_1fr_1fr_1fr_100px_100px]";
+  "grid-cols-[130px_110px_1fr_1fr_1fr_100px_100px_150px]";
+const GRID_COLS = "grid-cols-[130px_1fr_1fr_1fr_100px_100px_150px]";
 
 export function TransactionsTable({
   transactions,
@@ -56,6 +76,7 @@ export function TransactionsTable({
         <div>Memo</div>
         <div className="text-right">Inflow</div>
         <div className="text-right">Outflow</div>
+        <div />
       </div>
 
       {transactions.map((t) => (
@@ -91,39 +112,60 @@ function TransactionRow({
   showAccount: boolean;
   gridCols: string;
 }) {
-  const [, startTransition] = useTransition();
+  const [pending, startTransition] = useTransition();
 
-  const [date, setDate] = useState(transaction.date.slice(0, 10));
-  const [payeeName, setPayeeName] = useState(transaction.payeeName);
-  const [categoryId, setCategoryId] = useState(transaction.categoryId);
-  const [memo, setMemo] = useState(transaction.memo);
-  const [inflow, setInflow] = useState(
-    transaction.amount > 0 ? String(milliunitsToNumber(transaction.amount)) : "",
-  );
-  const [outflow, setOutflow] = useState(
-    transaction.amount < 0
-      ? String(milliunitsToNumber(-transaction.amount))
-      : "",
-  );
+  // `committed` tracks the last-saved state (what Cancel reverts to);
+  // `draft` is what's currently in the inputs. Editing only ever touches
+  // `draft` - nothing is sent to the server until Submit.
+  const [committed, setCommitted] = useState(() => draftFrom(transaction));
+  const [draft, setDraft] = useState(committed);
 
-  function commit(field: string, value: string) {
+  const isDirty =
+    draft.date !== committed.date ||
+    draft.payeeName !== committed.payeeName ||
+    draft.categoryId !== committed.categoryId ||
+    draft.memo !== committed.memo ||
+    draft.inflow !== committed.inflow ||
+    draft.outflow !== committed.outflow;
+
+  function patch(fields: Partial<Draft>) {
+    setDraft((d) => ({ ...d, ...fields }));
+  }
+
+  function handleCancel() {
+    setDraft(committed);
+  }
+
+  function handleSubmit() {
+    const inflowValue = Number(draft.inflow) || 0;
+    const outflowValue = Number(draft.outflow) || 0;
+    const amount = inflowValue > 0 ? inflowValue : outflowValue ? -outflowValue : 0;
+
     const formData = new FormData();
     formData.set("transactionId", transaction.id);
-    formData.set(field, value);
+    formData.set("date", draft.date);
+    formData.set("payeeName", draft.payeeName);
+    formData.set("categoryId", draft.categoryId);
+    formData.set("memo", draft.memo);
+    formData.set("amount", String(amount));
+
     startTransition(async () => {
       await updateTransaction(formData);
+      setCommitted(draft);
     });
   }
 
   return (
     <div
-      className={`grid ${gridCols} items-center gap-2 border-b border-neutral-100 px-200 py-1 text-body last:border-b-0`}
+      className={
+        `grid ${gridCols} items-center gap-2 border-b border-neutral-100 px-200 py-1 text-body last:border-b-0 ` +
+        (isDirty ? "bg-brand-700/5" : "")
+      }
     >
       <input
         type="date"
-        value={date}
-        onChange={(e) => setDate(e.target.value)}
-        onBlur={() => commit("date", date)}
+        value={draft.date}
+        onChange={(e) => patch({ date: e.target.value })}
         className={inputClass}
       />
 
@@ -135,20 +177,16 @@ function TransactionRow({
 
       <input
         type="text"
-        value={payeeName}
+        value={draft.payeeName}
         list="payee-suggestions"
         placeholder="Payee"
-        onChange={(e) => setPayeeName(e.target.value)}
-        onBlur={() => commit("payeeName", payeeName)}
+        onChange={(e) => patch({ payeeName: e.target.value })}
         className={inputClass}
       />
 
       <select
-        value={categoryId}
-        onChange={(e) => {
-          setCategoryId(e.target.value);
-          commit("categoryId", e.target.value);
-        }}
+        value={draft.categoryId}
+        onChange={(e) => patch({ categoryId: e.target.value })}
         className={inputClass}
       >
         <option value="">Uncategorized</option>
@@ -165,44 +203,52 @@ function TransactionRow({
 
       <input
         type="text"
-        value={memo}
+        value={draft.memo}
         placeholder="Memo"
-        onChange={(e) => setMemo(e.target.value)}
-        onBlur={() => commit("memo", memo)}
+        onChange={(e) => patch({ memo: e.target.value })}
         className={inputClass}
       />
 
       <input
         type="number"
         step="0.01"
-        value={inflow}
+        value={draft.inflow}
         placeholder="0.00"
-        onChange={(e) => {
-          // Clear the other side immediately, not on blur - otherwise
-          // typing into Inflow then clicking straight into Outflow (before
-          // Inflow's blur fires) briefly shows both as nonzero at once.
-          setInflow(e.target.value);
-          setOutflow("");
-        }}
-        onBlur={() => commit("amount", inflow || "0")}
+        onChange={(e) => patch({ inflow: e.target.value, outflow: "" })}
         className={inputClass + " text-right text-success"}
       />
 
       <input
         type="number"
         step="0.01"
-        value={outflow}
+        value={draft.outflow}
         placeholder="0.00"
-        onChange={(e) => {
-          setOutflow(e.target.value);
-          setInflow("");
-        }}
-        onBlur={() => {
-          const value = Number(outflow) || 0;
-          commit("amount", value ? String(-value) : "0");
-        }}
+        onChange={(e) => patch({ outflow: e.target.value, inflow: "" })}
         className={inputClass + " text-right text-danger"}
       />
+
+      <div className="flex justify-end gap-1">
+        {isDirty && (
+          <>
+            <button
+              type="button"
+              onClick={handleCancel}
+              disabled={pending}
+              className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={pending}
+              className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+            >
+              {pending ? "Saving…" : "Submit"}
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
