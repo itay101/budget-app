@@ -1,12 +1,17 @@
 import { prisma } from "@/lib/prisma";
 import { getCurrentBudget } from "@/lib/budget";
-import { formatMilliunits, milliunitsToNumber } from "@/lib/money";
-import { MoveMoneyPopover } from "@/components/MoveMoneyPopover";
-import { MoneyInput } from "@/components/MoneyInput";
+import { AddCategoryGroupPopover } from "@/components/AddCategoryGroupPopover";
+import { CategoryGroupSection } from "@/components/CategoryGroupSection";
+import { HiddenCategoriesSection } from "@/components/HiddenCategoriesSection";
 import {
   createCategory,
   createCategoryGroup,
+  deleteCategoryGroup,
+  moveCategory,
+  renameCategory,
+  renameCategoryGroup,
   setBudgeted,
+  setCategoryHidden,
   transferAvailable,
 } from "./actions";
 
@@ -77,8 +82,20 @@ export default async function BudgetPage() {
     );
   }
 
+  function rowFor(category: (typeof groups)[number]["categories"][number]) {
+    return {
+      id: category.id,
+      name: category.name,
+      budgeted: category.months[0]?.budgeted ?? 0,
+      activity: category.transactions.reduce((sum, t) => sum + t.amount, 0),
+      available: availableFor(category.id),
+    };
+  }
+
   // Slimmed-down category list (just id/name/available) for the "move
-  // money to…" popover on each Available cell.
+  // money to…" popover on each Available cell. Includes hidden categories
+  // too — they still have money in them, and still need somewhere to move
+  // it to/from.
   const categoryOptions = groups.map((group) => ({
     id: group.id,
     name: group.name,
@@ -88,6 +105,18 @@ export default async function BudgetPage() {
       available: availableFor(c.id),
     })),
   }));
+
+  // Hiding is presentational only — a hidden category keeps its real
+  // categoryGroupId/sortOrder (see the `hidden` field's doc comment in
+  // schema.prisma) — so it's filtered out of its real group's rendered
+  // rows here and collected into one synthetic "Hidden" section instead,
+  // appended after every real group. That section only renders at all
+  // when it's non-empty.
+  const hiddenCategories = groups.flatMap((group) =>
+    group.categories
+      .filter((c) => c.hidden)
+      .map((category) => ({ ...rowFor(category), groupName: group.name })),
+  );
 
   return (
     <div className="space-y-300">
@@ -99,131 +128,59 @@ export default async function BudgetPage() {
       </div>
 
       <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-0">
-        <div className="grid grid-cols-[1fr_120px_120px_120px] gap-2 border-b border-neutral-200 bg-neutral-100 px-200 py-2 text-small font-medium uppercase tracking-wide text-neutral-600">
-          <div>Category</div>
+        <div className="grid grid-cols-[1fr_120px_120px_120px] items-center gap-2 border-b border-neutral-200 bg-neutral-100 px-200 py-2 text-small font-medium uppercase tracking-wide text-neutral-600">
+          <div className="flex items-center gap-2">
+            <span>Category</span>
+            <AddCategoryGroupPopover createCategoryGroup={createCategoryGroup} />
+          </div>
           <div className="text-right">Budgeted</div>
           <div className="text-right">Activity</div>
           <div className="text-right">Available</div>
         </div>
 
         {groups.map((group) => (
-          <div key={group.id}>
-            <div className="flex items-center justify-between gap-2 bg-neutral-100 px-200 py-1.5 text-small font-semibold uppercase tracking-wide text-neutral-600">
-              <span>{group.name}</span>
-              <form
-                action={createCategory}
-                className="flex items-center gap-1 normal-case tracking-normal"
-              >
-                <input
-                  type="hidden"
-                  name="categoryGroupId"
-                  value={group.id}
-                />
-                <input
-                  name="name"
-                  placeholder="Add category"
-                  required
-                  className="w-36 rounded border border-neutral-200 bg-neutral-0 px-2 py-1 text-small font-normal text-neutral-800 focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-                />
-                <button
-                  type="submit"
-                  className="rounded px-1.5 py-1 text-small font-medium text-brand-700 hover:bg-brand-700/10"
-                >
-                  + Add
-                </button>
-              </form>
-            </div>
-            {group.categories.map((category) => {
-              const budgeted = category.months[0]?.budgeted ?? 0;
-              const activity = category.transactions.reduce(
-                (sum, t) => sum + t.amount,
-                0,
-              );
-              const available = availableFor(category.id);
-
-              return (
-                <div
-                  key={category.id}
-                  className="grid grid-cols-[1fr_120px_120px_120px] items-center gap-2 border-b border-neutral-100 px-200 py-2 text-body last:border-b-0"
-                >
-                  <div className="text-neutral-800">{category.name}</div>
-                  <form
-                    action={setBudgeted}
-                    className="flex items-center justify-end gap-1"
-                  >
-                    <input type="hidden" name="categoryId" value={category.id} />
-                    <input
-                      type="hidden"
-                      name="month"
-                      value={month.toISOString()}
-                    />
-                    <MoneyInput
-                      name="amount"
-                      currency={budget.currency}
-                      defaultValue={milliunitsToNumber(budgeted)}
-                      className="w-24 rounded border border-neutral-200 px-2 py-1 text-right text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-                    />
-                    <button
-                      type="submit"
-                      className="rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10"
-                      title="Save"
-                    >
-                      ✓
-                    </button>
-                  </form>
-                  <div className="text-right text-neutral-800">
-                    {formatMilliunits(activity, budget.currency)}
-                  </div>
-                  <div className="text-right">
-                    <MoveMoneyPopover
-                      categoryId={category.id}
-                      categoryName={category.name}
-                      month={month.toISOString()}
-                      currency={budget.currency}
-                      available={available}
-                      groups={categoryOptions}
-                      transferAvailable={transferAvailable}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <CategoryGroupSection
+            key={group.id}
+            groupId={group.id}
+            groupName={group.name}
+            month={month.toISOString()}
+            currency={budget.currency}
+            isEmpty={group.categories.length === 0}
+            createCategory={createCategory}
+            renameCategoryGroup={renameCategoryGroup}
+            renameCategory={renameCategory}
+            deleteCategoryGroup={deleteCategoryGroup}
+            moveCategory={moveCategory}
+            setBudgeted={setBudgeted}
+            setCategoryHidden={setCategoryHidden}
+            transferAvailable={transferAvailable}
+            categoryOptions={categoryOptions}
+            categories={group.categories
+              .filter((c) => !c.hidden)
+              .map(rowFor)}
+          />
         ))}
 
         {groups.length === 0 && (
           <div className="px-200 py-300 text-body text-neutral-600">
-            No category groups yet. Add one below to get started.
+            No category groups yet. Use the &ldquo;Add&rdquo; button above to
+            get started.
           </div>
         )}
-      </div>
 
-      <form
-        action={createCategoryGroup}
-        className="max-w-sm space-y-3 rounded-lg border border-neutral-200 bg-neutral-0 p-200"
-      >
-        <h2 className="text-h3 text-neutral-800">Add category group</h2>
-        <div>
-          <label
-            className="block text-small text-neutral-600"
-            htmlFor="group-name"
-          >
-            Name
-          </label>
-          <input
-            id="group-name"
-            name="name"
-            required
-            className="mt-1 w-full rounded border border-neutral-200 px-3 py-2 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+        {hiddenCategories.length > 0 && (
+          <HiddenCategoriesSection
+            month={month.toISOString()}
+            currency={budget.currency}
+            renameCategory={renameCategory}
+            setBudgeted={setBudgeted}
+            setCategoryHidden={setCategoryHidden}
+            transferAvailable={transferAvailable}
+            categoryOptions={categoryOptions}
+            categories={hiddenCategories}
           />
-        </div>
-        <button
-          type="submit"
-          className="rounded bg-brand-700 px-4 py-2 text-body font-medium text-white hover:bg-brand-800 active:bg-brand-900"
-        >
-          Add category group
-        </button>
-      </form>
+        )}
+      </div>
     </div>
   );
 }

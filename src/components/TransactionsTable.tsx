@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { milliunitsToNumber } from "@/lib/money";
 import { MoneyInput } from "@/components/MoneyInput";
+import { Icon } from "@/components/Icon";
 
 type CategoryOption = { id: string; name: string };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
@@ -257,7 +258,7 @@ function TransactionRow({
               title="Cancel"
               className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
             >
-              ✕
+              <Icon name="close" label="Cancel" />
             </button>
             <button
               type="button"
@@ -266,7 +267,7 @@ function TransactionRow({
               title="Save"
               className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
             >
-              {pending ? "…" : "✓"}
+              {pending ? "…" : <Icon name="check" label="Save" />}
             </button>
           </>
         )}
@@ -277,7 +278,7 @@ function TransactionRow({
           title="Delete transaction"
           className="rounded p-1 text-neutral-400 hover:bg-danger/10 hover:text-danger disabled:opacity-50"
         >
-          🗑
+          <Icon name="delete" label="Delete transaction" />
         </button>
       </div>
     </div>

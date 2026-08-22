@@ -2,21 +2,20 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { ACCOUNT_TYPE_OPTIONS } from "@/lib/accountTypes";
-import { MoneyInput } from "@/components/MoneyInput";
 import { Icon } from "@/components/Icon";
 
 /**
- * The sidebar's "+ Add account" button, opening a small popover (same
- * pattern as MoveMoneyPopover) with the create-account form, instead of
- * navigating to the Accounts page.
+ * The "+ Add" button next to a category group's name, opening a small
+ * popover (same pattern as AddCategoryGroupPopover) with the
+ * create-category form, instead of the inline text-input-plus-button form
+ * that used to sit at the far right of the group's header row.
  */
-export function AddAccountPopover({
-  createAccount,
-  currency,
+export function AddCategoryPopover({
+  categoryGroupId,
+  createCategory,
 }: {
-  createAccount: (formData: FormData) => Promise<void>;
-  currency: string;
+  categoryGroupId: string;
+  createCategory: (formData: FormData) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -70,7 +69,7 @@ export function AddAccountPopover({
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     startTransition(async () => {
-      await createAccount(formData);
+      await createCategory(formData);
       formRef.current?.reset();
       setOpen(false);
     });
@@ -82,9 +81,9 @@ export function AddAccountPopover({
         ref={buttonRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="mt-1 flex w-full items-center gap-0.5 rounded px-3 py-1.5 text-left text-small font-medium text-brand-700 hover:bg-brand-700/10"
+        className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-small font-medium normal-case tracking-normal text-brand-700 hover:bg-brand-700/10"
       >
-        <Icon name="add" /> Add account
+        <Icon name="add" /> Add
       </button>
 
       {open &&
@@ -96,56 +95,26 @@ export function AddAccountPopover({
             className="z-50 w-64 rounded-lg border border-neutral-200 bg-neutral-0 p-3 text-left shadow-lg"
           >
             <p className="mb-2 text-small font-medium text-neutral-800">
-              Add account
+              Add category
             </p>
             <form ref={formRef} onSubmit={handleSubmit} className="space-y-2">
+              <input
+                type="hidden"
+                name="categoryGroupId"
+                value={categoryGroupId}
+              />
               <div>
                 <label
                   className="block text-small text-neutral-600"
-                  htmlFor="new-account-name"
+                  htmlFor={`new-category-name-${categoryGroupId}`}
                 >
                   Name
                 </label>
                 <input
-                  id="new-account-name"
+                  id={`new-category-name-${categoryGroupId}`}
                   name="name"
                   required
                   autoFocus
-                  className="mt-1 w-full rounded border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-                />
-              </div>
-              <div>
-                <label
-                  className="block text-small text-neutral-600"
-                  htmlFor="new-account-type"
-                >
-                  Type
-                </label>
-                <select
-                  id="new-account-type"
-                  name="type"
-                  defaultValue="CHECKING"
-                  className="mt-1 w-full rounded border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-                >
-                  {ACCOUNT_TYPE_OPTIONS.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label
-                  className="block text-small text-neutral-600"
-                  htmlFor="new-account-balance"
-                >
-                  Starting balance
-                </label>
-                <MoneyInput
-                  id="new-account-balance"
-                  name="balance"
-                  currency={currency}
-                  defaultValue={0}
                   className="mt-1 w-full rounded border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
                 />
               </div>
@@ -162,7 +131,7 @@ export function AddAccountPopover({
                   disabled={pending}
                   className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
                 >
-                  {pending ? "Adding…" : "Add account"}
+                  {pending ? "Adding…" : "Add category"}
                 </button>
               </div>
             </form>
