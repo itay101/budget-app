@@ -86,7 +86,6 @@ See [`prisma/schema.prisma`](./prisma/schema.prisma):
 This is intentionally a minimal scaffold to build on. Some natural next
 features:
 
-- Month-to-month category rollover ("available" carrying forward)
 - Credit card payment auto-categorization
 - Split transactions
 - Multiple budgets / auth
