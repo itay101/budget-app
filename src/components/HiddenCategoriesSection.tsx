@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { formatMilliunits, milliunitsToNumber } from "@/lib/money";
 import { MoneyInput } from "@/components/MoneyInput";
 import { MoveMoneyPopover } from "@/components/MoveMoneyPopover";
+import { Icon } from "@/components/Icon";
 
 type CategoryOption = { id: string; name: string; available: number };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
@@ -102,7 +103,7 @@ export function HiddenCategoriesSection({
           title="Hidden categories keep their spot in their real group — unhide one to bring it back"
           className="text-neutral-400"
         >
-          🔒
+          <Icon name="lock" label="Hidden categories keep their spot in their real group — unhide one to bring it back" />
         </span>
       </div>
 
@@ -132,7 +133,7 @@ export function HiddenCategoriesSection({
                 title="Save"
                 className="shrink-0 rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
               >
-                ✓
+                <Icon name="check" label="Save" />
               </button>
               <button
                 type="button"
@@ -140,7 +141,7 @@ export function HiddenCategoriesSection({
                 title="Cancel"
                 className="shrink-0 rounded px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
               >
-                ✕
+                <Icon name="close" label="Cancel" />
               </button>
             </form>
           ) : (
@@ -155,7 +156,7 @@ export function HiddenCategoriesSection({
                 title="Rename category"
                 className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
               >
-                ✎
+                <Icon name="edit" label="Rename category" />
               </button>
               <button
                 type="button"
@@ -164,7 +165,7 @@ export function HiddenCategoriesSection({
                 title="Unhide category"
                 className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 disabled:opacity-50"
               >
-                👁
+                <Icon name="visibility" label="Unhide category" />
               </button>
             </div>
           )}
@@ -185,7 +186,7 @@ export function HiddenCategoriesSection({
               className="rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10"
               title="Save"
             >
-              ✓
+              <Icon name="check" label="Save" />
             </button>
           </form>
           <div className="text-right text-neutral-800">

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
+import { Icon } from "@/components/Icon";
 
 type BudgetOption = { id: string; name: string; currency: string };
 type CurrencyOption = { code: string; name: string };
@@ -185,7 +186,7 @@ export function BudgetSwitcherPopover({
             title="Save"
             className="shrink-0 rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10"
           >
-            ✓
+            <Icon name="check" label="Save" />
           </button>
           <button
             type="button"
@@ -193,7 +194,7 @@ export function BudgetSwitcherPopover({
             title="Cancel"
             className="shrink-0 rounded px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
           >
-            ✕
+            <Icon name="close" label="Cancel" />
           </button>
         </form>
       ) : (
@@ -218,7 +219,7 @@ export function BudgetSwitcherPopover({
             title="Rename budget"
             className="shrink-0 rounded p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
           >
-            ✎
+            <Icon name="edit" label="Rename budget" />
           </button>
         </div>
       )}
@@ -302,7 +303,7 @@ export function BudgetSwitcherPopover({
                       title="Delete budget"
                       className="shrink-0 rounded p-1 text-neutral-400 hover:bg-danger/10 hover:text-danger"
                     >
-                      🗑
+                      <Icon name="delete" label="Delete budget" />
                     </button>
                   </li>
                 ),
@@ -313,9 +314,9 @@ export function BudgetSwitcherPopover({
               <button
                 type="button"
                 onClick={() => setAdding(true)}
-                className="block w-full rounded px-2 py-1 text-left text-small font-medium text-brand-700 hover:bg-brand-700/10"
+                className="flex w-full items-center gap-1 rounded px-2 py-1 text-left text-small font-medium text-brand-700 hover:bg-brand-700/10"
               >
-                + New budget
+                <Icon name="add" /> New budget
               </button>
             )}
 

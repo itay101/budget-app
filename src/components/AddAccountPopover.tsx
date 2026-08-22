@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { ACCOUNT_TYPE_OPTIONS } from "@/lib/accountTypes";
 import { MoneyInput } from "@/components/MoneyInput";
+import { Icon } from "@/components/Icon";
 
 /**
  * The sidebar's "+ Add account" button, opening a small popover (same
@@ -81,9 +82,9 @@ export function AddAccountPopover({
         ref={buttonRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="mt-1 block w-full rounded px-3 py-1.5 text-left text-small font-medium text-brand-700 hover:bg-brand-700/10"
+        className="mt-1 flex w-full items-center gap-0.5 rounded px-3 py-1.5 text-left text-small font-medium text-brand-700 hover:bg-brand-700/10"
       >
-        + Add account
+        <Icon name="add" /> Add account
       </button>
 
       {open &&

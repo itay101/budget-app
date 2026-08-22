@@ -11,6 +11,21 @@ body {
     sans-serif;
 }
 
+/* Material Symbols (fonts.google.com/icons), used via the Icon component
+   for every icon in the app. Sized in em so it follows the font-size of
+   whatever button/text it's dropped into, rather than a fixed pixel size. */
+.material-symbols-outlined {
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 400,
+    "GRAD" 0,
+    "opsz" 20;
+  font-size: 1.125em;
+  line-height: 1;
+  vertical-align: middle;
+  display: inline-block;
+}
+
 /* Money inputs use type="number" for the numeric keyboard/validation, but
    the browser's built-in increment/decrement spinner doesn't fit the
    currency-prefixed layout, so it's hidden here for every input that opts

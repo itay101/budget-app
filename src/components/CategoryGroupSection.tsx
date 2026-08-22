@@ -5,6 +5,7 @@ import { formatMilliunits, milliunitsToNumber } from "@/lib/money";
 import { MoneyInput } from "@/components/MoneyInput";
 import { MoveMoneyPopover } from "@/components/MoveMoneyPopover";
 import { AddCategoryPopover } from "@/components/AddCategoryPopover";
+import { Icon } from "@/components/Icon";
 
 type CategoryOption = { id: string; name: string; available: number };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
@@ -209,7 +210,7 @@ export function CategoryGroupSection({
               title="Save"
               className="shrink-0 rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
             >
-              ✓
+              <Icon name="check" label="Save" />
             </button>
             <button
               type="button"
@@ -217,7 +218,7 @@ export function CategoryGroupSection({
               title="Cancel"
               className="shrink-0 rounded px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
             >
-              ✕
+              <Icon name="close" label="Cancel" />
             </button>
           </form>
         ) : (
@@ -232,7 +233,7 @@ export function CategoryGroupSection({
               title="Rename category group"
               className="rounded p-1 text-neutral-400 normal-case tracking-normal hover:bg-neutral-200 hover:text-neutral-600"
             >
-              ✎
+              <Icon name="edit" label="Rename category group" />
             </button>
             <AddCategoryPopover
               categoryGroupId={groupId}
@@ -246,7 +247,7 @@ export function CategoryGroupSection({
                 title="Delete empty category group"
                 className="rounded p-1 text-neutral-400 normal-case tracking-normal hover:bg-danger/10 hover:text-danger disabled:opacity-50"
               >
-                🗑
+                <Icon name="delete" label="Delete empty category group" />
               </button>
             )}
           </>
@@ -300,7 +301,7 @@ export function CategoryGroupSection({
                 title="Save"
                 className="shrink-0 rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
               >
-                ✓
+                <Icon name="check" label="Save" />
               </button>
               <button
                 type="button"
@@ -309,7 +310,7 @@ export function CategoryGroupSection({
                 title="Hide category"
                 className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 disabled:opacity-50"
               >
-                👁
+                <Icon name="visibility_off" label="Hide category" />
               </button>
               <button
                 type="button"
@@ -317,7 +318,7 @@ export function CategoryGroupSection({
                 title="Cancel"
                 className="shrink-0 rounded px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
               >
-                ✕
+                <Icon name="close" label="Cancel" />
               </button>
             </form>
           ) : (
@@ -331,7 +332,7 @@ export function CategoryGroupSection({
                 title="Drag to reorder or move to another group"
                 className="shrink-0 cursor-grab select-none text-neutral-400 hover:text-neutral-600 active:cursor-grabbing"
               >
-                ⠿
+                <Icon name="drag_indicator" label="Drag to reorder or move to another group" />
               </span>
               <span className="truncate">{category.name}</span>
               <button
@@ -340,7 +341,7 @@ export function CategoryGroupSection({
                 title="Rename or hide category"
                 className="shrink-0 rounded p-1 text-neutral-400 opacity-0 hover:bg-neutral-100 hover:text-neutral-600 focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
               >
-                ✎
+                <Icon name="edit" label="Rename or hide category" />
               </button>
             </div>
           )}
@@ -361,7 +362,7 @@ export function CategoryGroupSection({
               className="rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10"
               title="Save"
             >
-              ✓
+              <Icon name="check" label="Save" />
             </button>
           </form>
           <div className="text-right text-neutral-800">

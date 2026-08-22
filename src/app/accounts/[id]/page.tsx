@@ -5,6 +5,7 @@ import { getCurrentBudget } from "@/lib/budget";
 import { formatMilliunits } from "@/lib/money";
 import { getTransactionEditOptions } from "@/lib/transactionOptions";
 import { TransactionsTable } from "@/components/TransactionsTable";
+import { Icon } from "@/components/Icon";
 import { updateTransaction, deleteTransaction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -38,9 +39,9 @@ export default async function AccountPage({
       <div>
         <Link
           href="/accounts"
-          className="text-small font-medium text-brand-700 hover:underline"
+          className="flex w-fit items-center gap-0.5 text-small font-medium text-brand-700 hover:underline"
         >
-          ← Accounts
+          <Icon name="arrow_back" /> Accounts
         </Link>
         <div className="mt-1 flex items-center justify-between gap-4">
           <div>

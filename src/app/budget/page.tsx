@@ -163,8 +163,8 @@ export default async function BudgetPage() {
 
         {groups.length === 0 && (
           <div className="px-200 py-300 text-body text-neutral-600">
-            No category groups yet. Use the &ldquo;+ Add&rdquo; button above
-            to get started.
+            No category groups yet. Use the &ldquo;Add&rdquo; button above to
+            get started.
           </div>
         )}
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
+import { Icon } from "@/components/Icon";
 
 /**
  * The "+ Add" button on the budget table's "Category" column header,
@@ -78,9 +79,9 @@ export function AddCategoryGroupPopover({
         ref={buttonRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="rounded px-1.5 py-0.5 text-small font-medium normal-case tracking-normal text-brand-700 hover:bg-brand-700/10"
+        className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-small font-medium normal-case tracking-normal text-brand-700 hover:bg-brand-700/10"
       >
-        + Add
+        <Icon name="add" /> Add
       </button>
 
       {open &&
