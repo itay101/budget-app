@@ -26,7 +26,11 @@ Atlassian Design System), applied as Tailwind tokens in
 
 See [`prisma/schema.prisma`](./prisma/schema.prisma):
 
-- `Budget` — the top-level container (single-user for now)
+- `Budget` — the top-level container (single-user for now); also the unit
+  a currency lives in, since every account/category/transaction hangs off
+  one budget. Multiple budgets are supported (switch between them from the
+  sidebar), one per currency — see [`src/lib/currencies.ts`](./src/lib/currencies.ts)
+  and [`src/app/budgets/actions.ts`](./src/app/budgets/actions.ts)
 - `Account` — checking/savings/credit card/etc., on- or off-budget
 - `CategoryGroup` / `Category` — how spending is organized
 - `CategoryMonth` — how much was budgeted to a category in a given month
@@ -88,6 +92,6 @@ features:
 
 - Credit card payment auto-categorization
 - Split transactions
-- Multiple budgets / auth
+- Auth (multiple users, not just multiple budgets)
 - Reports (spending by category, net worth over time)
 - Import from YNAB's own export format

@@ -13,6 +13,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// A budget is also the unit a currency lives in: every account, category,
+// and transaction hangs off exactly one budget, so they all share that
+// budget's currency. A user who wants to track money in more than one
+// currency opens a separate budget per currency (see the `currency`
+// unique constraint below, enforced both here and in
+// src/app/budgets/actions.ts) rather than mixing currencies within one.
 model Budget {
   id             String          @id @default(cuid())
   name           String
@@ -22,6 +28,8 @@ model Budget {
   accounts       Account[]
   categoryGroups CategoryGroup[]
   payees         Payee[]
+
+  @@unique([currency])
 }
 
 enum AccountType {

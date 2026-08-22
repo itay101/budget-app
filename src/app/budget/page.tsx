@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { getOrCreateDefaultBudget } from "@/lib/budget";
+import { getCurrentBudget } from "@/lib/budget";
 import { formatMilliunits, milliunitsToNumber } from "@/lib/money";
 import { MoveMoneyPopover } from "@/components/MoveMoneyPopover";
 import {
@@ -20,7 +20,7 @@ function startOfNextMonth(date: Date): Date {
 }
 
 export default async function BudgetPage() {
-  const budget = await getOrCreateDefaultBudget();
+  const budget = await getCurrentBudget();
   const month = startOfMonth(new Date());
   const nextMonth = startOfNextMonth(month);
 

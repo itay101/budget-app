@@ -1,23 +1,43 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { getOrCreateDefaultBudget } from "@/lib/budget";
+import { getCurrentBudget, listBudgets } from "@/lib/budget";
 import { formatMilliunits } from "@/lib/money";
+import { CURRENCY_OPTIONS } from "@/lib/currencies";
 import { createAccount } from "@/app/accounts/actions";
+import { createBudget, switchBudget } from "@/app/budgets/actions";
 import { AddAccountPopover } from "@/components/AddAccountPopover";
+import { BudgetSwitcherPopover } from "@/components/BudgetSwitcherPopover";
 import { SidebarNav } from "./SidebarNav";
 
 export async function Sidebar() {
-  const budget = await getOrCreateDefaultBudget();
+  const [budget, budgets] = await Promise.all([
+    getCurrentBudget(),
+    listBudgets(),
+  ]);
   const accounts = await prisma.account.findMany({
     where: { budgetId: budget.id, closed: false },
     orderBy: { createdAt: "asc" },
   });
 
   const total = accounts.reduce((sum, a) => sum + a.balance, 0);
+  const takenCurrencies = new Set(budgets.map((b) => b.currency));
+  const availableCurrencies = CURRENCY_OPTIONS.filter(
+    (c) => !takenCurrencies.has(c.code),
+  );
 
   return (
     <nav className="w-56 shrink-0 border-r border-neutral-200 bg-neutral-0 p-200">
       <div className="mb-300 text-h3 text-neutral-800">Budget App</div>
+
+      <div className="mb-300">
+        <BudgetSwitcherPopover
+          currentBudget={budget}
+          budgets={budgets}
+          availableCurrencies={availableCurrencies}
+          switchBudget={switchBudget}
+          createBudget={createBudget}
+        />
+      </div>
 
       <SidebarNav />
 
