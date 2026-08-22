@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getOrCreateDefaultBudget } from "@/lib/budget";
 import { formatMilliunits, milliunitsToNumber } from "@/lib/money";
+import { MoveMoneyPopover } from "@/components/MoveMoneyPopover";
 import {
   createCategory,
   createCategoryGroup,
@@ -51,7 +52,13 @@ export default async function BudgetPage() {
     },
   });
 
-  const allCategories = groups.flatMap((g) => g.categories);
+  // Slimmed-down category list (no months/transactions) for the "move
+  // money to…" popover on each Available cell.
+  const categoryOptions = groups.map((group) => ({
+    id: group.id,
+    name: group.name,
+    categories: group.categories.map((c) => ({ id: c.id, name: c.name })),
+  }));
 
   return (
     <div className="space-y-300">
@@ -139,13 +146,16 @@ export default async function BudgetPage() {
                   <div className="text-right text-neutral-800">
                     {formatMilliunits(activity, budget.currency)}
                   </div>
-                  <div
-                    className={
-                      "text-right font-medium " +
-                      (available < 0 ? "text-danger" : "text-success")
-                    }
-                  >
-                    {formatMilliunits(available, budget.currency)}
+                  <div className="text-right">
+                    <MoveMoneyPopover
+                      categoryId={category.id}
+                      categoryName={category.name}
+                      month={month.toISOString()}
+                      currency={budget.currency}
+                      available={available}
+                      groups={categoryOptions}
+                      transferAvailable={transferAvailable}
+                    />
                   </div>
                 </div>
               );
@@ -160,129 +170,32 @@ export default async function BudgetPage() {
         )}
       </div>
 
-      <div className="flex flex-wrap gap-300">
-        <form
-          action={createCategoryGroup}
-          className="max-w-sm flex-1 space-y-3 rounded-lg border border-neutral-200 bg-neutral-0 p-200"
+      <form
+        action={createCategoryGroup}
+        className="max-w-sm space-y-3 rounded-lg border border-neutral-200 bg-neutral-0 p-200"
+      >
+        <h2 className="text-h3 text-neutral-800">Add category group</h2>
+        <div>
+          <label
+            className="block text-small text-neutral-600"
+            htmlFor="group-name"
+          >
+            Name
+          </label>
+          <input
+            id="group-name"
+            name="name"
+            required
+            className="mt-1 w-full rounded border border-neutral-200 px-3 py-2 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+          />
+        </div>
+        <button
+          type="submit"
+          className="rounded bg-brand-700 px-4 py-2 text-body font-medium text-white hover:bg-brand-800 active:bg-brand-900"
         >
-          <h2 className="text-h3 text-neutral-800">Add category group</h2>
-          <div>
-            <label
-              className="block text-small text-neutral-600"
-              htmlFor="group-name"
-            >
-              Name
-            </label>
-            <input
-              id="group-name"
-              name="name"
-              required
-              className="mt-1 w-full rounded border border-neutral-200 px-3 py-2 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-            />
-          </div>
-          <button
-            type="submit"
-            className="rounded bg-brand-700 px-4 py-2 text-body font-medium text-white hover:bg-brand-800 active:bg-brand-900"
-          >
-            Add category group
-          </button>
-        </form>
-
-        {allCategories.length >= 2 && (
-          <form
-            action={transferAvailable}
-            className="max-w-sm flex-1 space-y-3 rounded-lg border border-neutral-200 bg-neutral-0 p-200"
-          >
-            <h2 className="text-h3 text-neutral-800">Move money</h2>
-            <p className="text-small text-neutral-600">
-              Move available funds from one category to another — even out
-              of a category that&rsquo;s already negative.
-            </p>
-            <input type="hidden" name="month" value={month.toISOString()} />
-            <div>
-              <label
-                className="block text-small text-neutral-600"
-                htmlFor="fromCategoryId"
-              >
-                From
-              </label>
-              <select
-                id="fromCategoryId"
-                name="fromCategoryId"
-                required
-                className="mt-1 w-full rounded border border-neutral-200 px-3 py-2 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-              >
-                {groups.map((group) => (
-                  <optgroup key={group.id} label={group.name}>
-                    {group.categories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name} (
-                        {formatMilliunits(
-                          availableFor(category),
-                          budget.currency,
-                        )}
-                        )
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label
-                className="block text-small text-neutral-600"
-                htmlFor="toCategoryId"
-              >
-                To
-              </label>
-              <select
-                id="toCategoryId"
-                name="toCategoryId"
-                required
-                className="mt-1 w-full rounded border border-neutral-200 px-3 py-2 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-              >
-                {groups.map((group) => (
-                  <optgroup key={group.id} label={group.name}>
-                    {group.categories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name} (
-                        {formatMilliunits(
-                          availableFor(category),
-                          budget.currency,
-                        )}
-                        )
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label
-                className="block text-small text-neutral-600"
-                htmlFor="transfer-amount"
-              >
-                Amount
-              </label>
-              <input
-                id="transfer-amount"
-                name="amount"
-                type="number"
-                step="0.01"
-                min="0.01"
-                required
-                className="mt-1 w-full rounded border border-neutral-200 px-3 py-2 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-              />
-            </div>
-            <button
-              type="submit"
-              className="rounded bg-brand-700 px-4 py-2 text-body font-medium text-white hover:bg-brand-800 active:bg-brand-900"
-            >
-              Move money
-            </button>
-          </form>
-        )}
-      </div>
+          Add category group
+        </button>
+      </form>
     </div>
   );
 }
