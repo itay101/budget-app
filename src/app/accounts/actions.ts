@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { getOrCreateDefaultBudget } from "@/lib/budget";
+import { getCurrentBudget } from "@/lib/budget";
 import { numberToMilliunits } from "@/lib/money";
 import { ACCOUNT_TYPES, type AccountType } from "@/lib/accountTypes";
 
@@ -20,7 +20,7 @@ export async function createAccount(formData: FormData) {
     : "CHECKING";
 
   const balance = numberToMilliunits(Number(balanceInput) || 0);
-  const budget = await getOrCreateDefaultBudget();
+  const budget = await getCurrentBudget();
 
   await prisma.$transaction(async (tx) => {
     const account = await tx.account.create({

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { getOrCreateDefaultBudget } from "@/lib/budget";
+import { getCurrentBudget } from "@/lib/budget";
 import { numberToMilliunits } from "@/lib/money";
 
 export async function createCategoryGroup(formData: FormData) {
@@ -12,7 +12,7 @@ export async function createCategoryGroup(formData: FormData) {
     throw new Error("Category group name is required");
   }
 
-  const budget = await getOrCreateDefaultBudget();
+  const budget = await getCurrentBudget();
 
   const last = await prisma.categoryGroup.findFirst({
     where: { budgetId: budget.id },

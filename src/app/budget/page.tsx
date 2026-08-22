@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { getOrCreateDefaultBudget } from "@/lib/budget";
+import { getCurrentBudget } from "@/lib/budget";
 import { formatMilliunits, milliunitsToNumber } from "@/lib/money";
 import { MoveMoneyPopover } from "@/components/MoveMoneyPopover";
 import {
@@ -19,19 +19,8 @@ function startOfNextMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth() + 1, 1);
 }
 
-// NOTE: no rollover from prior months yet — available is just this month's
-// budgeted + activity. A future feature.
-function availableFor(category: {
-  months: { budgeted: number }[];
-  transactions: { amount: number }[];
-}): number {
-  const budgeted = category.months[0]?.budgeted ?? 0;
-  const activity = category.transactions.reduce((sum, t) => sum + t.amount, 0);
-  return budgeted + activity;
-}
-
 export default async function BudgetPage() {
-  const budget = await getOrCreateDefaultBudget();
+  const budget = await getCurrentBudget();
   const month = startOfMonth(new Date());
   const nextMonth = startOfNextMonth(month);
 
@@ -52,6 +41,41 @@ export default async function BudgetPage() {
     },
   });
 
+  const categoryIds = groups.flatMap((g) => g.categories.map((c) => c.id));
+
+  // Available rolls forward month to month, YNAB-style: this month's
+  // available is everything ever budgeted to the category through this
+  // month, plus everything ever spent/earned in it through this month.
+  // That's equivalent to (last month's available) + (this month's
+  // budgeted) + (this month's activity), computed here as a running total
+  // rather than recursively.
+  const [budgetedTotals, activityTotals] = await Promise.all([
+    prisma.categoryMonth.groupBy({
+      by: ["categoryId"],
+      where: { categoryId: { in: categoryIds }, month: { lt: nextMonth } },
+      _sum: { budgeted: true },
+    }),
+    prisma.transaction.groupBy({
+      by: ["categoryId"],
+      where: { categoryId: { in: categoryIds }, date: { lt: nextMonth } },
+      _sum: { amount: true },
+    }),
+  ]);
+
+  const budgetedThroughMonth = new Map(
+    budgetedTotals.map((row) => [row.categoryId, row._sum.budgeted ?? 0]),
+  );
+  const activityThroughMonth = new Map(
+    activityTotals.map((row) => [row.categoryId!, row._sum.amount ?? 0]),
+  );
+
+  function availableFor(categoryId: string): number {
+    return (
+      (budgetedThroughMonth.get(categoryId) ?? 0) +
+      (activityThroughMonth.get(categoryId) ?? 0)
+    );
+  }
+
   // Slimmed-down category list (just id/name/available) for the "move
   // money to…" popover on each Available cell.
   const categoryOptions = groups.map((group) => ({
@@ -60,7 +84,7 @@ export default async function BudgetPage() {
     categories: group.categories.map((c) => ({
       id: c.id,
       name: c.name,
-      available: availableFor(c),
+      available: availableFor(c.id),
     })),
   }));
 
@@ -114,7 +138,7 @@ export default async function BudgetPage() {
                 (sum, t) => sum + t.amount,
                 0,
               );
-              const available = availableFor(category);
+              const available = availableFor(category.id);
 
               return (
                 <div

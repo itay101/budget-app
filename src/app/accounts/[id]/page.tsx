@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getOrCreateDefaultBudget } from "@/lib/budget";
+import { getCurrentBudget } from "@/lib/budget";
 import { formatMilliunits } from "@/lib/money";
 import { getTransactionEditOptions } from "@/lib/transactionOptions";
 import { TransactionsTable } from "@/components/TransactionsTable";
@@ -14,7 +14,7 @@ export default async function AccountPage({
 }: {
   params: { id: string };
 }) {
-  const budget = await getOrCreateDefaultBudget();
+  const budget = await getCurrentBudget();
 
   const account = await prisma.account.findFirst({
     where: { id: params.id, budgetId: budget.id },

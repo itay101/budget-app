@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { getOrCreateDefaultBudget } from "@/lib/budget";
+import { getCurrentBudget } from "@/lib/budget";
 import { formatMilliunits } from "@/lib/money";
 import { getTransactionEditOptions } from "@/lib/transactionOptions";
 import { TransactionsTable } from "@/components/TransactionsTable";
@@ -8,7 +8,7 @@ import { updateTransaction } from "../actions";
 export const dynamic = "force-dynamic";
 
 export default async function AllAccountsPage() {
-  const budget = await getOrCreateDefaultBudget();
+  const budget = await getCurrentBudget();
 
   const [accounts, transactions, { categoryGroups, payeeNames }] =
     await Promise.all([

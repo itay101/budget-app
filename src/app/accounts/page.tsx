@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { getOrCreateDefaultBudget } from "@/lib/budget";
+import { getCurrentBudget } from "@/lib/budget";
 import { formatMilliunits } from "@/lib/money";
 import { AccountsTable } from "@/components/AccountsTable";
 import { updateAccount } from "./actions";
@@ -7,7 +7,7 @@ import { updateAccount } from "./actions";
 export const dynamic = "force-dynamic";
 
 export default async function AccountsPage() {
-  const budget = await getOrCreateDefaultBudget();
+  const budget = await getCurrentBudget();
 
   // Includes closed accounts too — this page is where you'd reopen one,
   // so it can't filter them out the way the sidebar and budget do.
