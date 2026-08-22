@@ -23,21 +23,23 @@ export async function Sidebar() {
         </div>
         <ul className="mt-1 space-y-0.5">
           {accounts.map((account) => (
-            <li
-              key={account.id}
-              className="flex items-center justify-between gap-2 px-3 py-1.5 text-small"
-            >
-              <span className="truncate text-neutral-800">
-                {account.name}
-              </span>
-              <span
-                className={
-                  "shrink-0 font-medium " +
-                  (account.balance < 0 ? "text-danger" : "text-neutral-600")
-                }
+            <li key={account.id}>
+              <Link
+                href={`/accounts/${account.id}`}
+                className="flex items-center justify-between gap-2 rounded px-3 py-1.5 text-small hover:bg-neutral-100"
               >
-                {formatMilliunits(account.balance, budget.currency)}
-              </span>
+                <span className="truncate text-neutral-800">
+                  {account.name}
+                </span>
+                <span
+                  className={
+                    "shrink-0 font-medium " +
+                    (account.balance < 0 ? "text-danger" : "text-neutral-600")
+                  }
+                >
+                  {formatMilliunits(account.balance, budget.currency)}
+                </span>
+              </Link>
             </li>
           ))}
           {accounts.length === 0 && (
