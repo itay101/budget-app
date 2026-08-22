@@ -309,7 +309,7 @@ export function CategoryGroupSection({
                 title="Hide category"
                 className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 disabled:opacity-50"
               >
-                🙈
+                👁
               </button>
               <button
                 type="button"
