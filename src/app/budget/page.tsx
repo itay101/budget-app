@@ -1,7 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { getOrCreateDefaultBudget } from "@/lib/budget";
 import { formatMilliunits, milliunitsToNumber } from "@/lib/money";
-import { createCategory, createCategoryGroup, setBudgeted } from "./actions";
+import { MoveMoneyPopover } from "@/components/MoveMoneyPopover";
+import {
+  createCategory,
+  createCategoryGroup,
+  setBudgeted,
+  transferAvailable,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +17,17 @@ function startOfMonth(date: Date): Date {
 
 function startOfNextMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth() + 1, 1);
+}
+
+// NOTE: no rollover from prior months yet — available is just this month's
+// budgeted + activity. A future feature.
+function availableFor(category: {
+  months: { budgeted: number }[];
+  transactions: { amount: number }[];
+}): number {
+  const budgeted = category.months[0]?.budgeted ?? 0;
+  const activity = category.transactions.reduce((sum, t) => sum + t.amount, 0);
+  return budgeted + activity;
 }
 
 export default async function BudgetPage() {
@@ -34,6 +51,18 @@ export default async function BudgetPage() {
       },
     },
   });
+
+  // Slimmed-down category list (just id/name/available) for the "move
+  // money to…" popover on each Available cell.
+  const categoryOptions = groups.map((group) => ({
+    id: group.id,
+    name: group.name,
+    categories: group.categories.map((c) => ({
+      id: c.id,
+      name: c.name,
+      available: availableFor(c),
+    })),
+  }));
 
   return (
     <div className="space-y-300">
@@ -85,9 +114,7 @@ export default async function BudgetPage() {
                 (sum, t) => sum + t.amount,
                 0,
               );
-              // NOTE: no rollover from prior months yet — available is just
-              // this month's budgeted + activity. A future feature.
-              const available = budgeted + activity;
+              const available = availableFor(category);
 
               return (
                 <div
@@ -123,13 +150,16 @@ export default async function BudgetPage() {
                   <div className="text-right text-neutral-800">
                     {formatMilliunits(activity, budget.currency)}
                   </div>
-                  <div
-                    className={
-                      "text-right font-medium " +
-                      (available < 0 ? "text-danger" : "text-success")
-                    }
-                  >
-                    {formatMilliunits(available, budget.currency)}
+                  <div className="text-right">
+                    <MoveMoneyPopover
+                      categoryId={category.id}
+                      categoryName={category.name}
+                      month={month.toISOString()}
+                      currency={budget.currency}
+                      available={available}
+                      groups={categoryOptions}
+                      transferAvailable={transferAvailable}
+                    />
                   </div>
                 </div>
               );
