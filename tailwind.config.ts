@@ -39,6 +39,16 @@ const config: Config = {
         300: "24px",
         400: "32px",
       },
+      keyframes: {
+        "mutation-bar": {
+          "0%": { transform: "translateX(-100%)" },
+          "50%": { transform: "translateX(50%)" },
+          "100%": { transform: "translateX(200%)" },
+        },
+      },
+      animation: {
+        "mutation-bar": "mutation-bar 1.1s ease-in-out infinite",
+      },
     },
   },
   plugins: [],
