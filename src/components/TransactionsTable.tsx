@@ -177,11 +177,14 @@ function TransactionRow({
         step="0.01"
         value={inflow}
         placeholder="0.00"
-        onChange={(e) => setInflow(e.target.value)}
-        onBlur={() => {
-          if (outflow) setOutflow("");
-          commit("amount", inflow || "0");
+        onChange={(e) => {
+          // Clear the other side immediately, not on blur - otherwise
+          // typing into Inflow then clicking straight into Outflow (before
+          // Inflow's blur fires) briefly shows both as nonzero at once.
+          setInflow(e.target.value);
+          setOutflow("");
         }}
+        onBlur={() => commit("amount", inflow || "0")}
         className={inputClass + " text-right text-success"}
       />
 
@@ -190,9 +193,11 @@ function TransactionRow({
         step="0.01"
         value={outflow}
         placeholder="0.00"
-        onChange={(e) => setOutflow(e.target.value)}
+        onChange={(e) => {
+          setOutflow(e.target.value);
+          setInflow("");
+        }}
         onBlur={() => {
-          if (inflow) setInflow("");
           const value = Number(outflow) || 0;
           commit("amount", value ? String(-value) : "0");
         }}
