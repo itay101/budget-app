@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { Sidebar } from "@/components/Sidebar";
 import { MutationIndicator } from "@/components/MutationIndicator";
 import { MobileNavShell } from "@/components/MobileNavShell";
@@ -48,6 +49,7 @@ export default function RootLayout({
       <body>
         <MutationIndicator />
         <MobileNavShell sidebar={<Sidebar />}>{children}</MobileNavShell>
+        <Analytics />
       </body>
     </html>
   );
