@@ -23,7 +23,7 @@ export default async function AccountsPage() {
   return (
     <div className="space-y-300">
       <div>
-        <h1 className="text-h1 text-neutral-800">Accounts</h1>
+        <h1 className="text-h2 text-neutral-800 sm:text-h1">Accounts</h1>
         <p className="text-body text-neutral-600">
           On-budget total: {formatMilliunits(totalOnBudget, budget.currency)}
         </p>

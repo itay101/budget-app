@@ -110,12 +110,12 @@ export function HiddenCategoriesSection({
       {categories.map((category) => (
         <div
           key={category.id}
-          className="grid grid-cols-[1fr_120px_120px_120px] items-center gap-2 border-b border-neutral-100 px-200 py-2 text-body last:border-b-0"
+          className="grid grid-cols-2 gap-x-3 gap-y-2 border-b border-neutral-100 px-200 py-3 text-body last:border-b-0 sm:grid-cols-[1fr_120px_120px_120px] sm:items-center sm:gap-2 sm:py-2"
         >
           {renamingCategoryId === category.id ? (
             <form
               onSubmit={(e) => handleCategoryRenameSubmit(e, category)}
-              className="flex items-center gap-1"
+              className="col-span-2 flex items-center gap-1 sm:col-span-1"
             >
               <input
                 value={categoryNameDraft}
@@ -145,7 +145,7 @@ export function HiddenCategoriesSection({
               </button>
             </form>
           ) : (
-            <div className="flex min-w-0 items-center gap-1.5 text-neutral-800">
+            <div className="col-span-2 flex min-w-0 items-center gap-1.5 text-neutral-800 sm:col-span-1">
               <span className="truncate">{category.name}</span>
               <span className="shrink-0 truncate text-small font-normal text-neutral-400">
                 — {category.groupName}
@@ -171,28 +171,35 @@ export function HiddenCategoriesSection({
           )}
           <form
             action={setBudgeted}
-            className="flex items-center justify-end gap-1"
+            className="col-span-2 sm:col-span-1 sm:flex sm:items-center sm:justify-end sm:gap-1"
           >
             <input type="hidden" name="categoryId" value={category.id} />
             <input type="hidden" name="month" value={month} />
-            <MoneyInput
-              name="amount"
-              currency={currency}
-              defaultValue={milliunitsToNumber(category.budgeted)}
-              className="w-24 rounded border border-neutral-200 px-2 py-1 text-right text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-            />
-            <button
-              type="submit"
-              className="rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10"
-              title="Save"
-            >
-              <Icon name="check" label="Save" />
-            </button>
+            <label className="mb-1 block text-small text-neutral-600 sm:hidden">
+              Budgeted
+            </label>
+            <div className="flex items-center gap-1">
+              <MoneyInput
+                name="amount"
+                currency={currency}
+                defaultValue={milliunitsToNumber(category.budgeted)}
+                className="w-full rounded border border-neutral-200 px-2 py-1 text-right text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700 sm:w-24"
+              />
+              <button
+                type="submit"
+                className="rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10"
+                title="Save"
+              >
+                <Icon name="check" label="Save" />
+              </button>
+            </div>
           </form>
-          <div className="text-right text-neutral-800">
-            {formatMilliunits(category.activity, currency)}
+          <div className="text-neutral-800 sm:col-span-1 sm:text-right">
+            <div className="text-small text-neutral-600 sm:hidden">Activity</div>
+            <div>{formatMilliunits(category.activity, currency)}</div>
           </div>
-          <div className="text-right">
+          <div className="sm:col-span-1 sm:text-right">
+            <div className="text-small text-neutral-600 sm:hidden">Available</div>
             <MoveMoneyPopover
               categoryId={category.id}
               categoryName={category.name}

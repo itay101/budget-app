@@ -33,7 +33,7 @@ export async function Sidebar() {
   );
 
   return (
-    <nav className="w-56 shrink-0 border-r border-neutral-200 bg-neutral-0 p-200">
+    <nav className="min-h-full w-72 max-w-[85vw] shrink-0 overflow-y-auto border-r border-neutral-200 bg-neutral-0 p-200 md:h-auto md:w-56 md:max-w-none">
       <div className="mb-300 text-h3 text-neutral-800">Budget App</div>
 
       <div className="mb-300">

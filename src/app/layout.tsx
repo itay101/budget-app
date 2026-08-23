@@ -1,11 +1,17 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Sidebar } from "@/components/Sidebar";
 import { MutationIndicator } from "@/components/MutationIndicator";
+import { MobileNavShell } from "@/components/MobileNavShell";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Budget App",
   description: "A personal YNAB-style budgeting app",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
@@ -41,10 +47,7 @@ export default function RootLayout({
       </head>
       <body>
         <MutationIndicator />
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <main className="flex-1 p-400">{children}</main>
-        </div>
+        <MobileNavShell sidebar={<Sidebar />}>{children}</MobileNavShell>
       </body>
     </html>
   );
