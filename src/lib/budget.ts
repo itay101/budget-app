@@ -18,7 +18,7 @@ export const CURRENT_BUDGET_COOKIE = "budgetId";
  * has since been deleted), so the app still works either way.
  */
 export async function getCurrentBudget() {
-  const selectedId = cookies().get(CURRENT_BUDGET_COOKIE)?.value;
+  const selectedId = (await cookies()).get(CURRENT_BUDGET_COOKIE)?.value;
 
   if (selectedId) {
     const selected = await prisma.budget.findFirst({
