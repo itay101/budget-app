@@ -152,7 +152,7 @@ export function DateRangeFilter({
             </div>
 
             <div className="mt-3 flex gap-2">
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <label
                   className="block text-small text-neutral-600"
                   htmlFor="date-filter-from"
@@ -168,7 +168,7 @@ export function DateRangeFilter({
                   className={fieldClass}
                 />
               </div>
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <label
                   className="block text-small text-neutral-600"
                   htmlFor="date-filter-to"
