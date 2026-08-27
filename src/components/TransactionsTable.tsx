@@ -6,14 +6,10 @@ import {
   milliunitsToNumber,
   numberToMilliunits,
 } from "@/lib/money";
-import {
-  DATE_RANGE_PRESETS,
-  DateRangePreset,
-  presetDateRange,
-  todayISODate,
-} from "@/lib/dateRange";
+import { DateRangePreset, presetDateRange, todayISODate } from "@/lib/dateRange";
 import { MoneyInput } from "@/components/MoneyInput";
 import { Icon } from "@/components/Icon";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 
 type CategoryOption = { id: string; name: string };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
@@ -127,9 +123,7 @@ export function TransactionsTable({
     });
   }, [transactions, dateFrom, dateTo]);
 
-  function handlePresetChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const preset = e.target.value as DateRangePreset | "";
-    if (!preset) return;
+  function handlePresetChange(preset: DateRangePreset) {
     const range = presetDateRange(preset);
     setDateFrom(range.from);
     setDateTo(range.to);
@@ -152,8 +146,6 @@ export function TransactionsTable({
     setActivePreset(null);
   }
 
-  const hasDateFilter = dateFrom !== "" || dateTo !== "";
-
   // Consecutive transactions sharing a calendar day get one date-group
   // header between them on mobile (transactions already arrive sorted by
   // date, newest first) - the desktop table still shows a Date column on
@@ -165,48 +157,15 @@ export function TransactionsTable({
       {/* Filter bar: this is where #20/#21/#22's filters join the date
           filter below, all in one row aligned to the right. */}
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <select
-          aria-label="Date range preset"
-          value={activePreset ?? ""}
-          onChange={handlePresetChange}
-          className="rounded border border-neutral-200 bg-neutral-0 px-2 py-1 text-small focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-        >
-          <option value="">Date range…</option>
-          {DATE_RANGE_PRESETS.map((p) => (
-            <option key={p.key} value={p.key}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-        <div className="flex items-center gap-1">
-          <input
-            type="date"
-            aria-label="From date"
-            value={dateFrom}
-            max={dateTo || undefined}
-            onChange={(e) => handleDateFromChange(e.target.value)}
-            className="rounded border border-neutral-200 bg-neutral-0 px-2 py-1 text-small focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-          />
-          <span className="text-small text-neutral-400">–</span>
-          <input
-            type="date"
-            aria-label="To date"
-            value={dateTo}
-            min={dateFrom || undefined}
-            onChange={(e) => handleDateToChange(e.target.value)}
-            className="rounded border border-neutral-200 bg-neutral-0 px-2 py-1 text-small focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-          />
-        </div>
-        {hasDateFilter && (
-          <button
-            type="button"
-            onClick={clearDateFilter}
-            title="Clear date filter"
-            className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
-          >
-            <Icon name="close" label="Clear date filter" />
-          </button>
-        )}
+        <DateRangeFilter
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          activePreset={activePreset}
+          onPresetChange={handlePresetChange}
+          onDateFromChange={handleDateFromChange}
+          onDateToChange={handleDateToChange}
+          onClear={clearDateFilter}
+        />
       </div>
 
       <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-0">
