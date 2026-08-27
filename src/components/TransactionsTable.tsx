@@ -1,11 +1,17 @@
 "use client";
 
-import { Fragment, useState, useTransition } from "react";
+import { Fragment, useMemo, useState, useTransition } from "react";
 import {
   formatMilliunits,
   milliunitsToNumber,
   numberToMilliunits,
 } from "@/lib/money";
+import {
+  DATE_RANGE_PRESETS,
+  DateRangePreset,
+  presetDateRange,
+  todayISODate,
+} from "@/lib/dateRange";
 import { MoneyInput } from "@/components/MoneyInput";
 import { Icon } from "@/components/Icon";
 
@@ -99,6 +105,55 @@ export function TransactionsTable({
 }) {
   const gridCols = showAccount ? GRID_COLS_WITH_ACCOUNT : GRID_COLS;
 
+  // Date-range filter state. `dateFrom`/`dateTo` are the source of truth
+  // (empty string = no bound); `activePreset` just tracks which preset
+  // button, if any, produced the current range, so it can stay highlighted
+  // until the user edits From/To by hand.
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [activePreset, setActivePreset] = useState<DateRangePreset | null>(
+    null,
+  );
+
+  const filteredTransactions = useMemo(() => {
+    if (!dateFrom && !dateTo) return transactions;
+    // Empty "to" defaults to today rather than "no upper bound".
+    const effectiveTo = dateTo || todayISODate();
+    return transactions.filter((t) => {
+      const dateKey = t.date.slice(0, 10);
+      if (dateKey > effectiveTo) return false;
+      if (dateFrom && dateKey < dateFrom) return false;
+      return true;
+    });
+  }, [transactions, dateFrom, dateTo]);
+
+  function handlePresetChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const preset = e.target.value as DateRangePreset | "";
+    if (!preset) return;
+    const range = presetDateRange(preset);
+    setDateFrom(range.from);
+    setDateTo(range.to);
+    setActivePreset(preset);
+  }
+
+  function handleDateFromChange(value: string) {
+    setDateFrom(value);
+    setActivePreset(null);
+  }
+
+  function handleDateToChange(value: string) {
+    setDateTo(value);
+    setActivePreset(null);
+  }
+
+  function clearDateFilter() {
+    setDateFrom("");
+    setDateTo("");
+    setActivePreset(null);
+  }
+
+  const hasDateFilter = dateFrom !== "" || dateTo !== "";
+
   // Consecutive transactions sharing a calendar day get one date-group
   // header between them on mobile (transactions already arrive sorted by
   // date, newest first) - the desktop table still shows a Date column on
@@ -106,56 +161,107 @@ export function TransactionsTable({
   let lastDateKey: string | null = null;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-0">
-      <datalist id="payee-suggestions">
-        {payeeNames.map((name) => (
-          <option key={name} value={name} />
-        ))}
-      </datalist>
-
-      <div
-        className={`hidden gap-2 border-b border-neutral-200 bg-neutral-100 px-200 py-2 text-small font-medium uppercase tracking-wide text-neutral-600 md:grid ${gridCols}`}
-      >
-        <div>Date</div>
-        {showAccount && <div>Account</div>}
-        <div>Payee</div>
-        <div>Category</div>
-        <div>Memo</div>
-        <div className="text-right">Inflow</div>
-        <div className="text-right">Outflow</div>
-        <div />
+    <div className="space-y-2">
+      {/* Filter bar: this is where #20/#21/#22's filters join the date
+          filter below, all in one row aligned to the right. */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <select
+          aria-label="Date range preset"
+          value={activePreset ?? ""}
+          onChange={handlePresetChange}
+          className="rounded border border-neutral-200 bg-neutral-0 px-2 py-1 text-small focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+        >
+          <option value="">Date range…</option>
+          {DATE_RANGE_PRESETS.map((p) => (
+            <option key={p.key} value={p.key}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+        <div className="flex items-center gap-1">
+          <input
+            type="date"
+            aria-label="From date"
+            value={dateFrom}
+            max={dateTo || undefined}
+            onChange={(e) => handleDateFromChange(e.target.value)}
+            className="rounded border border-neutral-200 bg-neutral-0 px-2 py-1 text-small focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+          />
+          <span className="text-small text-neutral-400">–</span>
+          <input
+            type="date"
+            aria-label="To date"
+            value={dateTo}
+            min={dateFrom || undefined}
+            onChange={(e) => handleDateToChange(e.target.value)}
+            className="rounded border border-neutral-200 bg-neutral-0 px-2 py-1 text-small focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+          />
+        </div>
+        {hasDateFilter && (
+          <button
+            type="button"
+            onClick={clearDateFilter}
+            title="Clear date filter"
+            className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+          >
+            <Icon name="close" label="Clear date filter" />
+          </button>
+        )}
       </div>
 
-      {transactions.map((t) => {
-        const dateKey = t.date.slice(0, 10);
-        const showDateHeader = dateKey !== lastDateKey;
-        lastDateKey = dateKey;
+      <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-0">
+        <datalist id="payee-suggestions">
+          {payeeNames.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
 
-        return (
-          <Fragment key={t.id}>
-            {showDateHeader && (
-              <div className="border-b border-neutral-100 bg-neutral-100 px-200 py-1.5 text-small font-semibold text-neutral-600 md:hidden">
-                {formatGroupDate(t.date)}
-              </div>
-            )}
-            <TransactionRow
-              transaction={t}
-              categoryGroups={categoryGroups}
-              updateTransaction={updateTransaction}
-              deleteTransaction={deleteTransaction}
-              showAccount={showAccount}
-              gridCols={gridCols}
-              currency={currency}
-            />
-          </Fragment>
-        );
-      })}
-
-      {transactions.length === 0 && (
-        <div className="px-200 py-300 text-body text-neutral-600">
-          No transactions yet.
+        <div
+          className={`hidden gap-2 border-b border-neutral-200 bg-neutral-100 px-200 py-2 text-small font-medium uppercase tracking-wide text-neutral-600 md:grid ${gridCols}`}
+        >
+          <div>Date</div>
+          {showAccount && <div>Account</div>}
+          <div>Payee</div>
+          <div>Category</div>
+          <div>Memo</div>
+          <div className="text-right">Inflow</div>
+          <div className="text-right">Outflow</div>
+          <div />
         </div>
-      )}
+
+        {filteredTransactions.map((t) => {
+          const dateKey = t.date.slice(0, 10);
+          const showDateHeader = dateKey !== lastDateKey;
+          lastDateKey = dateKey;
+
+          return (
+            <Fragment key={t.id}>
+              {showDateHeader && (
+                <div className="border-b border-neutral-100 bg-neutral-100 px-200 py-1.5 text-small font-semibold text-neutral-600 md:hidden">
+                  {formatGroupDate(t.date)}
+                </div>
+              )}
+              <TransactionRow
+                transaction={t}
+                categoryGroups={categoryGroups}
+                updateTransaction={updateTransaction}
+                deleteTransaction={deleteTransaction}
+                showAccount={showAccount}
+                gridCols={gridCols}
+                currency={currency}
+              />
+            </Fragment>
+          );
+        })}
+
+        {filteredTransactions.length === 0 && (
+          <div className="px-200 py-300 text-body text-neutral-600">
+            {transactions.length === 0
+              ? "No transactions yet."
+              : "No transactions match the selected filters."}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
