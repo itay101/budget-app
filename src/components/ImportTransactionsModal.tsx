@@ -4,11 +4,13 @@ import { useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { readImportFile } from "@/lib/spreadsheet";
 import {
+  detectDateOrder,
   guessColumn,
   guessHeaderRowIndex,
   HEADER_HINTS,
   parseImportAmount,
   parseImportDate,
+  type DateOrder,
 } from "@/lib/importParsing";
 import { formatMilliunits, numberToMilliunits } from "@/lib/money";
 import { Icon } from "@/components/Icon";
@@ -90,6 +92,13 @@ export function ImportTransactionsModal({
   // so this is kept whole rather than immediately split into header/data.
   const [rawTable, setRawTable] = useState<string[][]>([]);
   const [headerRowIndex, setHeaderRowIndex] = useState(0);
+  // Whether a slash date's first number is the month (MDY, US) or the day
+  // (DMY, most of the world) - not decidable from a single cell, so this
+  // defaults to auto-detecting it from the whole mapped Date column (see
+  // detectDateOrder) rather than assuming US format like File Import
+  // originally did. Independent of `mapping` (not reset when the header
+  // row changes) since it isn't derived from the header row.
+  const [dateOrder, setDateOrder] = useState<"auto" | DateOrder>("auto");
   const [mapping, setMapping] = useState<Mapping>({
     date: null,
     payee: null,
@@ -151,16 +160,26 @@ export function ImportTransactionsModal({
     }
 
     setRawTable(table);
+    setDateOrder("auto");
     applyHeaderRow(table, guessHeaderRowIndex(table));
     setStep("mapping");
   }
 
   function buildPreview(): PreviewRow[] {
+    const resolvedDateOrder: DateOrder =
+      dateOrder === "auto"
+        ? detectDateOrder(
+            dataRows.map((cells) =>
+              mapping.date !== null ? (cells[mapping.date] ?? "") : "",
+            ),
+          )
+        : dateOrder;
+
     return dataRows.map((cells, i) => {
       const cell = (index: number | null) =>
         index !== null ? (cells[index] ?? "").trim() : "";
 
-      const date = parseImportDate(cell(mapping.date));
+      const date = parseImportDate(cell(mapping.date), resolvedDateOrder);
       const payeeName = cell(mapping.payee);
       const memo = cell(mapping.memo);
       const amount =
@@ -419,6 +438,42 @@ export function ImportTransactionsModal({
                   setMapping((m) => ({ ...m, memo: v })),
                 )}
               </div>
+
+              {mapping.date !== null && (
+                <div>
+                  <label className="mb-1 block text-small font-medium text-neutral-700">
+                    Date format
+                  </label>
+                  <p className="mb-2 text-small text-neutral-600">
+                    Only matters for dates written as e.g. 03/08/2026 -
+                    ambiguous between day and month. ISO dates
+                    (2026-08-03) don&#39;t need this.
+                  </p>
+                  <div className="flex gap-1 text-small">
+                    {(
+                      [
+                        ["auto", "Auto-detect"],
+                        ["DMY", "Day/Month/Year"],
+                        ["MDY", "Month/Day/Year"],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setDateOrder(value)}
+                        className={
+                          "rounded border px-2 py-1 " +
+                          (dateOrder === value
+                            ? "border-brand-700 bg-brand-700/10 text-brand-700"
+                            : "border-neutral-200 text-neutral-600 hover:bg-neutral-100")
+                        }
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="mb-1 block text-small font-medium text-neutral-700">
