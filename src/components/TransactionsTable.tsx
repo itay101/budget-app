@@ -586,6 +586,13 @@ function TransactionRow({
   }
 
   function handleSubmit() {
+    if (
+      transaction.cleared === "RECONCILED" &&
+      !window.confirm("This transaction is reconciled. Save changes anyway?")
+    ) {
+      return;
+    }
+
     const inflowValue = Number(draft.inflow) || 0;
     const outflowValue = Number(draft.outflow) || 0;
     const amount =
