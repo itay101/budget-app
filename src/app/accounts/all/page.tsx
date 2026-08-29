@@ -7,7 +7,11 @@ import {
   transactionFiltersWhere,
 } from "@/lib/transactionFilters";
 import { TransactionsTable } from "@/components/TransactionsTable";
-import { updateTransaction, deleteTransaction } from "../actions";
+import {
+  updateTransaction,
+  deleteTransaction,
+  unreconcileTransaction,
+} from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -91,6 +95,7 @@ export default async function AllAccountsPage({
         payeeNames={payeeNames}
         updateTransaction={updateTransaction}
         deleteTransaction={deleteTransaction}
+        unreconcileTransaction={unreconcileTransaction}
         currency={budget.currency}
         showAccount
       />

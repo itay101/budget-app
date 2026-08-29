@@ -11,7 +11,12 @@ import {
 import { TransactionsTable } from "@/components/TransactionsTable";
 import { ReconcileButton } from "@/components/ReconcileButton";
 import { Icon } from "@/components/Icon";
-import { updateTransaction, deleteTransaction, reconcileAccount } from "../actions";
+import {
+  updateTransaction,
+  deleteTransaction,
+  reconcileAccount,
+  unreconcileTransaction,
+} from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -102,6 +107,7 @@ export default async function AccountPage({
         payeeNames={payeeNames}
         updateTransaction={updateTransaction}
         deleteTransaction={deleteTransaction}
+        unreconcileTransaction={unreconcileTransaction}
         currency={budget.currency}
       />
     </div>

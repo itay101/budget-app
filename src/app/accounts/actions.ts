@@ -213,6 +213,34 @@ export async function reconcileAccount(formData: FormData) {
 }
 
 /**
+ * Reverts a single transaction from `"RECONCILED"` back to `"CLEARED"` -
+ * the per-row undo for reconcileAccount's bulk flip. Landing on `CLEARED`
+ * rather than `UNCLEARED` mirrors YNAB: un-reconciling just unlocks the
+ * transaction again, it doesn't forget that it was already matched
+ * against the bank.
+ */
+export async function unreconcileTransaction(formData: FormData) {
+  const transactionId = String(formData.get("transactionId") ?? "");
+  if (!transactionId) {
+    throw new Error("transactionId is required");
+  }
+
+  const transaction = await prisma.transaction.findUniqueOrThrow({
+    where: { id: transactionId },
+    select: { accountId: true },
+  });
+
+  await prisma.transaction.update({
+    where: { id: transactionId },
+    data: { cleared: "CLEARED" },
+  });
+
+  revalidatePath(`/accounts/${transaction.accountId}`);
+  revalidatePath("/accounts/all");
+  revalidatePath("/accounts");
+}
+
+/**
  * Updates one or more metadata fields of an account (name, type, on-budget,
  * closed) — each editable cell on the Accounts page commits independently,
  * same pattern as updateTransaction. Balance isn't editable here: it's
