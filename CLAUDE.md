@@ -18,3 +18,11 @@ open GitHub.
 - If no PR event arrives yet, check the commit/PR status directly
   (`pull_request_read` → `get_status`, or the repo's commit statuses) to
   find the Vercel deployment URL and share it once it's ready.
+
+## Branch naming
+
+Branch names should be descriptive and closely mirror the ticket/issue
+title they implement, not just `ticket-<number>-<random suffix>`. e.g. for
+"Add a free-text filter (memo/payee) to the transactions list", prefer
+something like `claude/add-memo-payee-filter-<suffix>` over
+`claude/ticket-22-<suffix>`.
