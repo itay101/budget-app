@@ -10,6 +10,7 @@ import { DateRangePreset, presetDateRange, todayISODate } from "@/lib/dateRange"
 import { MoneyInput } from "@/components/MoneyInput";
 import { Icon } from "@/components/Icon";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
+import { CategoryFilter, UNCATEGORIZED } from "@/components/CategoryFilter";
 
 type CategoryOption = { id: string; name: string };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
@@ -111,17 +112,27 @@ export function TransactionsTable({
     null,
   );
 
+  // Category filter state. "" = all categories, UNCATEGORIZED = transactions
+  // with no categoryId, otherwise a specific category id.
+  const [categoryFilter, setCategoryFilter] = useState("");
+
   const filteredTransactions = useMemo(() => {
-    if (!dateFrom && !dateTo) return transactions;
     // Empty "to" defaults to today rather than "no upper bound".
     const effectiveTo = dateTo || todayISODate();
     return transactions.filter((t) => {
       const dateKey = t.date.slice(0, 10);
-      if (dateKey > effectiveTo) return false;
-      if (dateFrom && dateKey < dateFrom) return false;
+      if (dateFrom || dateTo) {
+        if (dateKey > effectiveTo) return false;
+        if (dateFrom && dateKey < dateFrom) return false;
+      }
+      if (categoryFilter === UNCATEGORIZED) {
+        if (t.categoryId) return false;
+      } else if (categoryFilter && t.categoryId !== categoryFilter) {
+        return false;
+      }
       return true;
     });
-  }, [transactions, dateFrom, dateTo]);
+  }, [transactions, dateFrom, dateTo, categoryFilter]);
 
   function handlePresetChange(preset: DateRangePreset) {
     const range = presetDateRange(preset);
@@ -154,9 +165,14 @@ export function TransactionsTable({
 
   return (
     <div className="space-y-2">
-      {/* Filter bar: this is where #20/#21/#22's filters join the date
-          filter below, all in one row aligned to the right. */}
+      {/* Filter bar: this is where #21/#22's filters join the date and
+          category filters below, all in one row aligned to the right. */}
       <div className="flex flex-wrap items-center justify-end gap-2">
+        <CategoryFilter
+          categoryGroups={categoryGroups}
+          value={categoryFilter}
+          onChange={setCategoryFilter}
+        />
         <DateRangeFilter
           dateFrom={dateFrom}
           dateTo={dateTo}
