@@ -112,9 +112,15 @@ function formatGroupDate(iso: string): string {
 const inputClass =
   "w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-body hover:border-neutral-200 focus:border-brand-700 focus:bg-neutral-0 focus:outline-none focus:ring-1 focus:ring-brand-700";
 
+// The trailing column is icon-only actions (reconcile/kebab, plus
+// close/check while a row is dirty) rather than a labeled field, so it's
+// sized to just fit those buttons - not the ~150px a labeled column would
+// need - leaving the rest of the row to the fields above it. A row with
+// every action showing at once (dirty + unreconciled) wraps to a second
+// line here rather than widening the column for that transient case.
 const GRID_COLS_WITH_ACCOUNT =
-  "md:grid-cols-[130px_110px_1fr_1fr_1fr_100px_100px_150px]";
-const GRID_COLS = "md:grid-cols-[130px_1fr_1fr_1fr_100px_100px_150px]";
+  "md:grid-cols-[130px_110px_1fr_1fr_1fr_100px_100px_80px]";
+const GRID_COLS = "md:grid-cols-[130px_1fr_1fr_1fr_100px_100px_80px]";
 
 export function TransactionsTable({
   transactions,
