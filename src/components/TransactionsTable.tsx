@@ -10,6 +10,7 @@ import { DateRangePreset, presetDateRange, todayISODate } from "@/lib/dateRange"
 import { MoneyInput } from "@/components/MoneyInput";
 import { Icon } from "@/components/Icon";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
+import { CategoryFilter, UNCATEGORIZED } from "@/components/CategoryFilter";
 import { FlowFilter, FlowFilterValue } from "@/components/FlowFilter";
 
 type CategoryOption = { id: string; name: string };
@@ -112,6 +113,10 @@ export function TransactionsTable({
     null,
   );
 
+  // Category filter state. "" = all categories, UNCATEGORIZED = transactions
+  // with no categoryId, otherwise a specific category id.
+  const [categoryFilter, setCategoryFilter] = useState("");
+
   // Inflow/Outflow filter state (ticket #21). "all" is the default,
   // unfiltered state; matches the existing Inflow/Outflow column split
   // (positive amount = inflow, negative = outflow).
@@ -122,13 +127,20 @@ export function TransactionsTable({
     const effectiveTo = dateTo || todayISODate();
     return transactions.filter((t) => {
       const dateKey = t.date.slice(0, 10);
-      if ((dateFrom || dateTo) && dateKey > effectiveTo) return false;
-      if (dateFrom && dateKey < dateFrom) return false;
+      if (dateFrom || dateTo) {
+        if (dateKey > effectiveTo) return false;
+        if (dateFrom && dateKey < dateFrom) return false;
+      }
+      if (categoryFilter === UNCATEGORIZED) {
+        if (t.categoryId) return false;
+      } else if (categoryFilter && t.categoryId !== categoryFilter) {
+        return false;
+      }
       if (flowFilter === "inflow" && t.amount <= 0) return false;
       if (flowFilter === "outflow" && t.amount >= 0) return false;
       return true;
     });
-  }, [transactions, dateFrom, dateTo, flowFilter]);
+  }, [transactions, dateFrom, dateTo, categoryFilter, flowFilter]);
 
   function handlePresetChange(preset: DateRangePreset) {
     const range = presetDateRange(preset);
@@ -161,9 +173,14 @@ export function TransactionsTable({
 
   return (
     <div className="space-y-2">
-      {/* Filter bar: this is where #20/#22's filters join the date and
-          flow filters below, all in one row aligned to the right. */}
+      {/* Filter bar: this is where #22's filter joins the date, category,
+          and flow filters below, all in one row aligned to the right. */}
       <div className="flex flex-wrap items-center justify-end gap-2">
+        <CategoryFilter
+          categoryGroups={categoryGroups}
+          value={categoryFilter}
+          onChange={setCategoryFilter}
+        />
         <FlowFilter value={flowFilter} onChange={setFlowFilter} />
         <DateRangeFilter
           dateFrom={dateFrom}
