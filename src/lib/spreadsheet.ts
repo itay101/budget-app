@@ -16,12 +16,32 @@ export function isXlsxFile(file: File): boolean {
 }
 
 /**
+ * Whether `file` looks like a legacy binary .xls workbook. The <input
+ * accept> filter on the file-select step steers the OS file dialog away
+ * from these, but that's advisory only - it doesn't apply to drag-and-drop,
+ * and some OS pickers let a user override it (e.g. "All Files"). Without
+ * this check, a .xls slipped past it would fall through to the CSV branch
+ * below and get read as UTF-8 text: .xls is a binary OLE2 format, so that
+ * produces garbled "rows" of decoded binary noise ahead of any real
+ * transaction data instead of a clean error.
+ */
+export function isLegacyXlsFile(file: File): boolean {
+  return /\.xls$/i.test(file.name) || file.type === "application/vnd.ms-excel";
+}
+
+/**
  * Reads a File Import upload into the header-row + data-rows shape every
  * downstream step (column mapping, preview) works with - `string[][]`,
  * same as parseCSV's output - regardless of whether it came in as CSV or
- * an Excel workbook.
+ * an Excel workbook. Throws with a user-facing message for a legacy .xls
+ * upload rather than attempting to parse it.
  */
 export async function readImportFile(file: File): Promise<string[][]> {
+  if (isLegacyXlsFile(file)) {
+    throw new Error(
+      "Legacy .xls files aren't supported - re-save as .xlsx or CSV first.",
+    );
+  }
   if (isXlsxFile(file)) {
     return readXlsxTable(file);
   }

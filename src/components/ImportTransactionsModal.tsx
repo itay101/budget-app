@@ -105,8 +105,10 @@ export function ImportTransactionsModal({
     let table: string[][];
     try {
       table = await readImportFile(file);
-    } catch {
-      setFileError("Couldn't read that file.");
+    } catch (err) {
+      setFileError(
+        err instanceof Error ? err.message : "Couldn't read that file.",
+      );
       return;
     }
 
