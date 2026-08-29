@@ -19,7 +19,6 @@ export function formatMilliunits(
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
-    currencySign: "accounting",
   }).format(milliunitsToNumber(milliunits));
 }
 

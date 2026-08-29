@@ -12,9 +12,16 @@ import { Icon } from "@/components/Icon";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { CategoryFilter, UNCATEGORIZED } from "@/components/CategoryFilter";
 import { FlowFilter, FlowFilterValue } from "@/components/FlowFilter";
+import { MemoFilter } from "@/components/MemoFilter";
 
 type CategoryOption = { id: string; name: string };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
+
+// The payee name createAccount uses for a nonzero starting balance (see
+// src/app/accounts/actions.ts). Identifying a row this way - rather than a
+// dedicated column - matches how it's created; these rows aren't real
+// spending, so they can't be assigned a category.
+const STARTING_BALANCE_PAYEE = "Starting Balance";
 
 type TransactionRowData = {
   id: string;
@@ -122,9 +129,14 @@ export function TransactionsTable({
   // (positive amount = inflow, negative = outflow).
   const [flowFilter, setFlowFilter] = useState<FlowFilterValue>("all");
 
+  // Free-text filter (ticket #22): case-insensitive substring match against
+  // memo or payee name. "" = no filter.
+  const [memoFilter, setMemoFilter] = useState("");
+
   const filteredTransactions = useMemo(() => {
     // Empty "to" defaults to today rather than "no upper bound".
     const effectiveTo = dateTo || todayISODate();
+    const memoQuery = memoFilter.trim().toLowerCase();
     return transactions.filter((t) => {
       const dateKey = t.date.slice(0, 10);
       if (dateFrom || dateTo) {
@@ -138,9 +150,35 @@ export function TransactionsTable({
       }
       if (flowFilter === "inflow" && t.amount <= 0) return false;
       if (flowFilter === "outflow" && t.amount >= 0) return false;
+      if (
+        memoQuery &&
+        !t.memo.toLowerCase().includes(memoQuery) &&
+        !t.payeeName.toLowerCase().includes(memoQuery)
+      ) {
+        return false;
+      }
       return true;
     });
-  }, [transactions, dateFrom, dateTo, categoryFilter, flowFilter]);
+  }, [transactions, dateFrom, dateTo, categoryFilter, flowFilter, memoFilter]);
+
+  // Whether any of the four filters above is currently narrowing the list -
+  // drives both the "Clear filters" button and the results summary below
+  // the table.
+  const hasActiveFilters =
+    dateFrom !== "" ||
+    dateTo !== "" ||
+    categoryFilter !== "" ||
+    flowFilter !== "all" ||
+    memoFilter !== "";
+
+  function clearAllFilters() {
+    setDateFrom("");
+    setDateTo("");
+    setActivePreset(null);
+    setCategoryFilter("");
+    setFlowFilter("all");
+    setMemoFilter("");
+  }
 
   function handlePresetChange(preset: DateRangePreset) {
     const range = presetDateRange(preset);
@@ -173,9 +211,23 @@ export function TransactionsTable({
 
   return (
     <div className="space-y-2">
-      {/* Filter bar: this is where #22's filter joins the date, category,
-          and flow filters below, all in one row aligned to the right. */}
+      {/* Filter bar: memo/payee search (#22), category (#20), flow (#21),
+          and date range (#19), all in one row aligned to the right. A
+          "Clear filters" button appears whenever any of them is active,
+          both as the indicator that the list is currently filtered and as
+          the one-click way to reset all four at once. */}
       <div className="flex flex-wrap items-center justify-end gap-2">
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            className="flex items-center gap-1 rounded border border-neutral-200 px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+          >
+            <Icon name="filter_alt_off" className="text-[1.1em]" />
+            Clear filters
+          </button>
+        )}
+        <MemoFilter value={memoFilter} onChange={setMemoFilter} />
         <CategoryFilter
           categoryGroups={categoryGroups}
           value={categoryFilter}
@@ -246,6 +298,24 @@ export function TransactionsTable({
           </div>
         )}
       </div>
+
+      {/* Result summary + a second "Clear filters" affordance at the end of
+          the table, so it's still in reach after scrolling a long list. */}
+      {hasActiveFilters && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-small text-neutral-600">
+          <span>
+            Showing {filteredTransactions.length} of {transactions.length}{" "}
+            transaction{transactions.length === 1 ? "" : "s"} · filters active
+          </span>
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            className="font-medium text-brand-700 hover:underline"
+          >
+            Clear filters
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -330,6 +400,7 @@ function TransactionRow({
 
   const categoryName = categoryNameFor(categoryGroups, committed.categoryId);
   const summaryAmount = amountFromDraft(committed);
+  const isStartingBalance = transaction.payeeName === STARTING_BALANCE_PAYEE;
 
   return (
     <div
@@ -430,22 +501,31 @@ function TransactionRow({
           <label className="mb-1 block text-small text-neutral-600 md:hidden">
             Category
           </label>
-          <select
-            value={draft.categoryId}
-            onChange={(e) => patch({ categoryId: e.target.value })}
-            className={inputClass}
-          >
-            <option value="">Uncategorized</option>
-            {categoryGroups.map((group) => (
-              <optgroup key={group.id} label={group.name}>
-                {group.categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+          {isStartingBalance ? (
+            <div
+              className={inputClass + " text-neutral-400"}
+              title="Starting balance can't be categorized"
+            >
+              Uncategorized
+            </div>
+          ) : (
+            <select
+              value={draft.categoryId}
+              onChange={(e) => patch({ categoryId: e.target.value })}
+              className={inputClass}
+            >
+              <option value="">Uncategorized</option>
+              {categoryGroups.map((group) => (
+                <optgroup key={group.id} label={group.name}>
+                  {group.categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          )}
         </div>
 
         <div className="col-span-2 md:col-span-1">

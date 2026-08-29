@@ -65,7 +65,7 @@ export async function Sidebar() {
               <span
                 className={
                   "shrink-0 " +
-                  (total < 0 ? "text-danger" : "text-neutral-600")
+                  (total < 0 ? "text-danger" : "text-success")
                 }
               >
                 {formatMilliunits(total, budget.currency)}
@@ -84,7 +84,7 @@ export async function Sidebar() {
                 <span
                   className={
                     "shrink-0 font-medium " +
-                    (account.balance < 0 ? "text-danger" : "text-neutral-600")
+                    (account.balance < 0 ? "text-danger" : "text-success")
                   }
                 >
                   {formatMilliunits(account.balance, budget.currency)}

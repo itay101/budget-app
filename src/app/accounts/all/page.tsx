@@ -16,7 +16,14 @@ export default async function AllAccountsPage() {
         where: { budgetId: budget.id, closed: false },
       }),
       prisma.transaction.findMany({
-        where: { account: { budgetId: budget.id } },
+        where: {
+          account: { budgetId: budget.id },
+          // Starting-balance transactions (see createAccount) only make
+          // sense in the context of the single account they seed — across
+          // "All Accounts" they'd read as a stray, uncategorizable payee
+          // with no real activity behind it, so they're excluded here.
+          NOT: { payee: { name: "Starting Balance" } },
+        },
         orderBy: { date: "desc" },
         include: {
           payee: true,
@@ -44,7 +51,7 @@ export default async function AllAccountsPage() {
         <div
           className={
             "text-h3 font-semibold sm:text-h2 " +
-            (total < 0 ? "text-danger" : "text-neutral-800")
+            (total < 0 ? "text-danger" : "text-success")
           }
         >
           {formatMilliunits(total, budget.currency)}
