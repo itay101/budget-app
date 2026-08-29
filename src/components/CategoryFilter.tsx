@@ -38,7 +38,7 @@ export function CategoryFilter({
         onChange={(e) => onChange(e.target.value)}
         aria-label="Filter by category"
         className={
-          "appearance-none rounded border py-1 pl-7 pr-6 text-small " +
+          "appearance-none rounded border py-1 pl-8 pr-6 text-small " +
           (hasFilter
             ? "border-brand-700 bg-brand-700/10 text-brand-700"
             : "border-neutral-200 text-neutral-600 hover:bg-neutral-100")
