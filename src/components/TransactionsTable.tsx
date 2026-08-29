@@ -11,6 +11,7 @@ import { MoneyInput } from "@/components/MoneyInput";
 import { Icon } from "@/components/Icon";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { CategoryFilter, UNCATEGORIZED } from "@/components/CategoryFilter";
+import { FlowFilter, FlowFilterValue } from "@/components/FlowFilter";
 
 type CategoryOption = { id: string; name: string };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
@@ -116,6 +117,11 @@ export function TransactionsTable({
   // with no categoryId, otherwise a specific category id.
   const [categoryFilter, setCategoryFilter] = useState("");
 
+  // Inflow/Outflow filter state (ticket #21). "all" is the default,
+  // unfiltered state; matches the existing Inflow/Outflow column split
+  // (positive amount = inflow, negative = outflow).
+  const [flowFilter, setFlowFilter] = useState<FlowFilterValue>("all");
+
   const filteredTransactions = useMemo(() => {
     // Empty "to" defaults to today rather than "no upper bound".
     const effectiveTo = dateTo || todayISODate();
@@ -130,9 +136,11 @@ export function TransactionsTable({
       } else if (categoryFilter && t.categoryId !== categoryFilter) {
         return false;
       }
+      if (flowFilter === "inflow" && t.amount <= 0) return false;
+      if (flowFilter === "outflow" && t.amount >= 0) return false;
       return true;
     });
-  }, [transactions, dateFrom, dateTo, categoryFilter]);
+  }, [transactions, dateFrom, dateTo, categoryFilter, flowFilter]);
 
   function handlePresetChange(preset: DateRangePreset) {
     const range = presetDateRange(preset);
@@ -165,14 +173,15 @@ export function TransactionsTable({
 
   return (
     <div className="space-y-2">
-      {/* Filter bar: this is where #21/#22's filters join the date and
-          category filters below, all in one row aligned to the right. */}
+      {/* Filter bar: this is where #22's filter joins the date, category,
+          and flow filters below, all in one row aligned to the right. */}
       <div className="flex flex-wrap items-center justify-end gap-2">
         <CategoryFilter
           categoryGroups={categoryGroups}
           value={categoryFilter}
           onChange={setCategoryFilter}
         />
+        <FlowFilter value={flowFilter} onChange={setFlowFilter} />
         <DateRangeFilter
           dateFrom={dateFrom}
           dateTo={dateTo}
