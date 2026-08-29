@@ -1123,35 +1123,40 @@ function NewTransactionRow({
           />
         </div>
 
-        <div className="col-span-2 flex flex-wrap justify-end gap-1 md:col-span-1">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={pending}
-            title="Cancel"
-            className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSaveAndAddAnother}
-            disabled={pending}
-            title="Save and add another"
-            className="rounded border border-brand-700 px-2 py-1 text-small font-medium text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
-          >
-            {pending ? "…" : "Save and add another"}
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={pending}
-            title="Save"
-            className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
-          >
-            {pending ? "…" : "Save"}
-          </button>
-        </div>
+      </div>
+
+      {/* Actions get their own full-width row below the input fields rather
+          than squeezing into the table's narrow trailing column - unlike
+          TransactionRow's icon-only actions, "Save and add another" needs
+          the room. */}
+      <div className="flex flex-wrap justify-end gap-1 border-t border-neutral-100 px-200 pb-3 pt-2 md:pb-2 md:pt-1">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={pending}
+          title="Cancel"
+          className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleSaveAndAddAnother}
+          disabled={pending}
+          title="Save and add another"
+          className="rounded border border-brand-700 px-2 py-1 text-small font-medium text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
+        >
+          {pending ? "…" : "Save and add another"}
+        </button>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={pending}
+          title="Save"
+          className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+        >
+          {pending ? "…" : "Save"}
+        </button>
       </div>
     </div>
   );
