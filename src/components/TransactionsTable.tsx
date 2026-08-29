@@ -104,6 +104,7 @@ export function TransactionsTable({
   payeeNames,
   updateTransaction,
   deleteTransaction,
+  reconcileTransaction,
   unreconcileTransaction,
   showAccount = false,
   currency = "USD",
@@ -118,6 +119,7 @@ export function TransactionsTable({
   payeeNames: string[];
   updateTransaction: (formData: FormData) => Promise<void>;
   deleteTransaction: (formData: FormData) => Promise<void>;
+  reconcileTransaction: (formData: FormData) => Promise<void>;
   unreconcileTransaction: (formData: FormData) => Promise<void>;
   showAccount?: boolean;
   currency?: string;
@@ -332,6 +334,7 @@ export function TransactionsTable({
                 categoryGroups={categoryGroups}
                 updateTransaction={updateTransaction}
                 deleteTransaction={deleteTransaction}
+                reconcileTransaction={reconcileTransaction}
                 unreconcileTransaction={unreconcileTransaction}
                 showAccount={showAccount}
                 gridCols={gridCols}
@@ -376,6 +379,7 @@ function TransactionRow({
   categoryGroups,
   updateTransaction,
   deleteTransaction,
+  reconcileTransaction,
   unreconcileTransaction,
   showAccount,
   gridCols,
@@ -385,6 +389,7 @@ function TransactionRow({
   categoryGroups: GroupOption[];
   updateTransaction: (formData: FormData) => Promise<void>;
   deleteTransaction: (formData: FormData) => Promise<void>;
+  reconcileTransaction: (formData: FormData) => Promise<void>;
   unreconcileTransaction: (formData: FormData) => Promise<void>;
   showAccount: boolean;
   gridCols: string;
@@ -499,6 +504,17 @@ function TransactionRow({
     formData.set("transactionId", transaction.id);
     startTransition(async () => {
       await deleteTransaction(formData);
+    });
+  }
+
+  function handleReconcile() {
+    if (!window.confirm("Mark this transaction as reconciled?")) {
+      return;
+    }
+    const formData = new FormData();
+    formData.set("transactionId", transaction.id);
+    startTransition(async () => {
+      await reconcileTransaction(formData);
     });
   }
 
@@ -731,9 +747,15 @@ function TransactionRow({
               <Icon name="lock" label="Un-reconcile transaction" />
             </button>
           ) : (
-            <span title="Not reconciled" className="p-1 text-neutral-400">
-              <Icon name="lock_open" label="Not reconciled" />
-            </span>
+            <button
+              type="button"
+              onClick={handleReconcile}
+              disabled={pending}
+              title="Reconcile"
+              className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 disabled:opacity-50"
+            >
+              <Icon name="lock_open" label="Reconcile transaction" />
+            </button>
           )}
           <button
             ref={menuButtonRef}

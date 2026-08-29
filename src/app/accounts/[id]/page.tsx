@@ -15,6 +15,7 @@ import {
   updateTransaction,
   deleteTransaction,
   reconcileAccount,
+  reconcileTransaction,
   unreconcileTransaction,
 } from "../actions";
 
@@ -107,6 +108,7 @@ export default async function AccountPage({
         payeeNames={payeeNames}
         updateTransaction={updateTransaction}
         deleteTransaction={deleteTransaction}
+        reconcileTransaction={reconcileTransaction}
         unreconcileTransaction={unreconcileTransaction}
         currency={budget.currency}
       />

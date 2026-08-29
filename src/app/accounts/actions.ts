@@ -213,6 +213,32 @@ export async function reconcileAccount(formData: FormData) {
 }
 
 /**
+ * Marks a single transaction `"RECONCILED"` - the per-row counterpart to
+ * reconcileAccount's bulk flip, for a transaction the user wants to lock
+ * in one at a time rather than reconciling the whole account.
+ */
+export async function reconcileTransaction(formData: FormData) {
+  const transactionId = String(formData.get("transactionId") ?? "");
+  if (!transactionId) {
+    throw new Error("transactionId is required");
+  }
+
+  const transaction = await prisma.transaction.findUniqueOrThrow({
+    where: { id: transactionId },
+    select: { accountId: true },
+  });
+
+  await prisma.transaction.update({
+    where: { id: transactionId },
+    data: { cleared: "RECONCILED" },
+  });
+
+  revalidatePath(`/accounts/${transaction.accountId}`);
+  revalidatePath("/accounts/all");
+  revalidatePath("/accounts");
+}
+
+/**
  * Reverts a single transaction from `"RECONCILED"` back to `"CLEARED"` -
  * the per-row undo for reconcileAccount's bulk flip. Landing on `CLEARED`
  * rather than `UNCLEARED` mirrors YNAB: un-reconciling just unlocks the
