@@ -522,13 +522,14 @@ function TransactionRow({
       >
         <div className="min-w-0">
           <div className="flex items-center gap-1 truncate font-semibold text-neutral-800">
-            {isReconciled && (
-              <Icon
-                name="lock"
-                label="Reconciled"
-                className="shrink-0 text-[1rem] text-neutral-400"
-              />
-            )}
+            <Icon
+              name={isReconciled ? "lock" : "lock_open"}
+              label={isReconciled ? "Reconciled" : "Not reconciled"}
+              className={
+                "shrink-0 text-[1rem] " +
+                (isReconciled ? "text-brand-700" : "text-neutral-400")
+              }
+            />
             <span className="truncate">
               {committed.payeeName || "(No payee)"}
             </span>
@@ -699,11 +700,17 @@ function TransactionRow({
               </button>
             </>
           )}
-          {isReconciled && (
-            <span title="Reconciled" className="p-1 text-neutral-400">
-              <Icon name="lock" label="Reconciled" />
-            </span>
-          )}
+          <span
+            title={isReconciled ? "Reconciled" : "Not reconciled"}
+            className={
+              "p-1 " + (isReconciled ? "text-brand-700" : "text-neutral-400")
+            }
+          >
+            <Icon
+              name={isReconciled ? "lock" : "lock_open"}
+              label={isReconciled ? "Reconciled" : "Not reconciled"}
+            />
+          </span>
           <button
             ref={menuButtonRef}
             type="button"
