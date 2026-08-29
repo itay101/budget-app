@@ -1,13 +1,12 @@
 "use client";
 
 import { Icon } from "@/components/Icon";
+// The canonical definition lives in @/lib/transactionFilters since it's
+// also used to build the server-side `where` clause (#24).
+import { UNCATEGORIZED } from "@/lib/transactionFilters";
 
 type CategoryOption = { id: string; name: string };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
-
-/** Sentinel value for the "Uncategorized" option — distinct from "" (which
- * a <select> uses for "All categories"), and from any real category id. */
-export const UNCATEGORIZED = "__uncategorized__";
 
 /**
  * The category-filter dropdown shown above the transactions table (see
