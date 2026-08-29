@@ -132,6 +132,137 @@ export async function createTransaction(formData: FormData) {
   revalidatePath("/budget");
 }
 
+export type ImportRow = {
+  date: string; // ISO "yyyy-mm-dd"
+  payeeName: string;
+  memo: string;
+  amount: number; // dollars, sign included - same convention createTransaction's "amount" field uses
+};
+
+/**
+ * Flags which rows of a File Import (#35) look like duplicates of
+ * transactions already on the account - same date + amount + payee - so
+ * the preview step can warn before anything is written. Advisory only:
+ * returns one boolean per row (same order as `rows`), the caller decides
+ * whether to still include a flagged row.
+ *
+ * Existing transactions are fetched once for the whole date range the
+ * import covers, rather than one query per row, since a typical bank
+ * export is tens to hundreds of rows.
+ */
+export async function checkImportDuplicates(
+  formData: FormData,
+): Promise<boolean[]> {
+  const accountId = String(formData.get("accountId") ?? "");
+  if (!accountId) {
+    throw new Error("accountId is required");
+  }
+
+  const rows: ImportRow[] = JSON.parse(String(formData.get("rows") ?? "[]"));
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const times = rows.map((r) => new Date(r.date).getTime());
+  const existing = await prisma.transaction.findMany({
+    where: {
+      accountId,
+      date: { gte: new Date(Math.min(...times)), lte: new Date(Math.max(...times)) },
+    },
+    select: { date: true, amount: true, payee: { select: { name: true } } },
+  });
+
+  const dupeKey = (date: string, amount: number, payeeName: string) =>
+    `${date}|${amount}|${payeeName.trim().toLowerCase()}`;
+
+  const existingKeys = new Set(
+    existing.map((t) =>
+      dupeKey(t.date.toISOString().slice(0, 10), t.amount, t.payee?.name ?? ""),
+    ),
+  );
+
+  return rows.map((row) =>
+    existingKeys.has(
+      dupeKey(row.date, numberToMilliunits(row.amount), row.payeeName),
+    ),
+  );
+}
+
+/**
+ * Bulk-creates transactions from a parsed, column-mapped import file (#35) -
+ * the File Import counterpart to createTransaction's one-at-a-time entry.
+ * Every row is created (reusing payees the same way createTransaction does)
+ * and the account's cached `balance` is incremented once by the rows'
+ * total, all inside one prisma.$transaction so a failure partway through a
+ * large file can't leave the account half-imported.
+ */
+export async function importTransactions(formData: FormData) {
+  const accountId = String(formData.get("accountId") ?? "");
+  if (!accountId) {
+    throw new Error("accountId is required");
+  }
+
+  const rows: ImportRow[] = JSON.parse(String(formData.get("rows") ?? "[]"));
+  if (rows.length === 0) {
+    return;
+  }
+
+  const account = await prisma.account.findUniqueOrThrow({
+    where: { id: accountId },
+    select: { budgetId: true },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    const payeeIds = new Map<string, string>();
+    let total = 0;
+
+    for (const row of rows) {
+      const amount = numberToMilliunits(row.amount);
+      const payeeName = row.payeeName.trim();
+
+      let payeeId: string | null = null;
+      if (payeeName) {
+        const cacheKey = payeeName.toLowerCase();
+        payeeId = payeeIds.get(cacheKey) ?? null;
+        if (!payeeId) {
+          const existing = await tx.payee.findFirst({
+            where: { budgetId: account.budgetId, name: payeeName },
+          });
+          payeeId = existing
+            ? existing.id
+            : (
+                await tx.payee.create({
+                  data: { budgetId: account.budgetId, name: payeeName },
+                })
+              ).id;
+          payeeIds.set(cacheKey, payeeId);
+        }
+      }
+
+      await tx.transaction.create({
+        data: {
+          accountId,
+          payeeId,
+          date: new Date(row.date),
+          amount,
+          memo: row.memo.trim() || null,
+        },
+      });
+      total += amount;
+    }
+
+    await tx.account.update({
+      where: { id: accountId },
+      data: { balance: { increment: total } },
+    });
+  });
+
+  revalidatePath(`/accounts/${accountId}`);
+  revalidatePath("/accounts/all");
+  revalidatePath("/accounts");
+  revalidatePath("/budget");
+}
+
 /**
  * Updates one or more fields of a transaction. Each editable cell in a
  * transaction table (single-account or all-accounts) commits

@@ -1,0 +1,567 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { createPortal } from "react-dom";
+import { parseCSV } from "@/lib/csv";
+import {
+  guessColumn,
+  HEADER_HINTS,
+  parseImportAmount,
+  parseImportDate,
+} from "@/lib/importParsing";
+import { formatMilliunits, numberToMilliunits } from "@/lib/money";
+import { Icon } from "@/components/Icon";
+import type { ImportRow } from "@/app/accounts/actions";
+
+type Step = "select" | "mapping" | "preview";
+type AmountMode = "single" | "split";
+
+type Mapping = {
+  date: number | null;
+  payee: number | null;
+  memo: number | null;
+  amountMode: AmountMode;
+  amount: number | null;
+  inflow: number | null;
+  outflow: number | null;
+};
+
+type PreviewRow = ImportRow & {
+  rowIndex: number; // 1-based position in the file, for the error list
+  error: string | null;
+  duplicate: boolean;
+  included: boolean;
+};
+
+// <select> sentinel for "no column chosen" - "" is already the header-index
+// string for column 0, so it can't double as "none".
+const NONE = "__none__";
+
+function parseSingleAmount(raw: string): number | null {
+  return parseImportAmount(raw);
+}
+
+// Combines an Inflow/Outflow column pair into one signed amount, same
+// "whichever side has a value wins" rule the manual entry row uses. Blank
+// cells on both sides means the row has no amount at all (an error);
+// blank on one side just means that side is zero.
+function parseSplitAmount(inflowRaw: string, outflowRaw: string): number | null {
+  if (!inflowRaw.trim() && !outflowRaw.trim()) return null;
+  const inflow = inflowRaw.trim() ? parseImportAmount(inflowRaw) : 0;
+  const outflow = outflowRaw.trim() ? parseImportAmount(outflowRaw) : 0;
+  if (inflow === null || outflow === null) return null;
+  return inflow !== 0 ? Math.abs(inflow) : -Math.abs(outflow);
+}
+
+/**
+ * File Import (#35): a three-step modal (choose file → map columns →
+ * preview/confirm) opened from the "File Import" button next to Add
+ * Transaction. CSV only for v1 - the issue notes OFX/QFX/QIF as a possible
+ * follow-up, but bank CSV exports are the common case and the column
+ * mapping they need (headers vary by bank) doesn't apply to those anyway.
+ *
+ * Parsing and column mapping happen entirely client-side (no server round
+ * trip needed to try out a mapping); duplicate detection needs the
+ * account's existing transactions, so that's the one server call between
+ * the mapping and preview steps. Nothing is written to the database until
+ * the user reviews the preview and clicks Import.
+ */
+export function ImportTransactionsModal({
+  accountId,
+  currency,
+  checkImportDuplicates,
+  importTransactions,
+  onClose,
+}: {
+  accountId: string;
+  currency: string;
+  checkImportDuplicates: (formData: FormData) => Promise<boolean[]>;
+  importTransactions: (formData: FormData) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [step, setStep] = useState<Step>("select");
+  const [fileName, setFileName] = useState("");
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [dataRows, setDataRows] = useState<string[][]>([]);
+  const [mapping, setMapping] = useState<Mapping>({
+    date: null,
+    payee: null,
+    memo: null,
+    amountMode: "single",
+    amount: null,
+    inflow: null,
+    outflow: null,
+  });
+  const [rows, setRows] = useState<PreviewRow[]>([]);
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
+  const [pending, startTransition] = useTransition();
+
+  function handleFile(file: File) {
+    setFileError(null);
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const table = parseCSV(String(reader.result ?? ""));
+      if (table.length < 2) {
+        setFileError(
+          "That file doesn't look like a CSV with a header row and at least one transaction.",
+        );
+        return;
+      }
+      const [headerRow, ...rest] = table;
+      const hasInflowOutflow =
+        guessColumn(headerRow, HEADER_HINTS.inflow) !== null ||
+        guessColumn(headerRow, HEADER_HINTS.outflow) !== null;
+
+      setHeaders(headerRow);
+      setDataRows(rest);
+      setMapping({
+        date: guessColumn(headerRow, HEADER_HINTS.date),
+        payee: guessColumn(headerRow, HEADER_HINTS.payee),
+        memo: guessColumn(headerRow, HEADER_HINTS.memo),
+        amountMode: hasInflowOutflow ? "split" : "single",
+        amount: guessColumn(headerRow, HEADER_HINTS.amount),
+        inflow: guessColumn(headerRow, HEADER_HINTS.inflow),
+        outflow: guessColumn(headerRow, HEADER_HINTS.outflow),
+      });
+      setStep("mapping");
+    };
+    reader.onerror = () => setFileError("Couldn't read that file.");
+    reader.readAsText(file);
+  }
+
+  function buildPreview(): PreviewRow[] {
+    return dataRows.map((cells, i) => {
+      const cell = (index: number | null) =>
+        index !== null ? (cells[index] ?? "").trim() : "";
+
+      const date = parseImportDate(cell(mapping.date));
+      const payeeName = cell(mapping.payee);
+      const memo = cell(mapping.memo);
+      const amount =
+        mapping.amountMode === "single"
+          ? parseSingleAmount(cell(mapping.amount))
+          : parseSplitAmount(cell(mapping.inflow), cell(mapping.outflow));
+
+      let error: string | null = null;
+      if (!date) error = "Invalid or missing date";
+      else if (amount === null) error = "Invalid or missing amount";
+
+      return {
+        rowIndex: i + 1,
+        date: date ?? "",
+        payeeName,
+        memo,
+        amount: amount ?? 0,
+        error,
+        duplicate: false,
+        included: error === null,
+      };
+    });
+  }
+
+  function goToPreview() {
+    const built = buildPreview();
+    setRows(built);
+    setStep("preview");
+
+    const valid = built.filter((r) => !r.error);
+    if (valid.length === 0) return;
+
+    const formData = new FormData();
+    formData.set("accountId", accountId);
+    formData.set(
+      "rows",
+      JSON.stringify(
+        valid.map(
+          (r): ImportRow => ({
+            date: r.date,
+            payeeName: r.payeeName,
+            memo: r.memo,
+            amount: r.amount,
+          }),
+        ),
+      ),
+    );
+
+    setCheckingDuplicates(true);
+    startTransition(async () => {
+      const flags = await checkImportDuplicates(formData);
+      setCheckingDuplicates(false);
+      setRows((current) => {
+        let flagIndex = 0;
+        return current.map((r) => {
+          if (r.error) return r;
+          const duplicate = flags[flagIndex++] ?? false;
+          return { ...r, duplicate, included: !duplicate };
+        });
+      });
+    });
+  }
+
+  function toggleRow(rowIndex: number) {
+    setRows((current) =>
+      current.map((r) =>
+        r.rowIndex === rowIndex ? { ...r, included: !r.included } : r,
+      ),
+    );
+  }
+
+  function toggleAll(included: boolean) {
+    setRows((current) =>
+      current.map((r) => (r.error ? r : { ...r, included })),
+    );
+  }
+
+  function handleImport() {
+    const toImport = rows.filter((r) => r.included && !r.error);
+    if (toImport.length === 0) return;
+
+    const formData = new FormData();
+    formData.set("accountId", accountId);
+    formData.set(
+      "rows",
+      JSON.stringify(
+        toImport.map(
+          (r): ImportRow => ({
+            date: r.date,
+            payeeName: r.payeeName,
+            memo: r.memo,
+            amount: r.amount,
+          }),
+        ),
+      ),
+    );
+
+    startTransition(async () => {
+      await importTransactions(formData);
+      onClose();
+    });
+  }
+
+  const errorCount = rows.filter((r) => r.error).length;
+  const duplicateCount = rows.filter((r) => r.duplicate).length;
+  const includedCount = rows.filter((r) => r.included && !r.error).length;
+
+  const mappingValid =
+    mapping.date !== null &&
+    (mapping.amountMode === "single"
+      ? mapping.amount !== null
+      : mapping.inflow !== null || mapping.outflow !== null);
+
+  function columnSelect(
+    label: string,
+    value: number | null,
+    onChange: (value: number | null) => void,
+    required = false,
+  ) {
+    return (
+      <div>
+        <label className="mb-1 block text-small font-medium text-neutral-700">
+          {label}
+          {required && <span className="text-danger"> *</span>}
+        </label>
+        <select
+          value={value === null ? NONE : String(value)}
+          onChange={(e) =>
+            onChange(e.target.value === NONE ? null : Number(e.target.value))
+          }
+          className="w-full rounded border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+        >
+          <option value={NONE}>{required ? "Choose a column…" : "None"}</option>
+          {headers.map((h, i) => (
+            <option key={i} value={i}>
+              {h || `Column ${i + 1}`}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-800/40 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-neutral-0 shadow-xl">
+        <div className="flex items-center justify-between border-b border-neutral-200 px-300 py-200">
+          <h2 className="text-h3 font-semibold text-neutral-800">
+            Import transactions
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            title="Close"
+            className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+          >
+            <Icon name="close" label="Close" className="text-[1.2em]" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-300 py-300">
+          {step === "select" && (
+            <div className="space-y-3">
+              <p className="text-body text-neutral-600">
+                Choose a CSV file exported from your bank. You&#39;ll be able to
+                match its columns and review every row before anything is
+                imported.
+              </p>
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFile(file);
+                }}
+                className="block w-full text-body file:mr-3 file:rounded file:border-0 file:bg-brand-700 file:px-3 file:py-1.5 file:text-small file:font-medium file:text-white hover:file:bg-brand-800"
+              />
+              {fileError && (
+                <p className="text-small text-danger">{fileError}</p>
+              )}
+            </div>
+          )}
+
+          {step === "mapping" && (
+            <div className="space-y-4">
+              <p className="text-body text-neutral-600">
+                Match {fileName ? <strong>{fileName}</strong> : "the file"}
+                &#39;s columns to a transaction&#39;s fields. Only Date and an
+                amount are required.
+              </p>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {columnSelect("Date", mapping.date, (v) =>
+                  setMapping((m) => ({ ...m, date: v })),
+                  true,
+                )}
+                {columnSelect("Payee", mapping.payee, (v) =>
+                  setMapping((m) => ({ ...m, payee: v })),
+                )}
+                {columnSelect("Memo", mapping.memo, (v) =>
+                  setMapping((m) => ({ ...m, memo: v })),
+                )}
+              </div>
+
+              <div>
+                <label className="mb-1 block text-small font-medium text-neutral-700">
+                  Amount
+                </label>
+                <div className="mb-2 flex gap-1 text-small">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMapping((m) => ({ ...m, amountMode: "single" }))
+                    }
+                    className={
+                      "rounded border px-2 py-1 " +
+                      (mapping.amountMode === "single"
+                        ? "border-brand-700 bg-brand-700/10 text-brand-700"
+                        : "border-neutral-200 text-neutral-600 hover:bg-neutral-100")
+                    }
+                  >
+                    Single column
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMapping((m) => ({ ...m, amountMode: "split" }))
+                    }
+                    className={
+                      "rounded border px-2 py-1 " +
+                      (mapping.amountMode === "split"
+                        ? "border-brand-700 bg-brand-700/10 text-brand-700"
+                        : "border-neutral-200 text-neutral-600 hover:bg-neutral-100")
+                    }
+                  >
+                    Separate Inflow / Outflow
+                  </button>
+                </div>
+
+                {mapping.amountMode === "single" ? (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {columnSelect(
+                      "Amount (negative = outflow)",
+                      mapping.amount,
+                      (v) => setMapping((m) => ({ ...m, amount: v })),
+                      true,
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {columnSelect("Inflow", mapping.inflow, (v) =>
+                      setMapping((m) => ({ ...m, inflow: v })),
+                    )}
+                    {columnSelect("Outflow", mapping.outflow, (v) =>
+                      setMapping((m) => ({ ...m, outflow: v })),
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {dataRows.length > 0 && (
+                <div className="overflow-x-auto rounded border border-neutral-200">
+                  <table className="w-full text-small">
+                    <thead className="bg-neutral-100 text-neutral-600">
+                      <tr>
+                        {headers.map((h, i) => (
+                          <th key={i} className="px-2 py-1 text-left font-medium">
+                            {h || `Column ${i + 1}`}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dataRows.slice(0, 3).map((row, i) => (
+                        <tr key={i} className="border-t border-neutral-100">
+                          {headers.map((_, ci) => (
+                            <td key={ci} className="truncate px-2 py-1">
+                              {row[ci] ?? ""}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === "preview" && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-small text-neutral-600">
+                <span>
+                  {rows.length} row{rows.length === 1 ? "" : "s"} parsed ·{" "}
+                  {includedCount} will be imported
+                  {duplicateCount > 0 && ` · ${duplicateCount} possible duplicate${duplicateCount === 1 ? "" : "s"}`}
+                  {errorCount > 0 && ` · ${errorCount} couldn't be parsed`}
+                  {checkingDuplicates && " · checking for duplicates…"}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleAll(true)}
+                    className="text-brand-700 hover:underline"
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleAll(false)}
+                    className="text-brand-700 hover:underline"
+                  >
+                    Select none
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded border border-neutral-200">
+                <table className="w-full text-small">
+                  <thead className="bg-neutral-100 text-neutral-600">
+                    <tr>
+                      <th className="w-8 px-2 py-1" />
+                      <th className="px-2 py-1 text-left font-medium">Date</th>
+                      <th className="px-2 py-1 text-left font-medium">Payee</th>
+                      <th className="px-2 py-1 text-left font-medium">Memo</th>
+                      <th className="px-2 py-1 text-right font-medium">Amount</th>
+                      <th className="px-2 py-1 text-left font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr
+                        key={r.rowIndex}
+                        className={
+                          "border-t border-neutral-100 " +
+                          (r.error ? "text-neutral-400" : "")
+                        }
+                      >
+                        <td className="px-2 py-1">
+                          <input
+                            type="checkbox"
+                            checked={r.included}
+                            disabled={!!r.error}
+                            onChange={() => toggleRow(r.rowIndex)}
+                          />
+                        </td>
+                        <td className="px-2 py-1">{r.date || "—"}</td>
+                        <td className="max-w-[10rem] truncate px-2 py-1">
+                          {r.payeeName || "—"}
+                        </td>
+                        <td className="max-w-[10rem] truncate px-2 py-1">
+                          {r.memo || "—"}
+                        </td>
+                        <td
+                          className={
+                            "px-2 py-1 text-right " +
+                            (r.error
+                              ? ""
+                              : r.amount < 0
+                                ? "text-danger"
+                                : "text-success")
+                          }
+                        >
+                          {r.error
+                            ? "—"
+                            : formatMilliunits(numberToMilliunits(r.amount), currency)}
+                        </td>
+                        <td className="px-2 py-1">
+                          {r.error ? (
+                            <span className="text-danger">{r.error}</span>
+                          ) : r.duplicate ? (
+                            <span className="text-warning">Possible duplicate</span>
+                          ) : (
+                            <span className="text-success">OK</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between border-t border-neutral-200 px-300 py-200">
+          <button
+            type="button"
+            onClick={() => {
+              if (step === "mapping") setStep("select");
+              else if (step === "preview") setStep("mapping");
+              else onClose();
+            }}
+            disabled={pending}
+            className="rounded px-3 py-1.5 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
+          >
+            {step === "select" ? "Cancel" : "Back"}
+          </button>
+
+          {step === "mapping" && (
+            <button
+              type="button"
+              onClick={goToPreview}
+              disabled={!mappingValid}
+              className="rounded bg-brand-700 px-3 py-1.5 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+            >
+              Continue to preview
+            </button>
+          )}
+
+          {step === "preview" && (
+            <button
+              type="button"
+              onClick={handleImport}
+              disabled={pending || includedCount === 0}
+              className="rounded bg-brand-700 px-3 py-1.5 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+            >
+              {pending
+                ? "Importing…"
+                : `Import ${includedCount} transaction${includedCount === 1 ? "" : "s"}`}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
