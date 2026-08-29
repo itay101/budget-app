@@ -7,7 +7,12 @@ import {
   transactionFiltersWhere,
 } from "@/lib/transactionFilters";
 import { TransactionsTable } from "@/components/TransactionsTable";
-import { updateTransaction, deleteTransaction } from "../actions";
+import {
+  updateTransaction,
+  deleteTransaction,
+  reconcileTransaction,
+  unreconcileTransaction,
+} from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -83,6 +88,7 @@ export default async function AllAccountsPage({
           categoryId: t.categoryId ?? "",
           memo: t.memo ?? "",
           amount: t.amount,
+          cleared: t.cleared,
           accountName: t.account.name,
         }))}
         totalCount={totalCount}
@@ -90,6 +96,8 @@ export default async function AllAccountsPage({
         payeeNames={payeeNames}
         updateTransaction={updateTransaction}
         deleteTransaction={deleteTransaction}
+        reconcileTransaction={reconcileTransaction}
+        unreconcileTransaction={unreconcileTransaction}
         currency={budget.currency}
         showAccount
       />
