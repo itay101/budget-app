@@ -12,6 +12,7 @@ import { Icon } from "@/components/Icon";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { CategoryFilter, UNCATEGORIZED } from "@/components/CategoryFilter";
 import { FlowFilter, FlowFilterValue } from "@/components/FlowFilter";
+import { MemoFilter } from "@/components/MemoFilter";
 
 type CategoryOption = { id: string; name: string };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
@@ -122,9 +123,14 @@ export function TransactionsTable({
   // (positive amount = inflow, negative = outflow).
   const [flowFilter, setFlowFilter] = useState<FlowFilterValue>("all");
 
+  // Free-text filter (ticket #22): case-insensitive substring match against
+  // memo or payee name. "" = no filter.
+  const [memoFilter, setMemoFilter] = useState("");
+
   const filteredTransactions = useMemo(() => {
     // Empty "to" defaults to today rather than "no upper bound".
     const effectiveTo = dateTo || todayISODate();
+    const memoQuery = memoFilter.trim().toLowerCase();
     return transactions.filter((t) => {
       const dateKey = t.date.slice(0, 10);
       if (dateFrom || dateTo) {
@@ -138,9 +144,16 @@ export function TransactionsTable({
       }
       if (flowFilter === "inflow" && t.amount <= 0) return false;
       if (flowFilter === "outflow" && t.amount >= 0) return false;
+      if (
+        memoQuery &&
+        !t.memo.toLowerCase().includes(memoQuery) &&
+        !t.payeeName.toLowerCase().includes(memoQuery)
+      ) {
+        return false;
+      }
       return true;
     });
-  }, [transactions, dateFrom, dateTo, categoryFilter, flowFilter]);
+  }, [transactions, dateFrom, dateTo, categoryFilter, flowFilter, memoFilter]);
 
   function handlePresetChange(preset: DateRangePreset) {
     const range = presetDateRange(preset);
@@ -173,9 +186,10 @@ export function TransactionsTable({
 
   return (
     <div className="space-y-2">
-      {/* Filter bar: this is where #22's filter joins the date, category,
-          and flow filters below, all in one row aligned to the right. */}
+      {/* Filter bar: memo/payee search (#22), category (#20), flow (#21),
+          and date range (#19), all in one row aligned to the right. */}
       <div className="flex flex-wrap items-center justify-end gap-2">
+        <MemoFilter value={memoFilter} onChange={setMemoFilter} />
         <CategoryFilter
           categoryGroups={categoryGroups}
           value={categoryFilter}
