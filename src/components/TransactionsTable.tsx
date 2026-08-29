@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   formatMilliunits,
@@ -25,6 +26,8 @@ type GroupOption = { id: string; name: string; categories: CategoryOption[] };
 // spending, so they can't be assigned a category.
 const STARTING_BALANCE_PAYEE = "Starting Balance";
 
+type ClearedStatus = "UNCLEARED" | "CLEARED" | "RECONCILED";
+
 type TransactionRowData = {
   id: string;
   date: string; // ISO string
@@ -32,6 +35,7 @@ type TransactionRowData = {
   categoryId: string;
   memo: string;
   amount: number; // milliunits
+  cleared: ClearedStatus;
   accountName?: string;
 };
 
@@ -395,6 +399,56 @@ function TransactionRow({
   const [committed, setCommitted] = useState(() => draftFrom(transaction));
   const [draft, setDraft] = useState(committed);
 
+  // The row's "more actions" menu (currently just Delete) - a small popover
+  // off the kebab button, same open/position/outside-click pattern as
+  // MoveMoneyPopover.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    function updatePosition() {
+      const rect = menuButtonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = 160; // matches the menu's w-40
+      setMenuPosition({
+        top: rect.bottom + 4,
+        left: Math.min(rect.right - width, window.innerWidth - width - 8),
+      });
+    }
+    updatePosition();
+
+    function handlePointerDown(e: MouseEvent) {
+      if (
+        menuRef.current?.contains(e.target as Node) ||
+        menuButtonRef.current?.contains(e.target as Node)
+      ) {
+        return;
+      }
+      setMenuOpen(false);
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setMenuOpen(false);
+    }
+
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", updatePosition);
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updatePosition);
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [menuOpen]);
+
   const isDirty =
     draft.date !== committed.date ||
     draft.payeeName !== committed.payeeName ||
@@ -432,6 +486,7 @@ function TransactionRow({
   }
 
   function handleDelete() {
+    setMenuOpen(false);
     if (!window.confirm("Delete this transaction? This can't be undone.")) {
       return;
     }
@@ -445,6 +500,7 @@ function TransactionRow({
   const categoryName = categoryNameFor(categoryGroups, committed.categoryId);
   const summaryAmount = amountFromDraft(committed);
   const isStartingBalance = transaction.payeeName === STARTING_BALANCE_PAYEE;
+  const isReconciled = transaction.cleared === "RECONCILED";
 
   return (
     <div
@@ -465,8 +521,17 @@ function TransactionRow({
         }
       >
         <div className="min-w-0">
-          <div className="truncate font-semibold text-neutral-800">
-            {committed.payeeName || "(No payee)"}
+          <div className="flex items-center gap-1 truncate font-semibold text-neutral-800">
+            {isReconciled && (
+              <Icon
+                name="lock"
+                label="Reconciled"
+                className="shrink-0 text-[1rem] text-neutral-400"
+              />
+            )}
+            <span className="truncate">
+              {committed.payeeName || "(No payee)"}
+            </span>
           </div>
           <span className="mt-1 inline-block max-w-full truncate rounded-full bg-neutral-100 px-2 py-0.5 text-small text-neutral-600">
             {categoryName ?? "Uncategorized"}
@@ -634,15 +699,44 @@ function TransactionRow({
               </button>
             </>
           )}
+          {isReconciled && (
+            <span title="Reconciled" className="p-1 text-neutral-400">
+              <Icon name="lock" label="Reconciled" />
+            </span>
+          )}
           <button
+            ref={menuButtonRef}
             type="button"
-            onClick={handleDelete}
+            onClick={() => setMenuOpen((o) => !o)}
             disabled={pending}
-            title="Delete transaction"
-            className="rounded p-1 text-neutral-400 hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+            title="More actions"
+            className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 disabled:opacity-50"
           >
-            <Icon name="delete" label="Delete transaction" />
+            <Icon name="more_vert" label="More actions" />
           </button>
+          {menuOpen &&
+            menuPosition &&
+            createPortal(
+              <div
+                ref={menuRef}
+                style={{
+                  position: "fixed",
+                  top: menuPosition.top,
+                  left: menuPosition.left,
+                }}
+                className="z-50 w-40 overflow-hidden rounded-lg border border-neutral-200 bg-neutral-0 py-1 shadow-lg"
+              >
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-small text-danger hover:bg-danger/10"
+                >
+                  <Icon name="delete" />
+                  Delete
+                </button>
+              </div>,
+              document.body,
+            )}
         </div>
       </div>
     </div>

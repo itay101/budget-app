@@ -95,6 +95,7 @@ export default async function AccountPage({
           categoryId: t.categoryId ?? "",
           memo: t.memo ?? "",
           amount: t.amount,
+          cleared: t.cleared,
         }))}
         totalCount={totalCount}
         categoryGroups={categoryGroups}
