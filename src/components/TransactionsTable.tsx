@@ -777,7 +777,7 @@ function TransactionRow({
             title="Collapse"
             className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
           >
-            <Icon name="expand_less" label="Collapse" />
+            <Icon name="expand_less" label="Collapse" className="text-[1.1em]" />
           </button>
         </div>
 
@@ -894,7 +894,7 @@ function TransactionRow({
                 title="Cancel"
                 className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
               >
-                <Icon name="close" label="Cancel" />
+                <Icon name="close" label="Cancel" className="text-[1.1em]" />
               </button>
               <button
                 type="button"
@@ -903,7 +903,11 @@ function TransactionRow({
                 title="Save"
                 className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
               >
-                {pending ? "…" : <Icon name="check" label="Save" />}
+                {pending ? (
+                  "…"
+                ) : (
+                  <Icon name="check" label="Save" className="text-[1.1em]" />
+                )}
               </button>
             </>
           )}
@@ -915,7 +919,11 @@ function TransactionRow({
               title="Un-reconcile"
               className="rounded p-1 text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
             >
-              <Icon name="lock" label="Un-reconcile transaction" />
+              <Icon
+                name="lock"
+                label="Un-reconcile transaction"
+                className="text-[1.1em]"
+              />
             </button>
           ) : (
             <button
@@ -925,7 +933,11 @@ function TransactionRow({
               title="Reconcile"
               className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 disabled:opacity-50"
             >
-              <Icon name="lock_open" label="Reconcile transaction" />
+              <Icon
+                name="lock_open"
+                label="Reconcile transaction"
+                className="text-[1.1em]"
+              />
             </button>
           )}
           <button
@@ -936,7 +948,11 @@ function TransactionRow({
             title="More actions"
             className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 disabled:opacity-50"
           >
-            <Icon name="more_vert" label="More actions" />
+            <Icon
+              name="more_vert"
+              label="More actions"
+              className="text-[1.1em]"
+            />
           </button>
           {menuOpen &&
             menuPosition &&
@@ -955,7 +971,7 @@ function TransactionRow({
                   onClick={handleDelete}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-small text-danger hover:bg-danger/10"
                 >
-                  <Icon name="delete" />
+                  <Icon name="delete" className="text-[1.1em]" />
                   Delete
                 </button>
               </div>,
