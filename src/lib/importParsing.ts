@@ -64,6 +64,38 @@ export function parseImportAmount(raw: string): number | null {
   return negativeParens ? -Math.abs(value) : value;
 }
 
+/**
+ * Guesses which row of a parsed import file actually holds the column
+ * headers. Some bank exports put a few metadata lines before the real
+ * header row (an account name, a statement period) - hardcoding "row 0 is
+ * the header" silently turns those into garbage pseudo-columns and tries
+ * to import the preamble itself as transactions.
+ *
+ * Deliberately doesn't look at header text - matching against English
+ * words like "date"/"amount" (see HEADER_HINTS below) would miss headers
+ * in any other language. Instead this scans for the first row that looks
+ * like an actual transaction - some cell parses as a date *and* some
+ * other cell parses as an amount - and returns the row right before it,
+ * since that's the header row by construction. Falls back to row 0 if no
+ * row in the scan window looks like transaction data (e.g. a file with no
+ * preamble at all).
+ */
+export function guessHeaderRowIndex(table: string[][]): number {
+  const scanLimit = Math.min(table.length, 12);
+  for (let i = 1; i < scanLimit; i++) {
+    if (looksLikeDataRow(table[i])) {
+      return i - 1;
+    }
+  }
+  return 0;
+}
+
+function looksLikeDataRow(row: string[]): boolean {
+  const hasDate = row.some((cell) => parseImportDate(cell) !== null);
+  const hasAmount = row.some((cell) => parseImportAmount(cell) !== null);
+  return hasDate && hasAmount;
+}
+
 // Header substrings (checked case-insensitively) used to guess a sensible
 // default column mapping from a CSV's header row, so the common case -
 // headers named roughly what they are - needs no manual mapping at all.

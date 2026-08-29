@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { readImportFile } from "@/lib/spreadsheet";
 import {
   guessColumn,
+  guessHeaderRowIndex,
   HEADER_HINTS,
   parseImportAmount,
   parseImportDate,
@@ -84,8 +85,11 @@ export function ImportTransactionsModal({
   const [step, setStep] = useState<Step>("select");
   const [fileName, setFileName] = useState("");
   const [fileError, setFileError] = useState<string | null>(null);
-  const [headers, setHeaders] = useState<string[]>([]);
-  const [dataRows, setDataRows] = useState<string[][]>([]);
+  // The full parsed file, header row and all - which row is actually "the
+  // header row" is a guess (see guessHeaderRowIndex) the user can correct,
+  // so this is kept whole rather than immediately split into header/data.
+  const [rawTable, setRawTable] = useState<string[][]>([]);
+  const [headerRowIndex, setHeaderRowIndex] = useState(0);
   const [mapping, setMapping] = useState<Mapping>({
     date: null,
     payee: null,
@@ -98,6 +102,33 @@ export function ImportTransactionsModal({
   const [rows, setRows] = useState<PreviewRow[]>([]);
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const [pending, startTransition] = useTransition();
+
+  // Rows strictly before headerRowIndex are preamble/metadata (an account
+  // name, a statement period) and are dropped entirely here - they never
+  // reach the preview step at all, rather than showing up there as rows
+  // that happen to fail to parse.
+  const headers = rawTable[headerRowIndex] ?? [];
+  const dataRows = rawTable.slice(headerRowIndex + 1);
+
+  // Re-derives the column mapping from whichever row is currently marked
+  // as the header - called on file load (with the guessed index) and
+  // whenever the user picks a different header row.
+  function applyHeaderRow(table: string[][], index: number) {
+    setHeaderRowIndex(index);
+    const headerRow = table[index] ?? [];
+    const hasInflowOutflow =
+      guessColumn(headerRow, HEADER_HINTS.inflow) !== null ||
+      guessColumn(headerRow, HEADER_HINTS.outflow) !== null;
+    setMapping({
+      date: guessColumn(headerRow, HEADER_HINTS.date),
+      payee: guessColumn(headerRow, HEADER_HINTS.payee),
+      memo: guessColumn(headerRow, HEADER_HINTS.memo),
+      amountMode: hasInflowOutflow ? "split" : "single",
+      amount: guessColumn(headerRow, HEADER_HINTS.amount),
+      inflow: guessColumn(headerRow, HEADER_HINTS.inflow),
+      outflow: guessColumn(headerRow, HEADER_HINTS.outflow),
+    });
+  }
 
   async function handleFile(file: File) {
     setFileError(null);
@@ -118,22 +149,9 @@ export function ImportTransactionsModal({
       );
       return;
     }
-    const [headerRow, ...rest] = table;
-    const hasInflowOutflow =
-      guessColumn(headerRow, HEADER_HINTS.inflow) !== null ||
-      guessColumn(headerRow, HEADER_HINTS.outflow) !== null;
 
-    setHeaders(headerRow);
-    setDataRows(rest);
-    setMapping({
-      date: guessColumn(headerRow, HEADER_HINTS.date),
-      payee: guessColumn(headerRow, HEADER_HINTS.payee),
-      memo: guessColumn(headerRow, HEADER_HINTS.memo),
-      amountMode: hasInflowOutflow ? "split" : "single",
-      amount: guessColumn(headerRow, HEADER_HINTS.amount),
-      inflow: guessColumn(headerRow, HEADER_HINTS.inflow),
-      outflow: guessColumn(headerRow, HEADER_HINTS.outflow),
-    });
+    setRawTable(table);
+    applyHeaderRow(table, guessHeaderRowIndex(table));
     setStep("mapping");
   }
 
@@ -338,6 +356,57 @@ export function ImportTransactionsModal({
                 amount are required.
               </p>
 
+              {rawTable.length > 1 && (
+                <div>
+                  <label className="mb-1 block text-small font-medium text-neutral-700">
+                    Header row
+                  </label>
+                  <p className="mb-2 text-small text-neutral-600">
+                    Some exports include a few lines of account info before
+                    the real column headers - pick the row that actually has
+                    them if the highlighted guess below is wrong. Rows above
+                    it are ignored.
+                  </p>
+                  <div className="overflow-x-auto rounded border border-neutral-200">
+                    <table className="w-full text-small">
+                      <tbody>
+                        {rawTable.slice(0, 8).map((row, i) => (
+                          <tr
+                            key={i}
+                            onClick={() => applyHeaderRow(rawTable, i)}
+                            className={
+                              "cursor-pointer border-t border-neutral-100 first:border-t-0 " +
+                              (i === headerRowIndex
+                                ? "bg-brand-700/10"
+                                : "hover:bg-neutral-100")
+                            }
+                          >
+                            <td className="w-6 px-2 py-1">
+                              <input
+                                type="radio"
+                                name="header-row"
+                                checked={i === headerRowIndex}
+                                onChange={() => applyHeaderRow(rawTable, i)}
+                              />
+                            </td>
+                            {row.map((cell, ci) => (
+                              <td
+                                key={ci}
+                                className="max-w-[8rem] truncate px-2 py-1"
+                              >
+                                {cell || (
+                                  <span className="text-neutral-400">—</span>
+                                )}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {columnSelect("Date", mapping.date, (v) =>
                   setMapping((m) => ({ ...m, date: v })),
@@ -406,33 +475,6 @@ export function ImportTransactionsModal({
                   </div>
                 )}
               </div>
-
-              {dataRows.length > 0 && (
-                <div className="overflow-x-auto rounded border border-neutral-200">
-                  <table className="w-full text-small">
-                    <thead className="bg-neutral-100 text-neutral-600">
-                      <tr>
-                        {headers.map((h, i) => (
-                          <th key={i} className="px-2 py-1 text-left font-medium">
-                            {h || `Column ${i + 1}`}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {dataRows.slice(0, 3).map((row, i) => (
-                        <tr key={i} className="border-t border-neutral-100">
-                          {headers.map((_, ci) => (
-                            <td key={ci} className="truncate px-2 py-1">
-                              {row[ci] ?? ""}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
             </div>
           )}
 
