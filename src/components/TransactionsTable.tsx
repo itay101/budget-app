@@ -8,7 +8,11 @@ import {
   milliunitsToNumber,
   numberToMilliunits,
 } from "@/lib/money";
-import { DATE_RANGE_PRESETS, DateRangePreset, presetDateRange } from "@/lib/dateRange";
+import {
+  DATE_RANGE_PRESETS,
+  DateRangePreset,
+  presetDateRange,
+} from "@/lib/dateRange";
 import { FILTER_PARAMS } from "@/lib/transactionFilters";
 import { MoneyInput } from "@/components/MoneyInput";
 import { Icon } from "@/components/Icon";
@@ -16,6 +20,7 @@ import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { CategoryFilter } from "@/components/CategoryFilter";
 import { FlowFilter, FlowFilterValue } from "@/components/FlowFilter";
 import { MemoFilter } from "@/components/MemoFilter";
+import { useReconciliation } from "@/components/ReconciliationContext";
 
 type CategoryOption = { id: string; name: string };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
@@ -108,6 +113,7 @@ export function TransactionsTable({
   unreconcileTransaction,
   showAccount = false,
   currency = "USD",
+  accountBalance,
 }: {
   transactions: TransactionRowData[];
   // Unfiltered transaction count for the account/budget this table shows -
@@ -123,6 +129,11 @@ export function TransactionsTable({
   unreconcileTransaction: (formData: FormData) => Promise<void>;
   showAccount?: boolean;
   currency?: string;
+  // The owning account's live cached balance (#31) - only passed on the
+  // single-account page, where it drives the pinned reconciliation bar
+  // rendered above the table. Omitted on accounts/all, where "the account
+  // total" isn't a single number and reconciliation doesn't apply.
+  accountBalance?: number;
 }) {
   const gridCols = showAccount ? GRID_COLS_WITH_ACCOUNT : GRID_COLS;
 
@@ -263,6 +274,10 @@ export function TransactionsTable({
         "space-y-2" + (isPending ? " opacity-60 transition-opacity" : "")
       }
     >
+      {accountBalance !== undefined && (
+        <ReconciliationBar balance={accountBalance} currency={currency} />
+      )}
+
       {/* Filter bar: memo/payee search (#22), category (#20), flow (#21),
           and date range (#19), all in one row aligned to the right. A
           "Clear filters" button appears whenever any of them is active,
@@ -374,6 +389,101 @@ export function TransactionsTable({
   );
 }
 
+/**
+ * The pinned row shown above the transactions table while reconciling an
+ * account (#31) - entered via `ReconcileButton` answering "No" to the
+ * proposed total. Tracks the live gap between the statement amount the
+ * user entered and `account.balance`, which keeps moving as transactions
+ * are added/edited/deleted on the account (those all go through
+ * revalidatePath, so `balance` here is always current). Renders nothing
+ * once reconciling hasn't been started, or outside a ReconciliationProvider
+ * (accounts/all's table never passes `accountBalance`, so this never
+ * mounts there).
+ */
+function ReconciliationBar({
+  balance,
+  currency,
+}: {
+  balance: number;
+  currency: string;
+}) {
+  const reconciliation = useReconciliation();
+  const [pending, startTransition] = useTransition();
+
+  if (!reconciliation || reconciliation.statementAmount === null) return null;
+
+  const { accountId, reconcileAccount, statementAmount, cancelReconciling } =
+    reconciliation;
+  const gap = statementAmount - balance;
+  const matched = gap === 0;
+
+  function handleReconcile() {
+    const formData = new FormData();
+    formData.set("accountId", accountId);
+    startTransition(async () => {
+      await reconcileAccount(formData);
+      cancelReconciling();
+    });
+  }
+
+  function handleCancel() {
+    if (window.confirm("Stop reconciling this account? Nothing will change.")) {
+      cancelReconciling();
+    }
+  }
+
+  return (
+    <div
+      className={
+        "flex flex-wrap items-center justify-between gap-2 rounded-lg border px-200 py-2 text-body " +
+        (matched
+          ? "border-success/30 bg-success/10 text-success"
+          : "border-warning/30 bg-warning/10 text-neutral-800")
+      }
+    >
+      <div className="flex items-center gap-2">
+        <Icon
+          name={matched ? "check_circle" : "sync_problem"}
+          className="text-[1.1em]"
+        />
+        {matched ? (
+          <span className="font-medium">
+            Statement amount matches the account total.
+          </span>
+        ) : (
+          <span>
+            Reconciling — gap of{" "}
+            <span className="font-semibold">
+              {formatMilliunits(gap, currency)}
+            </span>{" "}
+            between the statement amount and this account&#39;s total.
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        {matched && (
+          <button
+            type="button"
+            onClick={handleReconcile}
+            disabled={pending}
+            className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+          >
+            {pending ? "Reconciling…" : "Reconcile"}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={handleCancel}
+          disabled={pending}
+          className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function TransactionRow({
   transaction,
   categoryGroups,
@@ -478,7 +588,8 @@ function TransactionRow({
   function handleSubmit() {
     const inflowValue = Number(draft.inflow) || 0;
     const outflowValue = Number(draft.outflow) || 0;
-    const amount = inflowValue > 0 ? inflowValue : outflowValue ? -outflowValue : 0;
+    const amount =
+      inflowValue > 0 ? inflowValue : outflowValue ? -outflowValue : 0;
 
     const formData = new FormData();
     formData.set("transactionId", transaction.id);

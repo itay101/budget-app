@@ -10,6 +10,7 @@ import {
 } from "@/lib/transactionFilters";
 import { TransactionsTable } from "@/components/TransactionsTable";
 import { ReconcileButton } from "@/components/ReconcileButton";
+import { ReconciliationProvider } from "@/components/ReconciliationContext";
 import { Icon } from "@/components/Icon";
 import {
   updateTransaction,
@@ -55,63 +56,65 @@ export default async function AccountPage({
     ]);
 
   return (
-    <div className="space-y-300">
-      <div>
-        <Link
-          href="/accounts"
-          className="flex w-fit items-center gap-0.5 text-small font-medium text-brand-700 hover:underline"
-        >
-          <Icon name="arrow_back" /> Accounts
-        </Link>
-        <div className="mt-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-          <div>
-            <h1 className="text-h2 text-neutral-800 sm:text-h1">
-              {account.name}
-            </h1>
-            <p className="text-body text-neutral-600">
-              {account.type.replace(/_/g, " ")}
-              {!account.onBudget && " · off budget"}
-              {account.closed && " · closed"}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div
-              className={
-                "text-h3 font-semibold sm:text-h2 " +
-                (account.balance < 0 ? "text-danger" : "text-success")
-              }
-            >
-              {formatMilliunits(account.balance, budget.currency)}
+    <ReconciliationProvider
+      accountId={account.id}
+      currency={budget.currency}
+      reconcileAccount={reconcileAccount}
+    >
+      <div className="space-y-300">
+        <div>
+          <Link
+            href="/accounts"
+            className="flex w-fit items-center gap-0.5 text-small font-medium text-brand-700 hover:underline"
+          >
+            <Icon name="arrow_back" /> Accounts
+          </Link>
+          <div className="mt-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+            <div>
+              <h1 className="text-h2 text-neutral-800 sm:text-h1">
+                {account.name}
+              </h1>
+              <p className="text-body text-neutral-600">
+                {account.type.replace(/_/g, " ")}
+                {!account.onBudget && " · off budget"}
+                {account.closed && " · closed"}
+              </p>
             </div>
-            <ReconcileButton
-              accountId={account.id}
-              balance={account.balance}
-              currency={budget.currency}
-              reconcileAccount={reconcileAccount}
-            />
+            <div className="flex items-center gap-3">
+              <div
+                className={
+                  "text-h3 font-semibold sm:text-h2 " +
+                  (account.balance < 0 ? "text-danger" : "text-success")
+                }
+              >
+                {formatMilliunits(account.balance, budget.currency)}
+              </div>
+              <ReconcileButton balance={account.balance} />
+            </div>
           </div>
         </div>
-      </div>
 
-      <TransactionsTable
-        transactions={transactions.map((t) => ({
-          id: t.id,
-          date: t.date.toISOString(),
-          payeeName: t.payee?.name ?? "",
-          categoryId: t.categoryId ?? "",
-          memo: t.memo ?? "",
-          amount: t.amount,
-          cleared: t.cleared,
-        }))}
-        totalCount={totalCount}
-        categoryGroups={categoryGroups}
-        payeeNames={payeeNames}
-        updateTransaction={updateTransaction}
-        deleteTransaction={deleteTransaction}
-        reconcileTransaction={reconcileTransaction}
-        unreconcileTransaction={unreconcileTransaction}
-        currency={budget.currency}
-      />
-    </div>
+        <TransactionsTable
+          transactions={transactions.map((t) => ({
+            id: t.id,
+            date: t.date.toISOString(),
+            payeeName: t.payee?.name ?? "",
+            categoryId: t.categoryId ?? "",
+            memo: t.memo ?? "",
+            amount: t.amount,
+            cleared: t.cleared,
+          }))}
+          totalCount={totalCount}
+          categoryGroups={categoryGroups}
+          payeeNames={payeeNames}
+          updateTransaction={updateTransaction}
+          deleteTransaction={deleteTransaction}
+          reconcileTransaction={reconcileTransaction}
+          unreconcileTransaction={unreconcileTransaction}
+          currency={budget.currency}
+          accountBalance={account.balance}
+        />
+      </div>
+    </ReconciliationProvider>
   );
 }
