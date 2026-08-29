@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { parseCSV } from "@/lib/csv";
+import { readImportFile } from "@/lib/spreadsheet";
 import {
   guessColumn,
   HEADER_HINTS,
@@ -56,9 +56,11 @@ function parseSplitAmount(inflowRaw: string, outflowRaw: string): number | null 
 /**
  * File Import (#35): a three-step modal (choose file → map columns →
  * preview/confirm) opened from the "File Import" button next to Add
- * Transaction. CSV only for v1 - the issue notes OFX/QFX/QIF as a possible
- * follow-up, but bank CSV exports are the common case and the column
- * mapping they need (headers vary by bank) doesn't apply to those anyway.
+ * Transaction. Accepts CSV and Excel (.xlsx) for v1 - the issue notes
+ * OFX/QFX/QIF as a possible follow-up, but those don't need the column
+ * mapping step this modal is built around. Legacy binary .xls isn't
+ * supported (see @/lib/spreadsheet) since the only npm-published parser
+ * for it ships with unpatched vulnerabilities.
  *
  * Parsing and column mapping happen entirely client-side (no server round
  * trip needed to try out a mapping); duplicate detection needs the
@@ -97,38 +99,40 @@ export function ImportTransactionsModal({
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  function handleFile(file: File) {
+  async function handleFile(file: File) {
     setFileError(null);
     setFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = () => {
-      const table = parseCSV(String(reader.result ?? ""));
-      if (table.length < 2) {
-        setFileError(
-          "That file doesn't look like a CSV with a header row and at least one transaction.",
-        );
-        return;
-      }
-      const [headerRow, ...rest] = table;
-      const hasInflowOutflow =
-        guessColumn(headerRow, HEADER_HINTS.inflow) !== null ||
-        guessColumn(headerRow, HEADER_HINTS.outflow) !== null;
+    let table: string[][];
+    try {
+      table = await readImportFile(file);
+    } catch {
+      setFileError("Couldn't read that file.");
+      return;
+    }
 
-      setHeaders(headerRow);
-      setDataRows(rest);
-      setMapping({
-        date: guessColumn(headerRow, HEADER_HINTS.date),
-        payee: guessColumn(headerRow, HEADER_HINTS.payee),
-        memo: guessColumn(headerRow, HEADER_HINTS.memo),
-        amountMode: hasInflowOutflow ? "split" : "single",
-        amount: guessColumn(headerRow, HEADER_HINTS.amount),
-        inflow: guessColumn(headerRow, HEADER_HINTS.inflow),
-        outflow: guessColumn(headerRow, HEADER_HINTS.outflow),
-      });
-      setStep("mapping");
-    };
-    reader.onerror = () => setFileError("Couldn't read that file.");
-    reader.readAsText(file);
+    if (table.length < 2) {
+      setFileError(
+        "That file doesn't look like it has a header row and at least one transaction.",
+      );
+      return;
+    }
+    const [headerRow, ...rest] = table;
+    const hasInflowOutflow =
+      guessColumn(headerRow, HEADER_HINTS.inflow) !== null ||
+      guessColumn(headerRow, HEADER_HINTS.outflow) !== null;
+
+    setHeaders(headerRow);
+    setDataRows(rest);
+    setMapping({
+      date: guessColumn(headerRow, HEADER_HINTS.date),
+      payee: guessColumn(headerRow, HEADER_HINTS.payee),
+      memo: guessColumn(headerRow, HEADER_HINTS.memo),
+      amountMode: hasInflowOutflow ? "split" : "single",
+      amount: guessColumn(headerRow, HEADER_HINTS.amount),
+      inflow: guessColumn(headerRow, HEADER_HINTS.inflow),
+      outflow: guessColumn(headerRow, HEADER_HINTS.outflow),
+    });
+    setStep("mapping");
   }
 
   function buildPreview(): PreviewRow[] {
@@ -301,19 +305,23 @@ export function ImportTransactionsModal({
           {step === "select" && (
             <div className="space-y-3">
               <p className="text-body text-neutral-600">
-                Choose a CSV file exported from your bank. You&#39;ll be able to
-                match its columns and review every row before anything is
-                imported.
+                Choose a CSV or Excel (.xlsx) file exported from your bank.
+                You&#39;ll be able to match its columns and review every row
+                before anything is imported.
               </p>
               <input
                 type="file"
-                accept=".csv,text/csv"
+                accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) handleFile(file);
                 }}
                 className="block w-full text-body file:mr-3 file:rounded file:border-0 file:bg-brand-700 file:px-3 file:py-1.5 file:text-small file:font-medium file:text-white hover:file:bg-brand-800"
               />
+              <p className="text-small text-neutral-600">
+                Legacy .xls files aren&#39;t supported yet - re-save as .xlsx or
+                CSV first.
+              </p>
               {fileError && (
                 <p className="text-small text-danger">{fileError}</p>
               )}
