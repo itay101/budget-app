@@ -13,6 +13,7 @@ import { ReconcileButton } from "@/components/ReconcileButton";
 import { ReconciliationProvider } from "@/components/ReconciliationContext";
 import { Icon } from "@/components/Icon";
 import {
+  createTransaction,
   updateTransaction,
   deleteTransaction,
   reconcileAccount,
@@ -107,12 +108,14 @@ export default async function AccountPage({
           totalCount={totalCount}
           categoryGroups={categoryGroups}
           payeeNames={payeeNames}
+          createTransaction={createTransaction}
           updateTransaction={updateTransaction}
           deleteTransaction={deleteTransaction}
           reconcileTransaction={reconcileTransaction}
           unreconcileTransaction={unreconcileTransaction}
           currency={budget.currency}
           accountBalance={account.balance}
+          accountId={account.id}
         />
       </div>
     </ReconciliationProvider>

@@ -66,6 +66,73 @@ export async function createAccount(formData: FormData) {
 }
 
 /**
+ * Creates a new transaction on an account (#34) - the manual counterpart to
+ * createAccount's "Starting Balance" row. Same shape as the fields
+ * updateTransaction accepts (date/payeeName/categoryId/memo/amount), but all
+ * required up front since there's no existing row to fall back on, and it
+ * always increments the owning account's cached `balance` by the full
+ * entered amount rather than a before/after delta.
+ */
+export async function createTransaction(formData: FormData) {
+  const accountId = String(formData.get("accountId") ?? "");
+  if (!accountId) {
+    throw new Error("accountId is required");
+  }
+
+  const dateInput = String(formData.get("date") ?? "");
+  if (!dateInput) {
+    throw new Error("Date is required");
+  }
+
+  const account = await prisma.account.findUniqueOrThrow({
+    where: { id: accountId },
+    select: { budgetId: true },
+  });
+
+  const payeeName = String(formData.get("payeeName") ?? "").trim();
+  let payeeId: string | null = null;
+  if (payeeName) {
+    const existing = await prisma.payee.findFirst({
+      where: { budgetId: account.budgetId, name: payeeName },
+    });
+    payeeId = existing
+      ? existing.id
+      : (
+          await prisma.payee.create({
+            data: { budgetId: account.budgetId, name: payeeName },
+          })
+        ).id;
+  }
+
+  const categoryId = String(formData.get("categoryId") ?? "") || null;
+  const memo = String(formData.get("memo") ?? "").trim() || null;
+  const amount = numberToMilliunits(Number(formData.get("amount")) || 0);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.transaction.create({
+      data: {
+        accountId,
+        payeeId,
+        categoryId,
+        date: new Date(dateInput),
+        amount,
+        memo,
+      },
+    });
+
+    await tx.account.update({
+      where: { id: accountId },
+      data: { balance: { increment: amount } },
+    });
+  });
+
+  revalidatePath(`/accounts/${accountId}`);
+  revalidatePath("/accounts/all");
+  revalidatePath("/accounts");
+  revalidatePath("/budget");
+}
+
+/**
  * Updates one or more fields of a transaction. Each editable cell in a
  * transaction table (single-account or all-accounts) commits
  * independently — only the fields present in `formData` are touched,
