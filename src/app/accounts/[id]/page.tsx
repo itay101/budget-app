@@ -57,7 +57,7 @@ export default async function AccountPage({
           <div
             className={
               "text-h3 font-semibold sm:text-h2 " +
-              (account.balance < 0 ? "text-danger" : "text-neutral-800")
+              (account.balance < 0 ? "text-danger" : "text-success")
             }
           >
             {formatMilliunits(account.balance, budget.currency)}

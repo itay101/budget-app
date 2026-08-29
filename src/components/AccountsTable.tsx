@@ -138,7 +138,7 @@ function AccountRow({
         href={`/accounts/${account.id}`}
         className={
           "col-span-2 text-right font-medium hover:underline md:col-span-1 " +
-          (account.balance < 0 ? "text-danger" : "text-neutral-800")
+          (account.balance < 0 ? "text-danger" : "text-success")
         }
       >
         {formatMilliunits(account.balance, currency)}
