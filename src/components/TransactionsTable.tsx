@@ -17,6 +17,12 @@ import { MemoFilter } from "@/components/MemoFilter";
 type CategoryOption = { id: string; name: string };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
 
+// The payee name createAccount uses for a nonzero starting balance (see
+// src/app/accounts/actions.ts). Identifying a row this way - rather than a
+// dedicated column - matches how it's created; these rows aren't real
+// spending, so they can't be assigned a category.
+const STARTING_BALANCE_PAYEE = "Starting Balance";
+
 type TransactionRowData = {
   id: string;
   date: string; // ISO string
@@ -344,6 +350,7 @@ function TransactionRow({
 
   const categoryName = categoryNameFor(categoryGroups, committed.categoryId);
   const summaryAmount = amountFromDraft(committed);
+  const isStartingBalance = transaction.payeeName === STARTING_BALANCE_PAYEE;
 
   return (
     <div
@@ -444,22 +451,31 @@ function TransactionRow({
           <label className="mb-1 block text-small text-neutral-600 md:hidden">
             Category
           </label>
-          <select
-            value={draft.categoryId}
-            onChange={(e) => patch({ categoryId: e.target.value })}
-            className={inputClass}
-          >
-            <option value="">Uncategorized</option>
-            {categoryGroups.map((group) => (
-              <optgroup key={group.id} label={group.name}>
-                {group.categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+          {isStartingBalance ? (
+            <div
+              className={inputClass + " text-neutral-400"}
+              title="Starting balance can't be categorized"
+            >
+              Uncategorized
+            </div>
+          ) : (
+            <select
+              value={draft.categoryId}
+              onChange={(e) => patch({ categoryId: e.target.value })}
+              className={inputClass}
+            >
+              <option value="">Uncategorized</option>
+              {categoryGroups.map((group) => (
+                <optgroup key={group.id} label={group.name}>
+                  {group.categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          )}
         </div>
 
         <div className="col-span-2 md:col-span-1">
