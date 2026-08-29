@@ -161,6 +161,25 @@ export function TransactionsTable({
     });
   }, [transactions, dateFrom, dateTo, categoryFilter, flowFilter, memoFilter]);
 
+  // Whether any of the four filters above is currently narrowing the list -
+  // drives both the "Clear filters" button and the results summary below
+  // the table.
+  const hasActiveFilters =
+    dateFrom !== "" ||
+    dateTo !== "" ||
+    categoryFilter !== "" ||
+    flowFilter !== "all" ||
+    memoFilter !== "";
+
+  function clearAllFilters() {
+    setDateFrom("");
+    setDateTo("");
+    setActivePreset(null);
+    setCategoryFilter("");
+    setFlowFilter("all");
+    setMemoFilter("");
+  }
+
   function handlePresetChange(preset: DateRangePreset) {
     const range = presetDateRange(preset);
     setDateFrom(range.from);
@@ -193,8 +212,21 @@ export function TransactionsTable({
   return (
     <div className="space-y-2">
       {/* Filter bar: memo/payee search (#22), category (#20), flow (#21),
-          and date range (#19), all in one row aligned to the right. */}
+          and date range (#19), all in one row aligned to the right. A
+          "Clear filters" button appears whenever any of them is active,
+          both as the indicator that the list is currently filtered and as
+          the one-click way to reset all four at once. */}
       <div className="flex flex-wrap items-center justify-end gap-2">
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            className="flex items-center gap-1 rounded border border-neutral-200 px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+          >
+            <Icon name="filter_alt_off" className="text-[1.1em]" />
+            Clear filters
+          </button>
+        )}
         <MemoFilter value={memoFilter} onChange={setMemoFilter} />
         <CategoryFilter
           categoryGroups={categoryGroups}
@@ -266,6 +298,24 @@ export function TransactionsTable({
           </div>
         )}
       </div>
+
+      {/* Result summary + a second "Clear filters" affordance at the end of
+          the table, so it's still in reach after scrolling a long list. */}
+      {hasActiveFilters && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-small text-neutral-600">
+          <span>
+            Showing {filteredTransactions.length} of {transactions.length}{" "}
+            transaction{transactions.length === 1 ? "" : "s"} · filters active
+          </span>
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            className="font-medium text-brand-700 hover:underline"
+          >
+            Clear filters
+          </button>
+        </div>
+      )}
     </div>
   );
 }
