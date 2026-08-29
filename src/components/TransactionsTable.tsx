@@ -12,6 +12,7 @@ import {
   DATE_RANGE_PRESETS,
   DateRangePreset,
   presetDateRange,
+  todayISODate,
 } from "@/lib/dateRange";
 import { FILTER_PARAMS } from "@/lib/transactionFilters";
 import { MoneyInput } from "@/components/MoneyInput";
@@ -64,6 +65,19 @@ function draftFrom(t: TransactionRowData): Draft {
   };
 }
 
+// The blank draft a new-transaction row (#34) starts from - today's date,
+// everything else empty, same shape TransactionRow already edits.
+function blankDraft(): Draft {
+  return {
+    date: todayISODate(),
+    payeeName: "",
+    categoryId: "",
+    memo: "",
+    inflow: "",
+    outflow: "",
+  };
+}
+
 // The signed milliunits amount a draft's inflow/outflow pair currently
 // represents (same "whichever side has a value wins" rule used when the
 // form is actually submitted) - used to show a single net amount in the
@@ -98,15 +112,22 @@ function formatGroupDate(iso: string): string {
 const inputClass =
   "w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-body hover:border-neutral-200 focus:border-brand-700 focus:bg-neutral-0 focus:outline-none focus:ring-1 focus:ring-brand-700";
 
+// The trailing column is icon-only actions (reconcile/kebab, plus
+// close/check while a row is dirty) rather than a labeled field, so it's
+// sized to just fit those buttons - not the ~150px a labeled column would
+// need - leaving the rest of the row to the fields above it. A row with
+// every action showing at once (dirty + unreconciled) wraps to a second
+// line here rather than widening the column for that transient case.
 const GRID_COLS_WITH_ACCOUNT =
-  "md:grid-cols-[130px_110px_1fr_1fr_1fr_100px_100px_150px]";
-const GRID_COLS = "md:grid-cols-[130px_1fr_1fr_1fr_100px_100px_150px]";
+  "md:grid-cols-[130px_110px_1fr_1fr_1fr_100px_100px_80px]";
+const GRID_COLS = "md:grid-cols-[130px_1fr_1fr_1fr_100px_100px_80px]";
 
 export function TransactionsTable({
   transactions,
   totalCount,
   categoryGroups,
   payeeNames,
+  createTransaction,
   updateTransaction,
   deleteTransaction,
   reconcileTransaction,
@@ -114,6 +135,7 @@ export function TransactionsTable({
   showAccount = false,
   currency = "USD",
   accountBalance,
+  accountId,
 }: {
   transactions: TransactionRowData[];
   // Unfiltered transaction count for the account/budget this table shows -
@@ -123,6 +145,10 @@ export function TransactionsTable({
   totalCount: number;
   categoryGroups: GroupOption[];
   payeeNames: string[];
+  // Only passed (together with `accountId`) on the single-account page
+  // (#34) - accounts/all has no single implicit account for a new
+  // transaction to land on, so "Add Transaction" doesn't render there.
+  createTransaction?: (formData: FormData) => Promise<void>;
   updateTransaction: (formData: FormData) => Promise<void>;
   deleteTransaction: (formData: FormData) => Promise<void>;
   reconcileTransaction: (formData: FormData) => Promise<void>;
@@ -134,8 +160,14 @@ export function TransactionsTable({
   // rendered above the table. Omitted on accounts/all, where "the account
   // total" isn't a single number and reconciliation doesn't apply.
   accountBalance?: number;
+  accountId?: string;
 }) {
   const gridCols = showAccount ? GRID_COLS_WITH_ACCOUNT : GRID_COLS;
+
+  // Whether the blank "Add Transaction" row is currently open above the
+  // list (#34). Only meaningful when createTransaction/accountId were
+  // passed in - the button that sets this is hidden otherwise.
+  const [addingNew, setAddingNew] = useState(false);
 
   const router = useRouter();
   const pathname = usePathname();
@@ -278,38 +310,54 @@ export function TransactionsTable({
         <ReconciliationBar balance={accountBalance} currency={currency} />
       )}
 
-      {/* Filter bar: memo/payee search (#22), category (#20), flow (#21),
-          and date range (#19), all in one row aligned to the right. A
-          "Clear filters" button appears whenever any of them is active,
+      {/* Toolbar: "Add Transaction" (#34) on the left, opening a blank
+          expanded row at the top of the table; the filter bar (memo/payee
+          search #22, category #20, flow #21, date range #19) on the right.
+          A "Clear filters" button appears whenever any filter is active,
           both as the indicator that the list is currently filtered and as
           the one-click way to reset all four at once. */}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {hasActiveFilters && (
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {createTransaction && accountId ? (
           <button
             type="button"
-            onClick={clearAllFilters}
-            className="flex items-center gap-1 rounded border border-neutral-200 px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+            onClick={() => setAddingNew(true)}
+            disabled={addingNew}
+            className="flex items-center gap-1 rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
           >
-            <Icon name="filter_alt_off" className="text-[1.1em]" />
-            Clear filters
+            <Icon name="add" className="text-[1.1em]" />
+            Add Transaction
           </button>
+        ) : (
+          <div />
         )}
-        <MemoFilter value={memoFilter} onChange={setMemoFilter} />
-        <CategoryFilter
-          categoryGroups={categoryGroups}
-          value={categoryFilter}
-          onChange={handleCategoryChange}
-        />
-        <FlowFilter value={flowFilter} onChange={handleFlowChange} />
-        <DateRangeFilter
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          activePreset={activePreset}
-          onPresetChange={handlePresetChange}
-          onDateFromChange={handleDateFromChange}
-          onDateToChange={handleDateToChange}
-          onClear={clearDateFilter}
-        />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="flex items-center gap-1 rounded border border-neutral-200 px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+            >
+              <Icon name="filter_alt_off" className="text-[1.1em]" />
+              Clear filters
+            </button>
+          )}
+          <MemoFilter value={memoFilter} onChange={setMemoFilter} />
+          <CategoryFilter
+            categoryGroups={categoryGroups}
+            value={categoryFilter}
+            onChange={handleCategoryChange}
+          />
+          <FlowFilter value={flowFilter} onChange={handleFlowChange} />
+          <DateRangeFilter
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            activePreset={activePreset}
+            onPresetChange={handlePresetChange}
+            onDateFromChange={handleDateFromChange}
+            onDateToChange={handleDateToChange}
+            onClear={clearDateFilter}
+          />
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-0">
@@ -331,6 +379,17 @@ export function TransactionsTable({
           <div className="text-right">Outflow</div>
           <div />
         </div>
+
+        {addingNew && createTransaction && accountId && (
+          <NewTransactionRow
+            accountId={accountId}
+            categoryGroups={categoryGroups}
+            createTransaction={createTransaction}
+            gridCols={gridCols}
+            currency={currency}
+            onClose={() => setAddingNew(false)}
+          />
+        )}
 
         {transactions.map((t) => {
           const dateKey = t.date.slice(0, 10);
@@ -724,7 +783,7 @@ function TransactionRow({
             title="Collapse"
             className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
           >
-            <Icon name="expand_less" label="Collapse" />
+            <Icon name="expand_less" label="Collapse" className="text-[1.1em]" />
           </button>
         </div>
 
@@ -841,7 +900,7 @@ function TransactionRow({
                 title="Cancel"
                 className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
               >
-                <Icon name="close" label="Cancel" />
+                <Icon name="close" label="Cancel" className="text-[1.1em]" />
               </button>
               <button
                 type="button"
@@ -850,7 +909,11 @@ function TransactionRow({
                 title="Save"
                 className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
               >
-                {pending ? "…" : <Icon name="check" label="Save" />}
+                {pending ? (
+                  "…"
+                ) : (
+                  <Icon name="check" label="Save" className="text-[1.1em]" />
+                )}
               </button>
             </>
           )}
@@ -862,7 +925,11 @@ function TransactionRow({
               title="Un-reconcile"
               className="rounded p-1 text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
             >
-              <Icon name="lock" label="Un-reconcile transaction" />
+              <Icon
+                name="lock"
+                label="Un-reconcile transaction"
+                className="text-[1.1em]"
+              />
             </button>
           ) : (
             <button
@@ -872,7 +939,11 @@ function TransactionRow({
               title="Reconcile"
               className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 disabled:opacity-50"
             >
-              <Icon name="lock_open" label="Reconcile transaction" />
+              <Icon
+                name="lock_open"
+                label="Reconcile transaction"
+                className="text-[1.1em]"
+              />
             </button>
           )}
           <button
@@ -883,7 +954,11 @@ function TransactionRow({
             title="More actions"
             className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 disabled:opacity-50"
           >
-            <Icon name="more_vert" label="More actions" />
+            <Icon
+              name="more_vert"
+              label="More actions"
+              className="text-[1.1em]"
+            />
           </button>
           {menuOpen &&
             menuPosition &&
@@ -902,12 +977,214 @@ function TransactionRow({
                   onClick={handleDelete}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-small text-danger hover:bg-danger/10"
                 >
-                  <Icon name="delete" />
+                  <Icon name="delete" className="text-[1.1em]" />
                   Delete
                 </button>
               </div>,
               document.body,
             )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The blank, already-expanded row opened by "Add Transaction" (#34) - shown
+ * at the top of the list while `addingNew`. Reuses TransactionRow's
+ * date/payee/category/memo/inflow/outflow fields (same `Draft` shape,
+ * `MoneyInput`, payee `datalist`, category `optgroup`s) rather than a
+ * separate editor, but there's no committed transaction yet: no
+ * mobile-summary toggle, reconcile, or delete - just Cancel (discard),
+ * Save (commit + close), and "Save and add another" (commit + stay open on
+ * a fresh blank draft) for entering several transactions back-to-back.
+ */
+function NewTransactionRow({
+  accountId,
+  categoryGroups,
+  createTransaction,
+  gridCols,
+  currency,
+  onClose,
+}: {
+  accountId: string;
+  categoryGroups: GroupOption[];
+  createTransaction: (formData: FormData) => Promise<void>;
+  gridCols: string;
+  currency: string;
+  onClose: () => void;
+}) {
+  const [pending, startTransition] = useTransition();
+  const [draft, setDraft] = useState<Draft>(blankDraft);
+
+  function patch(fields: Partial<Draft>) {
+    setDraft((d) => ({ ...d, ...fields }));
+  }
+
+  function formDataFromDraft() {
+    const inflowValue = Number(draft.inflow) || 0;
+    const outflowValue = Number(draft.outflow) || 0;
+    const amount =
+      inflowValue > 0 ? inflowValue : outflowValue ? -outflowValue : 0;
+
+    const formData = new FormData();
+    formData.set("accountId", accountId);
+    formData.set("date", draft.date);
+    formData.set("payeeName", draft.payeeName);
+    formData.set("categoryId", draft.categoryId);
+    formData.set("memo", draft.memo);
+    formData.set("amount", String(amount));
+    return formData;
+  }
+
+  function handleSave() {
+    const formData = formDataFromDraft();
+    startTransition(async () => {
+      await createTransaction(formData);
+      onClose();
+    });
+  }
+
+  function handleSaveAndAddAnother() {
+    const formData = formDataFromDraft();
+    startTransition(async () => {
+      await createTransaction(formData);
+      setDraft(blankDraft());
+    });
+  }
+
+  return (
+    <div className="border-b border-neutral-100 bg-brand-700/5 text-body">
+      <div
+        className={`grid grid-cols-2 gap-x-3 gap-y-2 px-200 py-3 md:grid md:items-center md:gap-2 md:py-1 ${gridCols}`}
+      >
+        <div className="col-span-2 md:col-span-1">
+          <label className="mb-1 block text-small text-neutral-600 md:hidden">
+            Date
+          </label>
+          <input
+            type="date"
+            value={draft.date}
+            onChange={(e) => patch({ date: e.target.value })}
+            className={inputClass}
+          />
+        </div>
+
+        <div className="col-span-2 md:col-span-1">
+          <label className="mb-1 block text-small text-neutral-600 md:hidden">
+            Payee
+          </label>
+          <input
+            type="text"
+            value={draft.payeeName}
+            list="payee-suggestions"
+            placeholder="Payee"
+            onChange={(e) => patch({ payeeName: e.target.value })}
+            className={inputClass}
+          />
+        </div>
+
+        <div className="col-span-2 md:col-span-1">
+          <label className="mb-1 block text-small text-neutral-600 md:hidden">
+            Category
+          </label>
+          <select
+            value={draft.categoryId}
+            onChange={(e) => patch({ categoryId: e.target.value })}
+            className={inputClass}
+          >
+            <option value="">Uncategorized</option>
+            {categoryGroups.map((group) => (
+              <optgroup key={group.id} label={group.name}>
+                {group.categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+
+        <div className="col-span-2 md:col-span-1">
+          <label className="mb-1 block text-small text-neutral-600 md:hidden">
+            Memo
+          </label>
+          <input
+            type="text"
+            value={draft.memo}
+            placeholder="Memo"
+            onChange={(e) => patch({ memo: e.target.value })}
+            className={inputClass}
+          />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-small text-neutral-600 md:hidden">
+            Inflow
+          </label>
+          <MoneyInput
+            currency={currency}
+            value={draft.inflow}
+            placeholder="0.00"
+            onChange={(e) => patch({ inflow: e.target.value, outflow: "" })}
+            className={inputClass + " text-right text-success"}
+          />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-small text-neutral-600 md:hidden">
+            Outflow
+          </label>
+          <MoneyInput
+            currency={currency}
+            value={draft.outflow}
+            placeholder="0.00"
+            onChange={(e) => patch({ outflow: e.target.value, inflow: "" })}
+            className={inputClass + " text-right text-danger"}
+          />
+        </div>
+      </div>
+
+      {/* Actions get their own row below the input fields rather than
+          squeezing into the table's narrow trailing column - unlike
+          TransactionRow's icon-only actions, "Save and add another" needs
+          the room. On desktop this row reuses gridCols and spans every
+          field column but the last (`[grid-column:1/-2]`) so the button
+          group's right edge lines up with Outflow's above it, instead of
+          drifting into the trailing column TransactionRow reserves for its
+          icon actions - which this row leaves empty. */}
+      <div
+        className={`flex border-t border-neutral-100 px-200 pb-3 pt-2 md:grid md:items-center md:gap-2 md:pb-2 md:pt-1 ${gridCols}`}
+      >
+        <div className="flex flex-1 flex-wrap justify-end gap-1 md:flex-none md:[grid-column:1/-2]">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={pending}
+            title="Cancel"
+            className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSaveAndAddAnother}
+            disabled={pending}
+            title="Save and add another"
+            className="rounded border border-brand-700 px-2 py-1 text-small font-medium text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
+          >
+            {pending ? "…" : "Save and add another"}
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={pending}
+            title="Save"
+            className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+          >
+            {pending ? "…" : "Save"}
+          </button>
         </div>
       </div>
     </div>
