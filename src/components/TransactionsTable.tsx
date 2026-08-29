@@ -1,16 +1,18 @@
 "use client";
 
-import { Fragment, useMemo, useState, useTransition } from "react";
+import { Fragment, useEffect, useRef, useState, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   formatMilliunits,
   milliunitsToNumber,
   numberToMilliunits,
 } from "@/lib/money";
-import { DateRangePreset, presetDateRange, todayISODate } from "@/lib/dateRange";
+import { DATE_RANGE_PRESETS, DateRangePreset, presetDateRange } from "@/lib/dateRange";
+import { FILTER_PARAMS } from "@/lib/transactionFilters";
 import { MoneyInput } from "@/components/MoneyInput";
 import { Icon } from "@/components/Icon";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
-import { CategoryFilter, UNCATEGORIZED } from "@/components/CategoryFilter";
+import { CategoryFilter } from "@/components/CategoryFilter";
 import { FlowFilter, FlowFilterValue } from "@/components/FlowFilter";
 import { MemoFilter } from "@/components/MemoFilter";
 
@@ -93,6 +95,7 @@ const GRID_COLS = "md:grid-cols-[130px_1fr_1fr_1fr_100px_100px_150px]";
 
 export function TransactionsTable({
   transactions,
+  totalCount,
   categoryGroups,
   payeeNames,
   updateTransaction,
@@ -101,6 +104,11 @@ export function TransactionsTable({
   currency = "USD",
 }: {
   transactions: TransactionRowData[];
+  // Unfiltered transaction count for the account/budget this table shows -
+  // used only for the "Showing X of Y" summary and to tell "no transactions
+  // at all" apart from "none match the filters" (#24: `transactions` itself
+  // now arrives already filtered by the server-side query).
+  totalCount: number;
   categoryGroups: GroupOption[];
   payeeNames: string[];
   updateTransaction: (formData: FormData) => Promise<void>;
@@ -110,56 +118,66 @@ export function TransactionsTable({
 }) {
   const gridCols = showAccount ? GRID_COLS_WITH_ACCOUNT : GRID_COLS;
 
-  // Date-range filter state. `dateFrom`/`dateTo` are the source of truth
-  // (empty string = no bound); `activePreset` just tracks which preset
-  // button, if any, produced the current range, so it can stay highlighted
-  // until the user edits From/To by hand.
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [activePreset, setActivePreset] = useState<DateRangePreset | null>(
-    null,
-  );
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
 
-  // Category filter state. "" = all categories, UNCATEGORIZED = transactions
-  // with no categoryId, otherwise a specific category id.
-  const [categoryFilter, setCategoryFilter] = useState("");
+  // The four filters (#19-#22) live in the URL rather than component state
+  // (see @/lib/transactionFilters) so the server-side query in
+  // accounts/[id]/page.tsx / accounts/all/page.tsx can be driven by the
+  // same params (#24) - `transactions` above already reflects them.
+  const dateFrom = searchParams.get(FILTER_PARAMS.dateFrom) ?? "";
+  const dateTo = searchParams.get(FILTER_PARAMS.dateTo) ?? "";
+  const rawPreset = searchParams.get(FILTER_PARAMS.preset);
+  const activePreset = DATE_RANGE_PRESETS.some((p) => p.key === rawPreset)
+    ? (rawPreset as DateRangePreset)
+    : null;
+  const categoryFilter = searchParams.get(FILTER_PARAMS.category) ?? "";
+  const rawDirection = searchParams.get(FILTER_PARAMS.direction);
+  const flowFilter: FlowFilterValue =
+    rawDirection === "inflow" || rawDirection === "outflow"
+      ? rawDirection
+      : "all";
+  const urlQuery = searchParams.get(FILTER_PARAMS.q) ?? "";
 
-  // Inflow/Outflow filter state (ticket #21). "all" is the default,
-  // unfiltered state; matches the existing Inflow/Outflow column split
-  // (positive amount = inflow, negative = outflow).
-  const [flowFilter, setFlowFilter] = useState<FlowFilterValue>("all");
+  // The memo/payee text filter (#22) keeps its own local state so typing
+  // feels instant, pushing into the URL on a short debounce instead of
+  // navigating on every keystroke like the other filters do.
+  const [memoFilter, setMemoFilterState] = useState(urlQuery);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    setMemoFilterState(urlQuery);
+  }, [urlQuery]);
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
-  // Free-text filter (ticket #22): case-insensitive substring match against
-  // memo or payee name. "" = no filter.
-  const [memoFilter, setMemoFilter] = useState("");
-
-  const filteredTransactions = useMemo(() => {
-    // Empty "to" defaults to today rather than "no upper bound".
-    const effectiveTo = dateTo || todayISODate();
-    const memoQuery = memoFilter.trim().toLowerCase();
-    return transactions.filter((t) => {
-      const dateKey = t.date.slice(0, 10);
-      if (dateFrom || dateTo) {
-        if (dateKey > effectiveTo) return false;
-        if (dateFrom && dateKey < dateFrom) return false;
-      }
-      if (categoryFilter === UNCATEGORIZED) {
-        if (t.categoryId) return false;
-      } else if (categoryFilter && t.categoryId !== categoryFilter) {
-        return false;
-      }
-      if (flowFilter === "inflow" && t.amount <= 0) return false;
-      if (flowFilter === "outflow" && t.amount >= 0) return false;
-      if (
-        memoQuery &&
-        !t.memo.toLowerCase().includes(memoQuery) &&
-        !t.payeeName.toLowerCase().includes(memoQuery)
-      ) {
-        return false;
-      }
-      return true;
+  // Merges `patch` into the current URL's search params (a null value
+  // deletes that param) and navigates, so the server component above
+  // re-fetches with the new filters. Wrapped in a transition so `isPending`
+  // can dim the table while the new query is in flight.
+  function updateParams(patch: Record<string, string | null>) {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === null || value === "") params.delete(key);
+      else params.set(key, value);
+    }
+    const qs = params.toString();
+    startTransition(() => {
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     });
-  }, [transactions, dateFrom, dateTo, categoryFilter, flowFilter, memoFilter]);
+  }
+
+  function setMemoFilter(value: string) {
+    setMemoFilterState(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      updateParams({ [FILTER_PARAMS.q]: value });
+    }, 300);
+  }
 
   // Whether any of the four filters above is currently narrowing the list -
   // drives both the "Clear filters" button and the results summary below
@@ -172,35 +190,57 @@ export function TransactionsTable({
     memoFilter !== "";
 
   function clearAllFilters() {
-    setDateFrom("");
-    setDateTo("");
-    setActivePreset(null);
-    setCategoryFilter("");
-    setFlowFilter("all");
-    setMemoFilter("");
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setMemoFilterState("");
+    updateParams({
+      [FILTER_PARAMS.dateFrom]: null,
+      [FILTER_PARAMS.dateTo]: null,
+      [FILTER_PARAMS.preset]: null,
+      [FILTER_PARAMS.category]: null,
+      [FILTER_PARAMS.direction]: null,
+      [FILTER_PARAMS.q]: null,
+    });
   }
 
   function handlePresetChange(preset: DateRangePreset) {
     const range = presetDateRange(preset);
-    setDateFrom(range.from);
-    setDateTo(range.to);
-    setActivePreset(preset);
+    updateParams({
+      [FILTER_PARAMS.dateFrom]: range.from,
+      [FILTER_PARAMS.dateTo]: range.to,
+      [FILTER_PARAMS.preset]: preset,
+    });
   }
 
   function handleDateFromChange(value: string) {
-    setDateFrom(value);
-    setActivePreset(null);
+    updateParams({
+      [FILTER_PARAMS.dateFrom]: value,
+      [FILTER_PARAMS.preset]: null,
+    });
   }
 
   function handleDateToChange(value: string) {
-    setDateTo(value);
-    setActivePreset(null);
+    updateParams({
+      [FILTER_PARAMS.dateTo]: value,
+      [FILTER_PARAMS.preset]: null,
+    });
   }
 
   function clearDateFilter() {
-    setDateFrom("");
-    setDateTo("");
-    setActivePreset(null);
+    updateParams({
+      [FILTER_PARAMS.dateFrom]: null,
+      [FILTER_PARAMS.dateTo]: null,
+      [FILTER_PARAMS.preset]: null,
+    });
+  }
+
+  function handleCategoryChange(value: string) {
+    updateParams({ [FILTER_PARAMS.category]: value });
+  }
+
+  function handleFlowChange(value: FlowFilterValue) {
+    updateParams({
+      [FILTER_PARAMS.direction]: value === "all" ? null : value,
+    });
   }
 
   // Consecutive transactions sharing a calendar day get one date-group
@@ -210,7 +250,11 @@ export function TransactionsTable({
   let lastDateKey: string | null = null;
 
   return (
-    <div className="space-y-2">
+    <div
+      className={
+        "space-y-2" + (isPending ? " opacity-60 transition-opacity" : "")
+      }
+    >
       {/* Filter bar: memo/payee search (#22), category (#20), flow (#21),
           and date range (#19), all in one row aligned to the right. A
           "Clear filters" button appears whenever any of them is active,
@@ -231,9 +275,9 @@ export function TransactionsTable({
         <CategoryFilter
           categoryGroups={categoryGroups}
           value={categoryFilter}
-          onChange={setCategoryFilter}
+          onChange={handleCategoryChange}
         />
-        <FlowFilter value={flowFilter} onChange={setFlowFilter} />
+        <FlowFilter value={flowFilter} onChange={handleFlowChange} />
         <DateRangeFilter
           dateFrom={dateFrom}
           dateTo={dateTo}
@@ -265,7 +309,7 @@ export function TransactionsTable({
           <div />
         </div>
 
-        {filteredTransactions.map((t) => {
+        {transactions.map((t) => {
           const dateKey = t.date.slice(0, 10);
           const showDateHeader = dateKey !== lastDateKey;
           lastDateKey = dateKey;
@@ -290,9 +334,9 @@ export function TransactionsTable({
           );
         })}
 
-        {filteredTransactions.length === 0 && (
+        {transactions.length === 0 && (
           <div className="px-200 py-300 text-body text-neutral-600">
-            {transactions.length === 0
+            {totalCount === 0
               ? "No transactions yet."
               : "No transactions match the selected filters."}
           </div>
@@ -304,8 +348,8 @@ export function TransactionsTable({
       {hasActiveFilters && (
         <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-small text-neutral-600">
           <span>
-            Showing {filteredTransactions.length} of {transactions.length}{" "}
-            transaction{transactions.length === 1 ? "" : "s"} · filters active
+            Showing {transactions.length} of {totalCount} transaction
+            {totalCount === 1 ? "" : "s"} · filters active
           </span>
           <button
             type="button"

@@ -4,6 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentBudget } from "@/lib/budget";
 import { formatMilliunits } from "@/lib/money";
 import { getTransactionEditOptions } from "@/lib/transactionOptions";
+import {
+  parseTransactionFilters,
+  transactionFiltersWhere,
+} from "@/lib/transactionFilters";
 import { TransactionsTable } from "@/components/TransactionsTable";
 import { Icon } from "@/components/Icon";
 import { updateTransaction, deleteTransaction } from "../actions";
@@ -12,8 +16,10 @@ export const dynamic = "force-dynamic";
 
 export default async function AccountPage({
   params,
+  searchParams,
 }: {
   params: { id: string };
+  searchParams: { [key: string]: string | string[] | undefined };
 }) {
   const budget = await getCurrentBudget();
 
@@ -25,14 +31,21 @@ export default async function AccountPage({
     notFound();
   }
 
-  const [transactions, { categoryGroups, payeeNames }] = await Promise.all([
-    prisma.transaction.findMany({
-      where: { accountId: account.id },
-      orderBy: { date: "desc" },
-      include: { payee: true, category: true },
-    }),
-    getTransactionEditOptions(budget.id),
-  ]);
+  // The four transactions-list filters (#19-#22) are pushed down into this
+  // `where` clause instead of being applied client-side (#24), so only the
+  // rows the current filters actually select are ever fetched.
+  const filters = parseTransactionFilters(searchParams);
+
+  const [transactions, totalCount, { categoryGroups, payeeNames }] =
+    await Promise.all([
+      prisma.transaction.findMany({
+        where: { accountId: account.id, ...transactionFiltersWhere(filters) },
+        orderBy: { date: "desc" },
+        include: { payee: true, category: true },
+      }),
+      prisma.transaction.count({ where: { accountId: account.id } }),
+      getTransactionEditOptions(budget.id),
+    ]);
 
   return (
     <div className="space-y-300">
@@ -74,6 +87,7 @@ export default async function AccountPage({
           memo: t.memo ?? "",
           amount: t.amount,
         }))}
+        totalCount={totalCount}
         categoryGroups={categoryGroups}
         payeeNames={payeeNames}
         updateTransaction={updateTransaction}
