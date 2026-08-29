@@ -27,7 +27,7 @@ export function ReconcileButton({
   function handleClick() {
     const proposed = formatMilliunits(balance, currency);
     const confirmed = window.confirm(
-      `Reconcile this account to ${proposed}? This marks every uncleared and cleared transaction as reconciled.`,
+      `Is ${proposed} the correct balance for this account? Reconciling will mark every transaction as reconciled.`,
     );
     if (!confirmed) {
       return;
