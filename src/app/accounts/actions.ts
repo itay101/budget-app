@@ -186,6 +186,33 @@ export async function deleteTransaction(formData: FormData) {
 }
 
 /**
+ * Reconciles an account: every transaction on it whose `cleared` isn't
+ * already `"RECONCILED"` is flipped to `"RECONCILED"`. This is the
+ * happy-path half of the Reconcile flow (#30) — the caller has already
+ * confirmed the account's current `balance` is correct, so there's nothing
+ * left to adjust, just the cleared status to stamp. The mismatch/gap
+ * tracking path (when the proposed amount is wrong) is a follow-up issue
+ * and reuses this same action once the balance is squared up first.
+ */
+export async function reconcileAccount(formData: FormData) {
+  const accountId = String(formData.get("accountId") ?? "");
+  if (!accountId) {
+    throw new Error("accountId is required");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.transaction.updateMany({
+      where: { accountId, cleared: { not: "RECONCILED" } },
+      data: { cleared: "RECONCILED" },
+    });
+  });
+
+  revalidatePath(`/accounts/${accountId}`);
+  revalidatePath("/accounts/all");
+  revalidatePath("/accounts");
+}
+
+/**
  * Updates one or more metadata fields of an account (name, type, on-budget,
  * closed) — each editable cell on the Accounts page commits independently,
  * same pattern as updateTransaction. Balance isn't editable here: it's

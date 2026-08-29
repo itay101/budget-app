@@ -9,8 +9,9 @@ import {
   transactionFiltersWhere,
 } from "@/lib/transactionFilters";
 import { TransactionsTable } from "@/components/TransactionsTable";
+import { ReconcileButton } from "@/components/ReconcileButton";
 import { Icon } from "@/components/Icon";
-import { updateTransaction, deleteTransaction } from "../actions";
+import { updateTransaction, deleteTransaction, reconcileAccount } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -67,13 +68,21 @@ export default async function AccountPage({
               {account.closed && " · closed"}
             </p>
           </div>
-          <div
-            className={
-              "text-h3 font-semibold sm:text-h2 " +
-              (account.balance < 0 ? "text-danger" : "text-success")
-            }
-          >
-            {formatMilliunits(account.balance, budget.currency)}
+          <div className="flex items-center gap-3">
+            <div
+              className={
+                "text-h3 font-semibold sm:text-h2 " +
+                (account.balance < 0 ? "text-danger" : "text-success")
+              }
+            >
+              {formatMilliunits(account.balance, budget.currency)}
+            </div>
+            <ReconcileButton
+              accountId={account.id}
+              balance={account.balance}
+              currency={budget.currency}
+              reconcileAccount={reconcileAccount}
+            />
           </div>
         </div>
       </div>
