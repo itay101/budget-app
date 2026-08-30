@@ -177,9 +177,11 @@ export function ImportTransactionsModal({
         : dateOrder;
 
     return dataRows.map((cells, i) => {
-      const cell = (index: number | null) =>
-        index !== null ? cleanCell(cells[index] ?? "") : "";
+      const rawCell = (index: number | null) =>
+        index !== null ? (cells[index] ?? "") : "";
+      const cell = (index: number | null) => cleanCell(rawCell(index));
 
+      const rawDate = rawCell(mapping.date);
       const date = parseImportDate(cell(mapping.date), resolvedDateOrder);
       const payeeName = cell(mapping.payee);
       const memo = cell(mapping.memo);
@@ -189,8 +191,29 @@ export function ImportTransactionsModal({
           : parseSplitAmount(cell(mapping.inflow), cell(mapping.outflow));
 
       let error: string | null = null;
-      if (!date) error = "Invalid or missing date";
-      else if (amount === null) error = "Invalid or missing amount";
+      if (!date) {
+        error = "Invalid or missing date";
+        // A date that fails to parse despite looking fine on screen is
+        // exactly the failure mode an invisible character or a Unicode
+        // look-alike produces (see cleanCell) - neither shows up in a
+        // screenshot, so logging the exact codepoints here means that
+        // class of bug never again has to be diagnosed by guessing from
+        // one. Only logs when there's something to see: a genuinely blank
+        // cell isn't a mystery.
+        if (typeof window !== "undefined" && rawDate) {
+          console.warn(
+            `[File Import] row ${i + 1}: Date column didn't parse`,
+            {
+              raw: rawDate,
+              rawCodePoints: Array.from(rawDate, (c) =>
+                "U+" + c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0"),
+              ),
+              cleaned: cell(mapping.date),
+              order: resolvedDateOrder,
+            },
+          );
+        }
+      } else if (amount === null) error = "Invalid or missing amount";
 
       return {
         rowIndex: i + 1,
