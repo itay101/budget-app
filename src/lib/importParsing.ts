@@ -14,18 +14,37 @@ export type DateOrder = "MDY" | "DMY";
 // ones that look purely numeric. A cell can display as "09-08-2026" with
 // one of these sitting between the digits and a regex expecting a plain
 // digit there fails to match, even though nothing looks wrong on screen.
-// Stripped before any format check so File Import's parsing isn't fooled
-// by formatting the file's own author never intended to be "content".
-// Covers: zero-width space/non-joiner/joiner, left/right-to-left mark,
+// Written as \u escapes rather than the literal characters themselves -
+// pasting invisible characters directly into source is exactly the kind
+// of thing that's impossible to verify by looking at it. Covers:
+// zero-width space/non-joiner/joiner, left/right-to-left mark,
 // left/right-to-left embedding/override, pop directional formatting,
 // left/right-to-left/first-strong isolate, pop directional isolate, and
 // the zero-width no-break space (byte-order mark).
 const INVISIBLE_FORMATTING =
   /[​-‏‪-‮⁦-⁩﻿]/g;
 
-/** Strips invisible bidi/zero-width formatting characters (see above) and trims. */
+// Unicode dash/hyphen look-alikes - render pixel-identical (or nearly so)
+// to a plain ASCII hyphen "-" in most fonts, so "09-08-2026" can be
+// visually indistinguishable from "09–08–2026" (en dashes) in a
+// screenshot while failing every hyphen-only regex. Excel/RTL export tools
+// substitute these surprisingly often - the Hebrew maqaf (U+05BE)
+// especially, since it's the "correct" Hebrew-typography hyphen.
+const DASH_LOOKALIKES =
+  /[־‐-―−﹘﹣－]/g;
+
+/**
+ * Strips invisible bidi/zero-width formatting characters and normalizes
+ * dash look-alikes to a plain ASCII hyphen (see above), then trims. Every
+ * cell value File Import parses (dates, amounts, header text) goes through
+ * this first, since a raw cell's exact bytes can't be trusted to be what
+ * they visually appear to be.
+ */
 export function cleanCell(raw: string): string {
-  return raw.replace(INVISIBLE_FORMATTING, "").trim();
+  return raw
+    .replace(INVISIBLE_FORMATTING, "")
+    .replace(DASH_LOOKALIKES, "-")
+    .trim();
 }
 
 // Matches a two-component-plus-year date with any of the separators real
@@ -33,7 +52,8 @@ export function cleanCell(raw: string): string {
 // aren't consistent about this, and unlike the day/month order itself, the
 // separator character carries no information worth preserving, so one
 // regex handles all three rather than needing a separate format per
-// separator.
+// separator. Cell text is always run through cleanCell first, so this only
+// ever needs to match the plain ASCII separators cleanCell normalizes to.
 const DELIMITED_DATE = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/;
 
 /**
