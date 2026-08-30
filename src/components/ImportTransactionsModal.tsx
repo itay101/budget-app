@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { readImportFile } from "@/lib/spreadsheet";
 import {
+  cleanCell,
   detectDateOrder,
   guessColumn,
   guessHeaderRowIndex,
@@ -177,7 +178,7 @@ export function ImportTransactionsModal({
 
     return dataRows.map((cells, i) => {
       const cell = (index: number | null) =>
-        index !== null ? (cells[index] ?? "").trim() : "";
+        index !== null ? cleanCell(cells[index] ?? "") : "";
 
       const date = parseImportDate(cell(mapping.date), resolvedDateOrder);
       const payeeName = cell(mapping.payee);

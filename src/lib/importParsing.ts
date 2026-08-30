@@ -8,6 +8,26 @@
 
 export type DateOrder = "MDY" | "DMY";
 
+// Unicode bidi formatting/zero-width characters - invisible in a browser or
+// a spreadsheet app, but very commonly embedded by Excel in RTL-locale
+// exports (Hebrew, Arabic) right inside otherwise-plain cells, including
+// ones that look purely numeric. A cell can display as "09-08-2026" with
+// one of these sitting between the digits and a regex expecting a plain
+// digit there fails to match, even though nothing looks wrong on screen.
+// Stripped before any format check so File Import's parsing isn't fooled
+// by formatting the file's own author never intended to be "content".
+// Covers: zero-width space/non-joiner/joiner, left/right-to-left mark,
+// left/right-to-left embedding/override, pop directional formatting,
+// left/right-to-left/first-strong isolate, pop directional isolate, and
+// the zero-width no-break space (byte-order mark).
+const INVISIBLE_FORMATTING =
+  /[​-‏‪-‮⁦-⁩﻿]/g;
+
+/** Strips invisible bidi/zero-width formatting characters (see above) and trims. */
+export function cleanCell(raw: string): string {
+  return raw.replace(INVISIBLE_FORMATTING, "").trim();
+}
+
 // Matches a two-component-plus-year date with any of the separators real
 // exports actually use ("21/8/2026", "21-8-2026", "21.8.2026") - banks
 // aren't consistent about this, and unlike the day/month order itself, the
@@ -30,7 +50,7 @@ export function parseImportDate(
   raw: string,
   order: DateOrder = "MDY",
 ): string | null {
-  const trimmed = raw.trim();
+  const trimmed = cleanCell(raw);
   if (!trimmed) return null;
 
   const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -64,7 +84,7 @@ export function parseImportDate(
  */
 export function detectDateOrder(values: string[]): DateOrder {
   for (const raw of values) {
-    const delimited = raw.trim().match(DELIMITED_DATE);
+    const delimited = cleanCell(raw).match(DELIMITED_DATE);
     if (!delimited) continue;
     const a = Number(delimited[1]);
     const b = Number(delimited[2]);
@@ -91,7 +111,7 @@ function isValidDate(year: string, month: string, day: string): boolean {
  * some exports use that instead of a leading "-" for a debit.
  */
 export function parseImportAmount(raw: string): number | null {
-  const trimmed = raw.trim();
+  const trimmed = cleanCell(raw);
   if (!trimmed) return null;
 
   const negativeParens = /^\(.*\)$/.test(trimmed);
@@ -150,7 +170,7 @@ const HEADER_HINTS = {
 
 /** Index of the first header matching one of `hints`, or null. */
 export function guessColumn(headers: string[], hints: readonly string[]): number | null {
-  const lower = headers.map((h) => h.trim().toLowerCase());
+  const lower = headers.map((h) => cleanCell(h).toLowerCase());
   for (const hint of hints) {
     const index = lower.findIndex((h) => h.includes(hint));
     if (index !== -1) return index;
