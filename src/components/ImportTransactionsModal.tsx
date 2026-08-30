@@ -445,8 +445,8 @@ export function ImportTransactionsModal({
                     Date format
                   </label>
                   <p className="mb-2 text-small text-neutral-600">
-                    Only matters for dates written as e.g. 03/08/2026 -
-                    ambiguous between day and month. ISO dates
+                    Only matters for dates written as e.g. 03/08/2026 or
+                    03-08-2026 - ambiguous between day and month. ISO dates
                     (2026-08-03) don&#39;t need this.
                   </p>
                   <div className="flex gap-1 text-small">

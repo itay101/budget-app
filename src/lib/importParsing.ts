@@ -8,15 +8,23 @@
 
 export type DateOrder = "MDY" | "DMY";
 
+// Matches a two-component-plus-year date with any of the separators real
+// exports actually use ("21/8/2026", "21-8-2026", "21.8.2026") - banks
+// aren't consistent about this, and unlike the day/month order itself, the
+// separator character carries no information worth preserving, so one
+// regex handles all three rather than needing a separate format per
+// separator.
+const DELIMITED_DATE = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/;
+
 /**
  * Parses a date cell into an ISO "yyyy-mm-dd" string, or null if the cell
  * doesn't match a format File Import understands. Supports ISO
- * ("2026-08-21", optionally with a time component) and slash dates
- * ("8/21/2026" or "21/8/2026") - `order` says which side of a slash date
- * is the month vs the day, since that's not decidable from a single cell
- * (see detectDateOrder, which infers it from a whole column of cells and
- * is what File Import actually drives this from). Defaults to MDY (US)
- * for a bare call with no column context to infer from.
+ * ("2026-08-21", optionally with a time component) and delimited dates
+ * ("8/21/2026", "21-8-2026", "21.8.2026") - `order` says which side of a
+ * delimited date is the month vs the day, since that's not decidable from
+ * a single cell (see detectDateOrder, which infers it from a whole column
+ * of cells and is what File Import actually drives this from). Defaults to
+ * MDY (US) for a bare call with no column context to infer from.
  */
 export function parseImportDate(
   raw: string,
@@ -31,9 +39,9 @@ export function parseImportDate(
     return isValidDate(year, month, day) ? `${year}-${month}-${day}` : null;
   }
 
-  const slash = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
-  if (slash) {
-    const [, a, b, yRaw] = slash;
+  const delimited = trimmed.match(DELIMITED_DATE);
+  if (delimited) {
+    const [, a, b, yRaw] = delimited;
     const year = yRaw.length === 2 ? `20${yRaw}` : yRaw;
     const [monthRaw, dayRaw] = order === "DMY" ? [b, a] : [a, b];
     const month = monthRaw.padStart(2, "0");
@@ -45,20 +53,21 @@ export function parseImportDate(
 }
 
 /**
- * Infers whether a column of slash-formatted dates is month-first (MDY,
- * the US convention parseImportDate defaulted to exclusively before this)
- * or day-first (DMY, what most non-US bank exports use) by looking for a
- * value only one order could produce: a first or second component over
- * 12, which can't be a month. A column where every date's day and month
- * both happen to be <=12 is genuinely ambiguous from the data alone and
- * falls back to MDY, matching File Import's original assumption.
+ * Infers whether a column of delimited dates (see DELIMITED_DATE) is
+ * month-first (MDY, the US convention parseImportDate defaulted to
+ * exclusively before this) or day-first (DMY, what most non-US bank
+ * exports use) by looking for a value only one order could produce: a
+ * first or second component over 12, which can't be a month. A column
+ * where every date's day and month both happen to be <=12 is genuinely
+ * ambiguous from the data alone and falls back to MDY, matching File
+ * Import's original assumption.
  */
 export function detectDateOrder(values: string[]): DateOrder {
   for (const raw of values) {
-    const slash = raw.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
-    if (!slash) continue;
-    const a = Number(slash[1]);
-    const b = Number(slash[2]);
+    const delimited = raw.trim().match(DELIMITED_DATE);
+    if (!delimited) continue;
+    const a = Number(delimited[1]);
+    const b = Number(delimited[2]);
     if (a > 12) return "DMY";
     if (b > 12) return "MDY";
   }
