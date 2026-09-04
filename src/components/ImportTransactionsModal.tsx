@@ -103,15 +103,15 @@ export function ImportTransactionsModal({
   // originally did. Independent of `mapping` (not reset when the header
   // row changes) since it isn't derived from the header row.
   const [dateOrder, setDateOrder] = useState<"auto" | DateOrder>("auto");
-  // Whether to negate every parsed amount before it's created as a
-  // transaction. Defaults on for a Credit Card account: bank statement
-  // exports commonly report a "charge amount" column as a plain positive
-  // number for a purchase, even though a purchase on a credit card is an
-  // outflow (it increases what's owed) - the same "negative = outflow"
-  // convention every other amount in this app already uses. Independent of
-  // `mapping` (not reset when the header row changes) since it isn't
-  // derived from the header row, same as dateOrder above.
-  const [flipSign, setFlipSign] = useState(accountType === "CREDIT_CARD");
+  // Every single-column amount is negated automatically for a Credit Card
+  // account, no user control - bank statement exports commonly report a
+  // "charge amount" column as a plain positive number for a purchase, even
+  // though a purchase on a credit card is an outflow (it increases what's
+  // owed), the same "negative = outflow" convention every other amount in
+  // this app already uses. Doesn't apply in split Inflow/Outflow mode:
+  // those columns already carry explicit direction, so flipping there
+  // would turn a refund into a charge instead of fixing anything.
+  const flipSign = accountType === "CREDIT_CARD";
   const [mapping, setMapping] = useState<Mapping>({
     date: null,
     payee: null,
@@ -201,10 +201,14 @@ export function ImportTransactionsModal({
         mapping.amountMode === "single"
           ? parseSingleAmount(cell(mapping.amount))
           : parseSplitAmount(cell(mapping.inflow), cell(mapping.outflow));
+      // Flip only applies in single-column mode: separate Inflow/Outflow
+      // columns already carry explicit direction (that's the whole point
+      // of mapping them separately), so flipping there would turn a
+      // refund into a charge instead of fixing anything.
       const amount =
         parsedAmount === null
           ? null
-          : flipSign
+          : flipSign && mapping.amountMode === "single"
             ? -parsedAmount
             : parsedAmount;
 
@@ -572,25 +576,18 @@ export function ImportTransactionsModal({
                   </div>
                 )}
 
-                <label className="mt-2 flex items-start gap-2 text-small text-neutral-700">
-                  <input
-                    type="checkbox"
-                    checked={flipSign}
-                    onChange={(e) => setFlipSign(e.target.checked)}
-                    className="mt-0.5"
-                  />
-                  <span>
-                    Flip sign (positive amounts become outflows)
-                    {accountType === "CREDIT_CARD" && (
-                      <span className="text-neutral-600">
-                        {" "}
-                        - on by default for a credit card, since a
-                        statement&#39;s charge amount is usually a plain
-                        positive number even though it&#39;s money owed.
-                      </span>
-                    )}
-                  </span>
-                </label>
+                {flipSign && mapping.amountMode === "single" && (
+                  <p className="mt-2 flex items-start gap-1.5 text-small text-neutral-600">
+                    <Icon
+                      name="info"
+                      className="mt-0.5 shrink-0 text-[1.1em]"
+                    />
+                    This account is a credit card, so amounts are
+                    automatically flipped (positive → outflow, negative →
+                    inflow) - a statement&#39;s charge amount is usually a
+                    plain positive number even though it&#39;s money owed.
+                  </p>
+                )}
               </div>
             </div>
           )}
