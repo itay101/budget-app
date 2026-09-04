@@ -17,6 +17,10 @@ import { formatMilliunits, numberToMilliunits } from "@/lib/money";
 import { Icon } from "@/components/Icon";
 import type { ImportRow } from "@/app/accounts/actions";
 import { isDebtAccountType, type AccountType } from "@/lib/accountTypes";
+import {
+  loadImportMapping,
+  saveImportMapping,
+} from "@/lib/importMappingPreferences";
 
 type Step = "select" | "mapping" | "preview";
 type AmountMode = "single" | "split";
@@ -72,6 +76,11 @@ function parseSplitAmount(inflowRaw: string, outflowRaw: string): number | null 
  * account's existing transactions, so that's the one server call between
  * the mapping and preview steps. Nothing is written to the database until
  * the user reviews the preview and clicks Import.
+ *
+ * The mapping step's column choices, amount mode, and date format are
+ * remembered per account (in localStorage, see
+ * @/lib/importMappingPreferences) and pre-filled next time this account
+ * is imported into, on top of the usual header-guessing heuristics.
  */
 export function ImportTransactionsModal({
   accountId,
@@ -133,23 +142,40 @@ export function ImportTransactionsModal({
   const headers = rawTable[headerRowIndex] ?? [];
   const dataRows = rawTable.slice(headerRowIndex + 1);
 
+  // Finds the header whose text matches `name` (case/whitespace
+  // insensitive). A blank saved name never matches a blank header here -
+  // that would just pair up two unrelated unlabeled columns.
+  function findHeaderIndex(headerRow: string[], name: string | null | undefined) {
+    const target = name?.trim().toLowerCase();
+    if (!target) return null;
+    const i = headerRow.findIndex((h) => h.trim().toLowerCase() === target);
+    return i === -1 ? null : i;
+  }
+
   // Re-derives the column mapping from whichever row is currently marked
   // as the header - called on file load (with the guessed index) and
-  // whenever the user picks a different header row.
+  // whenever the user picks a different header row. Prefers this
+  // account's last saved mapping (matched by header name, so it still
+  // applies if a later export reorders or adds columns), falling back to
+  // the header-guessing heuristics for anything the saved mapping doesn't
+  // account for - a first import, or a column this file doesn't have.
   function applyHeaderRow(table: string[][], index: number) {
     setHeaderRowIndex(index);
     const headerRow = table[index] ?? [];
-    const hasInflowOutflow =
-      guessColumn(headerRow, HEADER_HINTS.inflow) !== null ||
-      guessColumn(headerRow, HEADER_HINTS.outflow) !== null;
+    const saved = loadImportMapping(accountId);
+    const resolve = (savedName: string | null | undefined, hints: readonly string[]) =>
+      findHeaderIndex(headerRow, savedName) ?? guessColumn(headerRow, hints);
+
+    const inflow = resolve(saved?.inflow, HEADER_HINTS.inflow);
+    const outflow = resolve(saved?.outflow, HEADER_HINTS.outflow);
     setMapping({
-      date: guessColumn(headerRow, HEADER_HINTS.date),
-      payee: guessColumn(headerRow, HEADER_HINTS.payee),
-      memo: guessColumn(headerRow, HEADER_HINTS.memo),
-      amountMode: hasInflowOutflow ? "split" : "single",
-      amount: guessColumn(headerRow, HEADER_HINTS.amount),
-      inflow: guessColumn(headerRow, HEADER_HINTS.inflow),
-      outflow: guessColumn(headerRow, HEADER_HINTS.outflow),
+      date: resolve(saved?.date, HEADER_HINTS.date),
+      payee: resolve(saved?.payee, HEADER_HINTS.payee),
+      memo: resolve(saved?.memo, HEADER_HINTS.memo),
+      amountMode: saved?.amountMode ?? (inflow !== null || outflow !== null ? "split" : "single"),
+      amount: resolve(saved?.amount, HEADER_HINTS.amount),
+      inflow,
+      outflow,
     });
   }
 
@@ -174,7 +200,7 @@ export function ImportTransactionsModal({
     }
 
     setRawTable(table);
-    setDateOrder("auto");
+    setDateOrder(loadImportMapping(accountId)?.dateOrder ?? "auto");
     applyHeaderRow(table, guessHeaderRowIndex(table));
     setStep("mapping");
   }
@@ -251,7 +277,26 @@ export function ImportTransactionsModal({
     });
   }
 
+  // A blank/missing header is saved as null rather than "" - see
+  // findHeaderIndex's matching rule above.
+  function headerName(index: number | null): string | null {
+    if (index === null) return null;
+    const h = headers[index];
+    return h && h.trim() ? h : null;
+  }
+
   function goToPreview() {
+    saveImportMapping(accountId, {
+      date: headerName(mapping.date),
+      payee: headerName(mapping.payee),
+      memo: headerName(mapping.memo),
+      amountMode: mapping.amountMode,
+      amount: headerName(mapping.amount),
+      inflow: headerName(mapping.inflow),
+      outflow: headerName(mapping.outflow),
+      dateOrder,
+    });
+
     const built = buildPreview();
     setRows(built);
     setStep("preview");
