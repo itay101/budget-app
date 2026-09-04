@@ -22,6 +22,8 @@ import { CategoryFilter } from "@/components/CategoryFilter";
 import { FlowFilter, FlowFilterValue } from "@/components/FlowFilter";
 import { MemoFilter } from "@/components/MemoFilter";
 import { useReconciliation } from "@/components/ReconciliationContext";
+import { ImportTransactionsModal } from "@/components/ImportTransactionsModal";
+import type { AccountType } from "@/lib/accountTypes";
 
 type CategoryOption = { id: string; name: string };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
@@ -132,10 +134,13 @@ export function TransactionsTable({
   deleteTransaction,
   reconcileTransaction,
   unreconcileTransaction,
+  checkImportDuplicates,
+  importTransactions,
   showAccount = false,
   currency = "USD",
   accountBalance,
   accountId,
+  accountType,
 }: {
   transactions: TransactionRowData[];
   // Unfiltered transaction count for the account/budget this table shows -
@@ -153,6 +158,11 @@ export function TransactionsTable({
   deleteTransaction: (formData: FormData) => Promise<void>;
   reconcileTransaction: (formData: FormData) => Promise<void>;
   unreconcileTransaction: (formData: FormData) => Promise<void>;
+  // File Import (#35) - same single-account-only gating as
+  // createTransaction/accountId above, since a bulk import also needs one
+  // implicit destination account.
+  checkImportDuplicates?: (formData: FormData) => Promise<boolean[]>;
+  importTransactions?: (formData: FormData) => Promise<void>;
   showAccount?: boolean;
   currency?: string;
   // The owning account's live cached balance (#31) - only passed on the
@@ -161,6 +171,12 @@ export function TransactionsTable({
   // total" isn't a single number and reconciliation doesn't apply.
   accountBalance?: number;
   accountId?: string;
+  // The owning account's type (#35) - only used to default File Import's
+  // "flip sign" toggle for a Credit Card account, where a statement's
+  // "charge amount" column is conventionally reported as a positive number
+  // even though it's an outflow. Omitted wherever accountId/accountBalance
+  // are, for the same single-account-only reason.
+  accountType?: AccountType;
 }) {
   const gridCols = showAccount ? GRID_COLS_WITH_ACCOUNT : GRID_COLS;
 
@@ -168,6 +184,11 @@ export function TransactionsTable({
   // list (#34). Only meaningful when createTransaction/accountId were
   // passed in - the button that sets this is hidden otherwise.
   const [addingNew, setAddingNew] = useState(false);
+
+  // Whether the File Import modal (#35) is open. Same gating as
+  // addingNew - only meaningful when importTransactions/accountId were
+  // passed in.
+  const [importOpen, setImportOpen] = useState(false);
 
   const router = useRouter();
   const pathname = usePathname();
@@ -310,6 +331,17 @@ export function TransactionsTable({
         <ReconciliationBar balance={accountBalance} currency={currency} />
       )}
 
+      {importOpen && checkImportDuplicates && importTransactions && accountId && (
+        <ImportTransactionsModal
+          accountId={accountId}
+          accountType={accountType}
+          currency={currency}
+          checkImportDuplicates={checkImportDuplicates}
+          importTransactions={importTransactions}
+          onClose={() => setImportOpen(false)}
+        />
+      )}
+
       {/* Toolbar: "Add Transaction" (#34) on the left, opening a blank
           expanded row at the top of the table; the filter bar (memo/payee
           search #22, category #20, flow #21, date range #19) on the right.
@@ -318,15 +350,27 @@ export function TransactionsTable({
           the one-click way to reset all four at once. */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         {createTransaction && accountId ? (
-          <button
-            type="button"
-            onClick={() => setAddingNew(true)}
-            disabled={addingNew}
-            className="flex items-center gap-1 rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
-          >
-            <Icon name="add" className="text-[1.1em]" />
-            Add Transaction
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setAddingNew(true)}
+              disabled={addingNew}
+              className="flex items-center gap-1 rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+            >
+              <Icon name="add" className="text-[1.1em]" />
+              Add Transaction
+            </button>
+            {checkImportDuplicates && importTransactions && (
+              <button
+                type="button"
+                onClick={() => setImportOpen(true)}
+                className="flex items-center gap-1 rounded border border-neutral-200 px-2 py-1 text-small font-medium text-neutral-700 hover:bg-neutral-100"
+              >
+                <Icon name="upload_file" className="text-[1.1em]" />
+                File Import
+              </button>
+            )}
+          </div>
         ) : (
           <div />
         )}
