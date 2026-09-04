@@ -131,6 +131,34 @@ describe("parseImportDate", () => {
     expect(parseImportDate("32/1/2026", "DMY")).toBeNull(); // day 32
   });
 
+  // The actual reported bug, root-caused: isValidDate's round-trip check
+  // constructed the Date in *local* time but read it back with UTC
+  // getters. In any timezone ahead of UTC, local midnight on a given day
+  // falls on the *previous* UTC calendar day, so every date - regardless
+  // of format or content - failed identically. It never reproduced in this
+  // sandbox (UTC by default) or in most CI, which is why it survived three
+  // earlier "fixes" that all tested clean.
+  //
+  // Mutating process.env.TZ mid-test does NOT reliably catch this: V8
+  // resolves the local timezone once per process and caches it, so a
+  // change after the process (and Jest's own startup) has already touched
+  // Date/Intl silently has no effect - confirmed directly, and worse, it
+  // looks like a passing regression test while testing nothing. The actual
+  // guard is package.json's "test" script running the whole suite under
+  // TZ=Asia/Jerusalem (the real reported timezone, and safely ahead of UTC
+  // so this exact bug class reproduces) - so these are plain assertions
+  // that depend on that outer TZ to mean anything.
+  it("parses a plain date correctly regardless of the process's local timezone", () => {
+    expect(parseImportDate("2026-08-09")).toBe("2026-08-09");
+    expect(parseImportDate("09-08-2026", "DMY")).toBe("2026-08-09");
+    expect(parseImportDate("8/9/2026", "MDY")).toBe("2026-08-09");
+  });
+
+  it("still rejects a genuinely invalid date regardless of local timezone", () => {
+    expect(parseImportDate("2026-02-30")).toBeNull();
+    expect(parseImportDate("2026-13-01")).toBeNull();
+  });
+
   it("returns null for blank, garbage, or unrecognized formats", () => {
     expect(parseImportDate("")).toBeNull();
     expect(parseImportDate("   ")).toBeNull();

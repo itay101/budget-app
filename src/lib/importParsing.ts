@@ -114,8 +114,19 @@ export function detectDateOrder(values: string[]): DateOrder {
   return "MDY";
 }
 
+// This was the actual root cause behind every failure reported in this
+// file's history, and the reason none of it reproduced in testing: without
+// a "Z" suffix, the constructed Date is interpreted in the *local*
+// timezone, but the round-trip check below reads it back with the UTC
+// getters. In any timezone ahead of UTC (Israel included), local midnight
+// on a given day falls on the *previous* UTC calendar day, so every single
+// date - regardless of format, regardless of content - failed this
+// check identically. It never showed up while testing, since this sandbox
+// (and most CI) runs in UTC, where local and UTC agree. Appending "Z"
+// makes the parse explicitly UTC, so the round-trip is timezone-independent
+// everywhere - the sandbox, the deployed server, and every viewer's browser.
 function isValidDate(year: string, month: string, day: string): boolean {
-  const date = new Date(`${year}-${month}-${day}T00:00:00`);
+  const date = new Date(`${year}-${month}-${day}T00:00:00Z`);
   return (
     !Number.isNaN(date.getTime()) &&
     date.getUTCFullYear() === Number(year) &&
