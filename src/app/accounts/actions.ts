@@ -4,7 +4,11 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentBudget } from "@/lib/budget";
 import { numberToMilliunits } from "@/lib/money";
-import { ACCOUNT_TYPES, type AccountType } from "@/lib/accountTypes";
+import {
+  ACCOUNT_TYPES,
+  isDebtAccountType,
+  type AccountType,
+} from "@/lib/accountTypes";
 
 export async function createAccount(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
@@ -29,7 +33,7 @@ export async function createAccount(formData: FormData) {
         name,
         type,
         balance,
-        onBudget: type !== "CREDIT_CARD" && type !== "LINE_OF_CREDIT",
+        onBudget: !isDebtAccountType(type),
       },
     });
 

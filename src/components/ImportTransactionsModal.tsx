@@ -16,7 +16,7 @@ import {
 import { formatMilliunits, numberToMilliunits } from "@/lib/money";
 import { Icon } from "@/components/Icon";
 import type { ImportRow } from "@/app/accounts/actions";
-import type { AccountType } from "@/lib/accountTypes";
+import { isDebtAccountType, type AccountType } from "@/lib/accountTypes";
 
 type Step = "select" | "mapping" | "preview";
 type AmountMode = "single" | "split";
@@ -103,15 +103,16 @@ export function ImportTransactionsModal({
   // originally did. Independent of `mapping` (not reset when the header
   // row changes) since it isn't derived from the header row.
   const [dateOrder, setDateOrder] = useState<"auto" | DateOrder>("auto");
-  // Every single-column amount is negated automatically for a Credit Card
-  // account, no user control - bank statement exports commonly report a
-  // "charge amount" column as a plain positive number for a purchase, even
-  // though a purchase on a credit card is an outflow (it increases what's
+  // Every single-column amount is negated automatically for a debt-style
+  // account (Credit Card or Line of Credit - see isDebtAccountType), no
+  // user control - bank statement exports commonly report a "charge
+  // amount" column as a plain positive number for a purchase, even though
+  // a purchase on one of these accounts is an outflow (it increases what's
   // owed), the same "negative = outflow" convention every other amount in
   // this app already uses. Doesn't apply in split Inflow/Outflow mode:
   // those columns already carry explicit direction, so flipping there
   // would turn a refund into a charge instead of fixing anything.
-  const flipSign = accountType === "CREDIT_CARD";
+  const flipSign = accountType !== undefined && isDebtAccountType(accountType);
   const [mapping, setMapping] = useState<Mapping>({
     date: null,
     payee: null,
@@ -582,7 +583,7 @@ export function ImportTransactionsModal({
                       name="info"
                       className="mt-0.5 shrink-0 text-[1.1em]"
                     />
-                    This account is a credit card, so amounts are
+                    This account carries a balance as debt, so amounts are
                     automatically flipped (positive → outflow, negative →
                     inflow) - a statement&#39;s charge amount is usually a
                     plain positive number even though it&#39;s money owed.
