@@ -16,6 +16,7 @@ import {
 import { formatMilliunits, numberToMilliunits } from "@/lib/money";
 import { Icon } from "@/components/Icon";
 import type { ImportRow } from "@/app/accounts/actions";
+import type { AccountType } from "@/lib/accountTypes";
 
 type Step = "select" | "mapping" | "preview";
 type AmountMode = "single" | "split";
@@ -74,12 +75,14 @@ function parseSplitAmount(inflowRaw: string, outflowRaw: string): number | null 
  */
 export function ImportTransactionsModal({
   accountId,
+  accountType,
   currency,
   checkImportDuplicates,
   importTransactions,
   onClose,
 }: {
   accountId: string;
+  accountType?: AccountType;
   currency: string;
   checkImportDuplicates: (formData: FormData) => Promise<boolean[]>;
   importTransactions: (formData: FormData) => Promise<void>;
@@ -100,6 +103,15 @@ export function ImportTransactionsModal({
   // originally did. Independent of `mapping` (not reset when the header
   // row changes) since it isn't derived from the header row.
   const [dateOrder, setDateOrder] = useState<"auto" | DateOrder>("auto");
+  // Whether to negate every parsed amount before it's created as a
+  // transaction. Defaults on for a Credit Card account: bank statement
+  // exports commonly report a "charge amount" column as a plain positive
+  // number for a purchase, even though a purchase on a credit card is an
+  // outflow (it increases what's owed) - the same "negative = outflow"
+  // convention every other amount in this app already uses. Independent of
+  // `mapping` (not reset when the header row changes) since it isn't
+  // derived from the header row, same as dateOrder above.
+  const [flipSign, setFlipSign] = useState(accountType === "CREDIT_CARD");
   const [mapping, setMapping] = useState<Mapping>({
     date: null,
     payee: null,
@@ -185,10 +197,16 @@ export function ImportTransactionsModal({
       const date = parseImportDate(cell(mapping.date), resolvedDateOrder);
       const payeeName = cell(mapping.payee);
       const memo = cell(mapping.memo);
-      const amount =
+      const parsedAmount =
         mapping.amountMode === "single"
           ? parseSingleAmount(cell(mapping.amount))
           : parseSplitAmount(cell(mapping.inflow), cell(mapping.outflow));
+      const amount =
+        parsedAmount === null
+          ? null
+          : flipSign
+            ? -parsedAmount
+            : parsedAmount;
 
       let error: string | null = null;
       if (!date) {
@@ -553,6 +571,26 @@ export function ImportTransactionsModal({
                     )}
                   </div>
                 )}
+
+                <label className="mt-2 flex items-start gap-2 text-small text-neutral-700">
+                  <input
+                    type="checkbox"
+                    checked={flipSign}
+                    onChange={(e) => setFlipSign(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    Flip sign (positive amounts become outflows)
+                    {accountType === "CREDIT_CARD" && (
+                      <span className="text-neutral-600">
+                        {" "}
+                        - on by default for a credit card, since a
+                        statement&#39;s charge amount is usually a plain
+                        positive number even though it&#39;s money owed.
+                      </span>
+                    )}
+                  </span>
+                </label>
               </div>
             </div>
           )}

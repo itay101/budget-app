@@ -23,6 +23,7 @@ import { FlowFilter, FlowFilterValue } from "@/components/FlowFilter";
 import { MemoFilter } from "@/components/MemoFilter";
 import { useReconciliation } from "@/components/ReconciliationContext";
 import { ImportTransactionsModal } from "@/components/ImportTransactionsModal";
+import type { AccountType } from "@/lib/accountTypes";
 
 type CategoryOption = { id: string; name: string };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
@@ -139,6 +140,7 @@ export function TransactionsTable({
   currency = "USD",
   accountBalance,
   accountId,
+  accountType,
 }: {
   transactions: TransactionRowData[];
   // Unfiltered transaction count for the account/budget this table shows -
@@ -169,6 +171,12 @@ export function TransactionsTable({
   // total" isn't a single number and reconciliation doesn't apply.
   accountBalance?: number;
   accountId?: string;
+  // The owning account's type (#35) - only used to default File Import's
+  // "flip sign" toggle for a Credit Card account, where a statement's
+  // "charge amount" column is conventionally reported as a positive number
+  // even though it's an outflow. Omitted wherever accountId/accountBalance
+  // are, for the same single-account-only reason.
+  accountType?: AccountType;
 }) {
   const gridCols = showAccount ? GRID_COLS_WITH_ACCOUNT : GRID_COLS;
 
@@ -326,6 +334,7 @@ export function TransactionsTable({
       {importOpen && checkImportDuplicates && importTransactions && accountId && (
         <ImportTransactionsModal
           accountId={accountId}
+          accountType={accountType}
           currency={currency}
           checkImportDuplicates={checkImportDuplicates}
           importTransactions={importTransactions}

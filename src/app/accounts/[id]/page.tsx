@@ -120,6 +120,7 @@ export default async function AccountPage({
           currency={budget.currency}
           accountBalance={account.balance}
           accountId={account.id}
+          accountType={account.type}
         />
       </div>
     </ReconciliationProvider>
