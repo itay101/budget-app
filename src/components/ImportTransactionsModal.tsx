@@ -629,16 +629,26 @@ export function ImportTransactionsModal({
                       <th className="px-2 py-1 text-left font-medium">Payee</th>
                       <th className="px-2 py-1 text-left font-medium">Memo</th>
                       <th className="px-2 py-1 text-right font-medium">Amount</th>
-                      <th className="px-2 py-1 text-left font-medium">Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((r) => (
                       <tr
                         key={r.rowIndex}
+                        title={
+                          r.error
+                            ? r.error
+                            : r.duplicate
+                              ? "Possible duplicate"
+                              : undefined
+                        }
                         className={
                           "border-t border-neutral-100 " +
-                          (r.error ? "text-neutral-400" : "")
+                          (r.error
+                            ? "text-neutral-400"
+                            : r.duplicate
+                              ? "bg-warning/10"
+                              : "")
                         }
                       >
                         <td className="px-2 py-1">
@@ -669,15 +679,6 @@ export function ImportTransactionsModal({
                           {r.error
                             ? "—"
                             : formatMilliunits(numberToMilliunits(r.amount), currency)}
-                        </td>
-                        <td className="px-2 py-1">
-                          {r.error ? (
-                            <span className="text-danger">{r.error}</span>
-                          ) : r.duplicate ? (
-                            <span className="text-warning">Possible duplicate</span>
-                          ) : (
-                            <span className="text-success">OK</span>
-                          )}
                         </td>
                       </tr>
                     ))}
