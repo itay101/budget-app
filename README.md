@@ -85,6 +85,21 @@ See [`prisma/schema.prisma`](./prisma/schema.prisma):
 | `npm run prisma:studio`   | Open Prisma Studio (DB browser/editor)     |
 | `npm run db:seed`         | Seed starter accounts/categories/data      |
 
+## Keeping the Supabase project awake
+
+Supabase's free tier pauses a project after 7 days with no activity. In
+production, [`vercel.json`](./vercel.json) schedules a daily
+[Vercel Cron](https://vercel.com/docs/cron-jobs) hit against
+`/api/cron/keepalive` ([`src/app/api/cron/keepalive/route.ts`](./src/app/api/cron/keepalive/route.ts)),
+which runs a trivial query against the database. That keeps the project
+active indefinitely without needing to upgrade off the free plan. Cron
+jobs only run for production deployments, so this only covers whichever
+Supabase project is wired to `DATABASE_URL` in the production environment
+on Vercel — point that at the project you want to keep alive.
+
+Optionally set a `CRON_SECRET` env var on Vercel so the endpoint only
+accepts Vercel's own cron requests (see [`.env.example`](./.env.example)).
+
 ## Roadmap ideas
 
 This is intentionally a minimal scaffold to build on. Some natural next
