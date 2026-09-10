@@ -97,8 +97,19 @@ jobs only run for production deployments, so this only covers whichever
 Supabase project is wired to `DATABASE_URL` in the production environment
 on Vercel — point that at the project you want to keep alive.
 
-Optionally set a `CRON_SECRET` env var on Vercel so the endpoint only
-accepts Vercel's own cron requests (see [`.env.example`](./.env.example)).
+That leaves a separate dev/preview Supabase project (e.g. `budget-app-dev`)
+uncovered, since it isn't wired to production's `DATABASE_URL` and Vercel
+Cron never invokes preview deployments — so it keeps crossing the 7-day
+window and Supabase keeps emailing about pausing it. A second cron,
+`/api/cron/keepalive-dev`
+([`src/app/api/cron/keepalive-dev/route.ts`](./src/app/api/cron/keepalive-dev/route.ts)),
+pings that project directly using its own connection string. Set
+`DEV_DATABASE_URL` on Vercel's **production** environment to the dev
+project's connection string to enable it (see
+[`.env.example`](./.env.example)); until it's set, the route is a no-op.
+
+Optionally set a `CRON_SECRET` env var on Vercel so the endpoints only
+accept Vercel's own cron requests (see [`.env.example`](./.env.example)).
 
 ## Roadmap ideas
 
