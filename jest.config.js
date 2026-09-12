@@ -11,6 +11,10 @@ const customJestConfig = {
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
   },
+  // Jest's default testMatch picks up any *.spec.ts too, which would
+  // otherwise include the Playwright specs in e2e/ - those must only
+  // ever run via `npx playwright test` (see playwright.config.ts).
+  testPathIgnorePatterns: ["<rootDir>/node_modules/", "<rootDir>/e2e/"],
   // Scoped to src/lib - the pure-logic layer these unit tests actually
   // exercise (see src/lib/*.test.ts). Server components/actions and UI
   // components aren't unit-tested today (that's what e2e/ is for), so

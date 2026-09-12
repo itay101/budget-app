@@ -25,7 +25,10 @@ test.describe("budget page", () => {
     // group, for adding a category) is the first exact "Add" on the page.
     const addToggle = page.getByRole("button", { name: "Add", exact: true });
     await addToggle.first().click();
-    await page.getByLabel("Name").fill("E2E Savings");
+    // Exact match here too: "Rename budget"/"Rename category group"/etc.
+    // all contain "name" ("re-NAME") as a case-insensitive substring, so
+    // a non-exact getByLabel("Name") also matches those icon buttons.
+    await page.getByLabel("Name", { exact: true }).fill("E2E Savings");
     await page.getByRole("button", { name: "Add category group" }).click();
 
     await expect(page.getByText("E2E Savings")).toBeVisible();
@@ -33,7 +36,7 @@ test.describe("budget page", () => {
     // The new group is appended after every existing one, so its own
     // "+ Add" (for a category) is now the last exact "Add" on the page.
     await addToggle.last().click();
-    await page.getByLabel("Name").fill("Emergency Fund");
+    await page.getByLabel("Name", { exact: true }).fill("Emergency Fund");
     await page.getByRole("button", { name: "Add category" }).click();
 
     const row = rowContaining(page, "Emergency Fund");
