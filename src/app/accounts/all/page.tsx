@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentBudget } from "@/lib/budget";
 import { formatMilliunits } from "@/lib/money";
 import { getTransactionEditOptions } from "@/lib/transactionOptions";
+import { STARTING_BALANCE_PAYEE } from "@/lib/payees";
 import {
   parseTransactionFilters,
   transactionFiltersWhere,
@@ -31,7 +32,7 @@ export default async function AllAccountsPage({
   // unfiltered total below.
   const baseWhere = {
     account: { budgetId: budget.id },
-    NOT: { payee: { name: "Starting Balance" } },
+    NOT: { payee: { name: STARTING_BALANCE_PAYEE } },
   };
 
   // The four transactions-list filters (#19-#22) are pushed down into this
@@ -82,16 +83,7 @@ export default async function AllAccountsPage({
       </div>
 
       <TransactionsTable
-        transactions={transactions.map((t) => ({
-          id: t.id,
-          date: t.date.toISOString(),
-          payeeName: t.payee?.name ?? "",
-          categoryId: t.categoryId ?? "",
-          memo: t.memo ?? "",
-          amount: t.amount,
-          cleared: t.cleared,
-          accountName: t.account.name,
-        }))}
+        transactions={transactions}
         totalCount={totalCount}
         categoryGroups={categoryGroups}
         payeeNames={payeeNames}

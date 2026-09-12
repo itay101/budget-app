@@ -99,15 +99,7 @@ export default async function AccountPage({
         </div>
 
         <TransactionsTable
-          transactions={transactions.map((t) => ({
-            id: t.id,
-            date: t.date.toISOString(),
-            payeeName: t.payee?.name ?? "",
-            categoryId: t.categoryId ?? "",
-            memo: t.memo ?? "",
-            amount: t.amount,
-            cleared: t.cleared,
-          }))}
+          transactions={transactions}
           totalCount={totalCount}
           categoryGroups={categoryGroups}
           payeeNames={payeeNames}

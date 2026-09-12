@@ -10,6 +10,7 @@ import {
   type AccountType,
 } from "@/lib/accountTypes";
 import { applyBalanceDelta, applyBalanceDeltas, findOrCreatePayee } from "./ledger";
+import { STARTING_BALANCE_PAYEE } from "@/lib/payees";
 
 /**
  * The revalidatePath tail every account/transaction mutation below ends
@@ -63,7 +64,11 @@ export async function createAccount(formData: FormData) {
       // same "Starting Balance" convention YNAB itself uses) so the
       // account's transaction list always sums to its balance, instead of
       // showing a balance with nothing behind it.
-      const payeeId = await findOrCreatePayee(tx, budget.id, "Starting Balance");
+      const payeeId = await findOrCreatePayee(
+        tx,
+        budget.id,
+        STARTING_BALANCE_PAYEE,
+      );
 
       await tx.transaction.create({
         data: {
