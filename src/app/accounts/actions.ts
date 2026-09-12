@@ -9,6 +9,27 @@ import {
   isDebtAccountType,
   type AccountType,
 } from "@/lib/accountTypes";
+import { applyBalanceDelta, applyBalanceDeltas, findOrCreatePayee } from "./ledger";
+
+/**
+ * The revalidatePath tail every account/transaction mutation below ends
+ * with (#47) — consolidated so a new action can't forget one of the paths
+ * a stale cache would otherwise leave behind. `accountIds` also
+ * revalidates each account's own page; `budget` defaults to true since
+ * most mutations here can move category balances too — the reconcile
+ * actions (which only flip `cleared`, not `balance`) opt out.
+ */
+function revalidateAccountPaths(
+  accountIds: string | string[] = [],
+  { budget = true }: { budget?: boolean } = {},
+): void {
+  for (const id of Array.isArray(accountIds) ? accountIds : [accountIds]) {
+    revalidatePath(`/accounts/${id}`);
+  }
+  revalidatePath("/accounts/all");
+  revalidatePath("/accounts");
+  if (budget) revalidatePath("/budget");
+}
 
 export async function createAccount(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
@@ -42,19 +63,12 @@ export async function createAccount(formData: FormData) {
       // same "Starting Balance" convention YNAB itself uses) so the
       // account's transaction list always sums to its balance, instead of
       // showing a balance with nothing behind it.
-      const payeeName = "Starting Balance";
-      const payee =
-        (await tx.payee.findFirst({
-          where: { budgetId: budget.id, name: payeeName },
-        })) ??
-        (await tx.payee.create({
-          data: { budgetId: budget.id, name: payeeName },
-        }));
+      const payeeId = await findOrCreatePayee(tx, budget.id, "Starting Balance");
 
       await tx.transaction.create({
         data: {
           accountId: account.id,
-          payeeId: payee.id,
+          payeeId,
           date: new Date(),
           amount: balance,
           memo: "Starting balance",
@@ -64,9 +78,7 @@ export async function createAccount(formData: FormData) {
     }
   });
 
-  revalidatePath("/accounts");
-  revalidatePath("/accounts/all");
-  revalidatePath("/budget");
+  revalidateAccountPaths();
 }
 
 /**
@@ -94,25 +106,15 @@ export async function createTransaction(formData: FormData) {
   });
 
   const payeeName = String(formData.get("payeeName") ?? "").trim();
-  let payeeId: string | null = null;
-  if (payeeName) {
-    const existing = await prisma.payee.findFirst({
-      where: { budgetId: account.budgetId, name: payeeName },
-    });
-    payeeId = existing
-      ? existing.id
-      : (
-          await prisma.payee.create({
-            data: { budgetId: account.budgetId, name: payeeName },
-          })
-        ).id;
-  }
-
   const categoryId = String(formData.get("categoryId") ?? "") || null;
   const memo = String(formData.get("memo") ?? "").trim() || null;
   const amount = numberToMilliunits(Number(formData.get("amount")) || 0);
 
   await prisma.$transaction(async (tx) => {
+    const payeeId = payeeName
+      ? await findOrCreatePayee(tx, account.budgetId, payeeName)
+      : null;
+
     await tx.transaction.create({
       data: {
         accountId,
@@ -124,16 +126,10 @@ export async function createTransaction(formData: FormData) {
       },
     });
 
-    await tx.account.update({
-      where: { id: accountId },
-      data: { balance: { increment: amount } },
-    });
+    await applyBalanceDelta(tx, accountId, amount);
   });
 
-  revalidatePath(`/accounts/${accountId}`);
-  revalidatePath("/accounts/all");
-  revalidatePath("/accounts");
-  revalidatePath("/budget");
+  revalidateAccountPaths(accountId);
 }
 
 export type ImportRow = {
@@ -217,6 +213,10 @@ export async function importTransactions(formData: FormData) {
   });
 
   await prisma.$transaction(async (tx) => {
+    // Payees repeat heavily within one import file (the same merchant over
+    // many rows), so cache find-or-create results per name for the length
+    // of this loop rather than hitting findOrCreatePayee - and the
+    // database - once per row.
     const payeeIds = new Map<string, string>();
     let total = 0;
 
@@ -229,16 +229,7 @@ export async function importTransactions(formData: FormData) {
         const cacheKey = payeeName.toLowerCase();
         payeeId = payeeIds.get(cacheKey) ?? null;
         if (!payeeId) {
-          const existing = await tx.payee.findFirst({
-            where: { budgetId: account.budgetId, name: payeeName },
-          });
-          payeeId = existing
-            ? existing.id
-            : (
-                await tx.payee.create({
-                  data: { budgetId: account.budgetId, name: payeeName },
-                })
-              ).id;
+          payeeId = await findOrCreatePayee(tx, account.budgetId, payeeName);
           payeeIds.set(cacheKey, payeeId);
         }
       }
@@ -255,16 +246,10 @@ export async function importTransactions(formData: FormData) {
       total += amount;
     }
 
-    await tx.account.update({
-      where: { id: accountId },
-      data: { balance: { increment: total } },
-    });
+    await applyBalanceDelta(tx, accountId, total);
   });
 
-  revalidatePath(`/accounts/${accountId}`);
-  revalidatePath("/accounts/all");
-  revalidatePath("/accounts");
-  revalidatePath("/budget");
+  revalidateAccountPaths(accountId);
 }
 
 /**
@@ -308,21 +293,13 @@ export async function updateTransaction(formData: FormData) {
     data.date = new Date(dateInput);
   }
 
-  if (formData.has("payeeName")) {
-    const payeeName = String(formData.get("payeeName") ?? "").trim();
-    if (!payeeName) {
-      data.payeeId = null;
-    } else {
-      const budgetId = transaction.account.budgetId;
-      const existing = await prisma.payee.findFirst({
-        where: { budgetId, name: payeeName },
-      });
-      data.payeeId = existing
-        ? existing.id
-        : (await prisma.payee.create({ data: { budgetId, name: payeeName } }))
-            .id;
-    }
-  }
+  // Resolved inside the prisma.$transaction below (via findOrCreatePayee)
+  // so the find-or-create and the transaction-row write it feeds commit
+  // atomically, rather than racing a concurrent request for the same new
+  // payee name.
+  const payeeName = formData.has("payeeName")
+    ? String(formData.get("payeeName") ?? "").trim()
+    : undefined;
 
   if (formData.has("categoryId")) {
     data.categoryId = String(formData.get("categoryId") ?? "") || null;
@@ -336,25 +313,29 @@ export async function updateTransaction(formData: FormData) {
     data.amount = numberToMilliunits(Number(formData.get("amount")) || 0);
   }
 
-  if (Object.keys(data).length === 0) {
+  if (payeeName === undefined && Object.keys(data).length === 0) {
     return;
   }
 
   await prisma.$transaction(async (tx) => {
+    if (payeeName !== undefined) {
+      data.payeeId = payeeName
+        ? await findOrCreatePayee(tx, transaction.account.budgetId, payeeName)
+        : null;
+    }
+
     await tx.transaction.update({ where: { id: transactionId }, data });
 
     if (data.amount !== undefined && data.amount !== transaction.amount) {
-      await tx.account.update({
-        where: { id: transaction.accountId },
-        data: { balance: { increment: data.amount - transaction.amount } },
-      });
+      await applyBalanceDelta(
+        tx,
+        transaction.accountId,
+        data.amount - transaction.amount,
+      );
     }
   });
 
-  revalidatePath(`/accounts/${transaction.accountId}`);
-  revalidatePath("/accounts/all");
-  revalidatePath("/accounts");
-  revalidatePath("/budget");
+  revalidateAccountPaths(transaction.accountId);
 }
 
 /**
@@ -375,16 +356,10 @@ export async function deleteTransaction(formData: FormData) {
 
   await prisma.$transaction(async (tx) => {
     await tx.transaction.delete({ where: { id: transactionId } });
-    await tx.account.update({
-      where: { id: transaction.accountId },
-      data: { balance: { decrement: transaction.amount } },
-    });
+    await applyBalanceDelta(tx, transaction.accountId, -transaction.amount);
   });
 
-  revalidatePath(`/accounts/${transaction.accountId}`);
-  revalidatePath("/accounts/all");
-  revalidatePath("/accounts");
-  revalidatePath("/budget");
+  revalidateAccountPaths(transaction.accountId);
 }
 
 /**
@@ -393,8 +368,8 @@ export async function deleteTransaction(formData: FormData) {
  * selected" bulk action. Transactions can span more than one account on the
  * /accounts/all view, so - unlike deleteTransaction, which only ever has one
  * owning account to adjust - balance deltas are summed per account first and
- * applied as one update per account, all inside the same prisma.$transaction
- * as the deletes.
+ * applied via applyBalanceDeltas, all inside the same prisma.$transaction as
+ * the deletes.
  */
 export async function deleteTransactions(formData: FormData) {
   const transactionIds: string[] = JSON.parse(
@@ -413,26 +388,16 @@ export async function deleteTransactions(formData: FormData) {
   for (const t of transactions) {
     deltaByAccount.set(
       t.accountId,
-      (deltaByAccount.get(t.accountId) ?? 0) + t.amount,
+      (deltaByAccount.get(t.accountId) ?? 0) - t.amount,
     );
   }
 
   await prisma.$transaction(async (tx) => {
     await tx.transaction.deleteMany({ where: { id: { in: transactionIds } } });
-    for (const [accountId, total] of deltaByAccount) {
-      await tx.account.update({
-        where: { id: accountId },
-        data: { balance: { decrement: total } },
-      });
-    }
+    await applyBalanceDeltas(tx, deltaByAccount);
   });
 
-  for (const accountId of deltaByAccount.keys()) {
-    revalidatePath(`/accounts/${accountId}`);
-  }
-  revalidatePath("/accounts/all");
-  revalidatePath("/accounts");
-  revalidatePath("/budget");
+  revalidateAccountPaths([...deltaByAccount.keys()]);
 }
 
 /**
@@ -457,9 +422,7 @@ export async function reconcileAccount(formData: FormData) {
     });
   });
 
-  revalidatePath(`/accounts/${accountId}`);
-  revalidatePath("/accounts/all");
-  revalidatePath("/accounts");
+  revalidateAccountPaths(accountId, { budget: false });
 }
 
 /**
@@ -483,9 +446,7 @@ export async function reconcileTransaction(formData: FormData) {
     data: { cleared: "RECONCILED" },
   });
 
-  revalidatePath(`/accounts/${transaction.accountId}`);
-  revalidatePath("/accounts/all");
-  revalidatePath("/accounts");
+  revalidateAccountPaths(transaction.accountId, { budget: false });
 }
 
 /**
@@ -511,9 +472,7 @@ export async function unreconcileTransaction(formData: FormData) {
     data: { cleared: "CLEARED" },
   });
 
-  revalidatePath(`/accounts/${transaction.accountId}`);
-  revalidatePath("/accounts/all");
-  revalidatePath("/accounts");
+  revalidateAccountPaths(transaction.accountId, { budget: false });
 }
 
 /**
@@ -566,8 +525,5 @@ export async function updateAccount(formData: FormData) {
 
   await prisma.account.update({ where: { id: accountId }, data });
 
-  revalidatePath("/accounts");
-  revalidatePath("/accounts/all");
-  revalidatePath(`/accounts/${accountId}`);
-  revalidatePath("/budget");
+  revalidateAccountPaths(accountId);
 }
