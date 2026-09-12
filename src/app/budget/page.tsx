@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { getCurrentBudget } from "@/lib/budget";
+import { availableFor, getCurrentBudget, rowFor } from "@/lib/budget";
 import { AddCategoryGroupPopover } from "@/components/AddCategoryGroupPopover";
 import { CategoryGroupSection } from "@/components/CategoryGroupSection";
 import { HiddenCategoriesSection } from "@/components/HiddenCategoriesSection";
@@ -49,12 +49,9 @@ export default async function BudgetPage() {
 
   const categoryIds = groups.flatMap((g) => g.categories.map((c) => c.id));
 
-  // Available rolls forward month to month, YNAB-style: this month's
-  // available is everything ever budgeted to the category through this
-  // month, plus everything ever spent/earned in it through this month.
-  // That's equivalent to (last month's available) + (this month's
-  // budgeted) + (this month's activity), computed here as a running total
-  // rather than recursively.
+  // Available rolls forward month to month, YNAB-style — see availableFor
+  // in src/lib/budget.ts for the math itself; here we just gather the two
+  // running-total queries it needs.
   const [budgetedTotals, activityTotals] = await Promise.all([
     prisma.categoryMonth.groupBy({
       by: ["categoryId"],
@@ -75,21 +72,17 @@ export default async function BudgetPage() {
     activityTotals.map((row) => [row.categoryId!, row._sum.amount ?? 0]),
   );
 
-  function availableFor(categoryId: string): number {
-    return (
-      (budgetedThroughMonth.get(categoryId) ?? 0) +
-      (activityThroughMonth.get(categoryId) ?? 0)
+  function categoryRow(category: (typeof groups)[number]["categories"][number]) {
+    return rowFor(
+      {
+        id: category.id,
+        name: category.name,
+        budgeted: category.months[0]?.budgeted ?? 0,
+        activity: category.transactions.reduce((sum, t) => sum + t.amount, 0),
+      },
+      budgetedThroughMonth,
+      activityThroughMonth,
     );
-  }
-
-  function rowFor(category: (typeof groups)[number]["categories"][number]) {
-    return {
-      id: category.id,
-      name: category.name,
-      budgeted: category.months[0]?.budgeted ?? 0,
-      activity: category.transactions.reduce((sum, t) => sum + t.amount, 0),
-      available: availableFor(category.id),
-    };
   }
 
   // Slimmed-down category list (just id/name/available) for the "move
@@ -102,7 +95,7 @@ export default async function BudgetPage() {
     categories: group.categories.map((c) => ({
       id: c.id,
       name: c.name,
-      available: availableFor(c.id),
+      available: availableFor(c.id, budgetedThroughMonth, activityThroughMonth),
     })),
   }));
 
@@ -115,7 +108,7 @@ export default async function BudgetPage() {
   const hiddenCategories = groups.flatMap((group) =>
     group.categories
       .filter((c) => c.hidden)
-      .map((category) => ({ ...rowFor(category), groupName: group.name })),
+      .map((category) => ({ ...categoryRow(category), groupName: group.name })),
   );
 
   return (
@@ -157,7 +150,7 @@ export default async function BudgetPage() {
             categoryOptions={categoryOptions}
             categories={group.categories
               .filter((c) => !c.hidden)
-              .map(rowFor)}
+              .map(categoryRow)}
           />
         ))}
 
