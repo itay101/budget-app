@@ -81,9 +81,44 @@ See [`prisma/schema.prisma`](./prisma/schema.prisma):
 | `npm run start`           | Run the production build                  |
 | `npm run lint`            | Lint                                      |
 | `npm run typecheck`       | Type-check without emitting               |
+| `npm test`                 | Run unit tests (`src/lib/*.test.ts`)      |
+| `npm run test:coverage`    | Unit tests with a coverage report          |
+| `npm run test:e2e`         | Run the Playwright e2e suite               |
+| `npm run test:e2e:ui`      | Playwright's UI mode, for writing/debugging e2e tests |
 | `npm run prisma:migrate`  | Create/apply a dev migration               |
 | `npm run prisma:studio`   | Open Prisma Studio (DB browser/editor)     |
 | `npm run db:seed`         | Seed starter accounts/categories/data      |
+
+## Testing
+
+- **Unit tests** (`src/lib/*.test.ts`, Jest) cover the app's pure-logic
+  layer — CSV/import parsing, account types, and similar. `npm test` runs
+  them; `npm run test:coverage` adds a coverage report (`coverage/`,
+  gitignored) scoped to `src/lib` — see [`jest.config.js`](./jest.config.js).
+- **e2e tests** (`e2e/*.spec.ts`, [Playwright](https://playwright.dev/))
+  drive the app end-to-end through a real browser against a real
+  Postgres database, covering the main flows: the budget/accounts pages
+  rendering, creating a category group/category and budgeting it, and
+  adding a transaction.
+
+  They run against a disposable database — `docker-compose.yml`'s
+  `db-e2e` service, kept separate from the `db` service your normal dev
+  data lives in — which `npm run test:e2e` resets, migrates, and reseeds
+  from scratch on every run (see `db:e2e:reset` in
+  [`package.json`](./package.json) and the comments in
+  [`playwright.config.ts`](./playwright.config.ts)), so tests are free to
+  create/edit data without any cleanup of their own and without ever
+  touching real data:
+
+  ```bash
+  docker compose up -d db-e2e
+  npm run test:e2e
+  ```
+
+  CI (see [`.github/workflows/tests.yml`](./.github/workflows/tests.yml))
+  runs both suites on every push/PR as their own check, deliberately
+  decoupled from Vercel's preview deployment — a red test is visible on
+  the PR but never blocks or delays the preview build.
 
 ## Keeping the Supabase project awake
 
