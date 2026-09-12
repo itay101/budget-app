@@ -1,6 +1,13 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState, useTransition } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -25,15 +32,10 @@ import { usePopover } from "@/components/usePopover";
 import { useReconciliation } from "@/components/ReconciliationContext";
 import { ImportTransactionsModal } from "@/components/ImportTransactionsModal";
 import type { AccountType } from "@/lib/accountTypes";
+import { STARTING_BALANCE_PAYEE } from "@/lib/payees";
 
 type CategoryOption = { id: string; name: string };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
-
-// The payee name createAccount uses for a nonzero starting balance (see
-// src/app/accounts/actions.ts). Identifying a row this way - rather than a
-// dedicated column - matches how it's created; these rows aren't real
-// spending, so they can't be assigned a category.
-const STARTING_BALANCE_PAYEE = "Starting Balance";
 
 type ClearedStatus = "UNCLEARED" | "CLEARED" | "RECONCILED";
 
@@ -47,6 +49,36 @@ type TransactionRowData = {
   cleared: ClearedStatus;
   accountName?: string;
 };
+
+// The shape TransactionsTable takes each transaction in, close to what a
+// `prisma.transaction.findMany` with a `payee` include (and `account` when
+// `showAccount` is set) returns - so both accounts/[id]/page.tsx and
+// accounts/all/page.tsx can hand over their query results directly instead
+// of each independently re-deriving the same
+// {id, date, payeeName, categoryId, memo, amount, cleared} row shape (#48).
+type TransactionInput = {
+  id: string;
+  date: Date;
+  payee: { name: string } | null;
+  categoryId: string | null;
+  memo: string | null;
+  amount: number;
+  cleared: ClearedStatus;
+  account?: { name: string };
+};
+
+function toRowData(t: TransactionInput): TransactionRowData {
+  return {
+    id: t.id,
+    date: t.date.toISOString(),
+    payeeName: t.payee?.name ?? "",
+    categoryId: t.categoryId ?? "",
+    memo: t.memo ?? "",
+    amount: t.amount,
+    cleared: t.cleared,
+    accountName: t.account?.name,
+  };
+}
 
 type Draft = {
   date: string;
@@ -147,7 +179,7 @@ export function TransactionsTable({
   accountId,
   accountType,
 }: {
-  transactions: TransactionRowData[];
+  transactions: TransactionInput[];
   // Unfiltered transaction count for the account/budget this table shows -
   // used only for the "Showing X of Y" summary and to tell "no transactions
   // at all" apart from "none match the filters" (#24: `transactions` itself
@@ -189,6 +221,13 @@ export function TransactionsTable({
 }) {
   const gridCols = showAccount ? GRID_COLS_WITH_ACCOUNT : GRID_COLS;
 
+  // The rows this table actually renders - mapped once from the raw
+  // `transactions` prop (see TransactionInput/toRowData above) rather than
+  // asking every caller to pre-shape its own copy. Memoized so its identity
+  // only changes when `transactions` itself does, same as the prop it
+  // replaces - the pruning effect below depends on that.
+  const rows = useMemo(() => transactions.map(toRowData), [transactions]);
+
   // Whether the blank "Add Transaction" row is currently open above the
   // list (#34). Only meaningful when createTransaction/accountId were
   // passed in - the button that sets this is hidden otherwise.
@@ -208,11 +247,11 @@ export function TransactionsTable({
 
   useEffect(() => {
     setSelectedIds((prev) => {
-      const visibleIds = new Set(transactions.map((t) => t.id));
+      const visibleIds = new Set(rows.map((t) => t.id));
       const next = new Set([...prev].filter((id) => visibleIds.has(id)));
       return next.size === prev.size ? prev : next;
     });
-  }, [transactions]);
+  }, [rows]);
 
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
@@ -223,13 +262,10 @@ export function TransactionsTable({
     });
   }
 
-  const allSelected =
-    transactions.length > 0 && selectedIds.size === transactions.length;
+  const allSelected = rows.length > 0 && selectedIds.size === rows.length;
 
   function toggleSelectAll() {
-    setSelectedIds(
-      allSelected ? new Set() : new Set(transactions.map((t) => t.id)),
-    );
+    setSelectedIds(allSelected ? new Set() : new Set(rows.map((t) => t.id)));
   }
 
   function handleBulkDelete() {
@@ -511,7 +547,7 @@ export function TransactionsTable({
               type="checkbox"
               checked={allSelected}
               onChange={toggleSelectAll}
-              disabled={transactions.length === 0}
+              disabled={rows.length === 0}
               aria-label="Select all transactions"
               className="h-4 w-4 rounded border-neutral-300 text-brand-700 focus:ring-brand-700"
             />
@@ -537,7 +573,7 @@ export function TransactionsTable({
           />
         )}
 
-        {transactions.map((t) => {
+        {rows.map((t) => {
           const dateKey = t.date.slice(0, 10);
           const showDateHeader = dateKey !== lastDateKey;
           lastDateKey = dateKey;
@@ -567,7 +603,7 @@ export function TransactionsTable({
           );
         })}
 
-        {transactions.length === 0 && (
+        {rows.length === 0 && (
           <div className="px-200 py-300 text-body text-neutral-600">
             {totalCount === 0
               ? "No transactions yet."
@@ -581,7 +617,7 @@ export function TransactionsTable({
       {hasActiveFilters && (
         <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-small text-neutral-600">
           <span>
-            Showing {transactions.length} of {totalCount} transaction
+            Showing {rows.length} of {totalCount} transaction
             {totalCount === 1 ? "" : "s"} · filters active
           </span>
           <button
