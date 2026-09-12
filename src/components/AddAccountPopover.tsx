@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useRef, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { ACCOUNT_TYPE_OPTIONS } from "@/lib/accountTypes";
 import { MoneyInput } from "@/components/MoneyInput";
 import { Icon } from "@/components/Icon";
+import { usePopover } from "@/components/usePopover";
 
 /**
  * The sidebar's "+ Add account" button, opening a small popover (same
@@ -18,53 +19,11 @@ export function AddAccountPopover({
   createAccount: (formData: FormData) => Promise<void>;
   currency: string;
 }) {
-  const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(
-    null,
-  );
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
+  const { open, setOpen, position, triggerRef, panelRef } = usePopover({
+    width: 256, // matches the popover's w-64
+  });
   const formRef = useRef<HTMLFormElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-
-    function updatePosition() {
-      const rect = buttonRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const width = 256; // matches the popover's w-64
-      setPosition({
-        top: rect.bottom + 4,
-        left: Math.min(Math.max(8, rect.left), window.innerWidth - width - 8),
-      });
-    }
-    updatePosition();
-
-    function handlePointerDown(e: MouseEvent) {
-      if (
-        popoverRef.current?.contains(e.target as Node) ||
-        buttonRef.current?.contains(e.target as Node)
-      ) {
-        return;
-      }
-      setOpen(false);
-    }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-
-    window.addEventListener("scroll", updatePosition, true);
-    window.addEventListener("resize", updatePosition);
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("scroll", updatePosition, true);
-      window.removeEventListener("resize", updatePosition);
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -79,7 +38,7 @@ export function AddAccountPopover({
   return (
     <>
       <button
-        ref={buttonRef}
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="mt-1 flex w-full items-center gap-0.5 rounded px-3 py-1.5 text-left text-small font-medium text-brand-700 hover:bg-brand-700/10"
@@ -91,7 +50,7 @@ export function AddAccountPopover({
         position &&
         createPortal(
           <div
-            ref={popoverRef}
+            ref={panelRef}
             style={{ position: "fixed", top: position.top, left: position.left }}
             className="z-50 w-64 max-w-[calc(100vw-1rem)] rounded-lg border border-neutral-200 bg-neutral-0 p-3 text-left shadow-lg"
           >
