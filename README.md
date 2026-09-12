@@ -125,6 +125,9 @@ See [`prisma/schema.prisma`](./prisma/schema.prisma):
   the HTML report as a `playwright-report` build artifact on the workflow
   run, so any PR's actual behavior (including a one-off flake) can be
   inspected with the trace viewer without reproducing it locally first.
+  Once a PR merges, [`cleanup-pr-artifacts.yml`](./.github/workflows/cleanup-pr-artifacts.yml)
+  deletes its `coverage`/`playwright-report` artifacts right away instead
+  of leaving them to expire.
 
 ## Keeping the Supabase project awake
 
