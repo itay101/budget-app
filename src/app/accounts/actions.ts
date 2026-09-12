@@ -295,8 +295,13 @@ export async function updateTransaction(formData: FormData) {
 
   // Resolved inside the prisma.$transaction below (via findOrCreatePayee)
   // so the find-or-create and the transaction-row write it feeds commit
-  // atomically, rather than racing a concurrent request for the same new
-  // payee name.
+  // together as one unit - if the transaction.update fails, the payee it
+  // just created isn't left behind orphaned. This doesn't by itself
+  // prevent two concurrent requests from each creating a duplicate payee
+  // for the same brand-new name (there's no unique constraint on
+  // Payee(budgetId, name) to catch that under Postgres's default
+  // Read Committed isolation) - that race predates this helper and is
+  // unrelated to #47's balance-invariant consolidation.
   const payeeName = formData.has("payeeName")
     ? String(formData.get("payeeName") ?? "").trim()
     : undefined;
