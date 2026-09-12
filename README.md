@@ -120,6 +120,12 @@ See [`prisma/schema.prisma`](./prisma/schema.prisma):
   decoupled from Vercel's preview deployment — a red test is visible on
   the PR but never blocks or delays the preview build.
 
+  Every e2e run — passing or not — captures a
+  [trace](https://playwright.dev/docs/trace-viewer) per test and uploads
+  the HTML report as a `playwright-report` build artifact on the workflow
+  run, so any PR's actual behavior (including a one-off flake) can be
+  inspected with the trace viewer without reproducing it locally first.
+
 ## Keeping the Supabase project awake
 
 Supabase's free tier pauses a project after 7 days with no activity. In

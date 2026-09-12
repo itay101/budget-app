@@ -25,7 +25,11 @@ export default defineConfig({
     : "list",
   use: {
     baseURL: BASE_URL,
-    trace: "on-first-retry",
+    // CI captures a trace for every test (not just failing/retried ones)
+    // so the HTML report published as a PR artifact (see
+    // .github/workflows/tests.yml) always has a trace to open for
+    // debugging - locally, only on a retry keeps things fast.
+    trace: process.env.CI ? "on" : "on-first-retry",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
