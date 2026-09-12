@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "@/components/Icon";
+import { usePopover } from "@/components/usePopover";
 
 type BudgetOption = { id: string; name: string; currency: string };
 type CurrencyOption = { code: string; name: string };
@@ -46,68 +47,24 @@ export function BudgetSwitcherPopover({
   renameBudget: (formData: FormData) => Promise<void>;
   deleteBudget: (formData: FormData) => Promise<void>;
 }) {
-  const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState(currentBudget.name);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmText, setConfirmText] = useState("");
   const [pending, startTransition] = useTransition();
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(
-    null,
-  );
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
+  const { open, setOpen, position, triggerRef, panelRef } = usePopover({
+    width: 256, // matches the popover's w-64
+    onDismiss: () => {
+      setAdding(false);
+      setDeletingId(null);
+    },
+  });
   const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     setNameDraft(currentBudget.name);
   }, [currentBudget.id, currentBudget.name]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    function updatePosition() {
-      const rect = buttonRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const width = 256; // matches the popover's w-64
-      setPosition({
-        top: rect.bottom + 4,
-        left: Math.min(Math.max(8, rect.left), window.innerWidth - width - 8),
-      });
-    }
-    updatePosition();
-
-    function handlePointerDown(e: MouseEvent) {
-      if (
-        popoverRef.current?.contains(e.target as Node) ||
-        buttonRef.current?.contains(e.target as Node)
-      ) {
-        return;
-      }
-      setOpen(false);
-      setAdding(false);
-      setDeletingId(null);
-    }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        setOpen(false);
-        setAdding(false);
-        setDeletingId(null);
-      }
-    }
-
-    window.addEventListener("scroll", updatePosition, true);
-    window.addEventListener("resize", updatePosition);
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("scroll", updatePosition, true);
-      window.removeEventListener("resize", updatePosition);
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
 
   function handleSwitch(budgetId: string) {
     if (budgetId === currentBudget.id) {
@@ -200,7 +157,7 @@ export function BudgetSwitcherPopover({
       ) : (
         <div className="flex items-center gap-1">
           <button
-            ref={buttonRef}
+            ref={triggerRef}
             type="button"
             onClick={() => setOpen((o) => !o)}
             className="flex min-w-0 flex-1 items-center rounded border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-left text-small font-medium hover:bg-neutral-100"
@@ -228,7 +185,7 @@ export function BudgetSwitcherPopover({
         position &&
         createPortal(
           <div
-            ref={popoverRef}
+            ref={panelRef}
             style={{ position: "fixed", top: position.top, left: position.left }}
             className="z-50 w-64 max-w-[calc(100vw-1rem)] rounded-lg border border-neutral-200 bg-neutral-0 p-3 text-left shadow-lg"
           >

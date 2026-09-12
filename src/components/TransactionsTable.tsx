@@ -21,6 +21,7 @@ import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { CategoryFilter } from "@/components/CategoryFilter";
 import { FlowFilter, FlowFilterValue } from "@/components/FlowFilter";
 import { MemoFilter } from "@/components/MemoFilter";
+import { usePopover } from "@/components/usePopover";
 import { useReconciliation } from "@/components/ReconciliationContext";
 import { ImportTransactionsModal } from "@/components/ImportTransactionsModal";
 import type { AccountType } from "@/lib/accountTypes";
@@ -737,52 +738,16 @@ function TransactionRow({
   // The row's "more actions" menu (currently just Delete) - a small popover
   // off the kebab button, same open/position/outside-click pattern as
   // MoveMoneyPopover.
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<{
-    top: number;
-    left: number;
-  } | null>(null);
-  const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-
-    function updatePosition() {
-      const rect = menuButtonRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const width = 160; // matches the menu's w-40
-      setMenuPosition({
-        top: rect.bottom + 4,
-        left: Math.min(rect.right - width, window.innerWidth - width - 8),
-      });
-    }
-    updatePosition();
-
-    function handlePointerDown(e: MouseEvent) {
-      if (
-        menuRef.current?.contains(e.target as Node) ||
-        menuButtonRef.current?.contains(e.target as Node)
-      ) {
-        return;
-      }
-      setMenuOpen(false);
-    }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setMenuOpen(false);
-    }
-
-    window.addEventListener("scroll", updatePosition, true);
-    window.addEventListener("resize", updatePosition);
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("scroll", updatePosition, true);
-      window.removeEventListener("resize", updatePosition);
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [menuOpen]);
+  const {
+    open: menuOpen,
+    setOpen: setMenuOpen,
+    position: menuPosition,
+    triggerRef: menuButtonRef,
+    panelRef: menuRef,
+  } = usePopover({
+    width: 160, // matches the menu's w-40
+    align: "right",
+  });
 
   const isDirty =
     draft.date !== committed.date ||
