@@ -1,0 +1,87 @@
+name: Tests
+
+# Reporting-only: this workflow is intentionally its own CI check, run in
+# parallel with (never as a dependency of) Vercel's own Git integration,
+# which deploys previews straight from the push/PR event regardless of
+# what happens here. A red run here shows up as a failing check on the
+# PR - visible and actionable - but never blocks or delays the preview
+# deployment. See CLAUDE.md and the tracking issue for #43.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit:
+    name: Lint, typecheck & unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm run typecheck
+
+      - run: npm run test:coverage
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 14
+
+  e2e:
+    name: Playwright e2e
+    runs-on: ubuntu-latest
+    services:
+      # Matches playwright.config.ts's default E2E_DATABASE_URL exactly
+      # (host/port/user/password/db), so no DATABASE_URL needs setting
+      # here - the config's webServer already points at it (see the
+      # "db:e2e:reset" step baked into its command).
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: budget
+          POSTGRES_PASSWORD: budget
+          POSTGRES_DB: budget_e2e
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      - run: npm run test:e2e
+
+      # Uploaded on every run, not just failures: playwright.config.ts
+      # captures a trace per test in CI (`trace: "on"`), and the HTML
+      # report embeds them - so any PR can be opened here and inspected
+      # with the trace viewer (`npx playwright show-trace`, or the
+      # report's own "View trace" button) without needing to reproduce a
+      # failure, or a flake, locally first.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14

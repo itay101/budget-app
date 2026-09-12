@@ -19,6 +19,14 @@ open GitHub.
   (`pull_request_read` → `get_status`, or the repo's commit statuses) to
   find the Vercel deployment URL and share it once it's ready.
 
+## e2e tests
+
+Changes to existing e2e tests (anything under `e2e/*.spec.ts`) require the
+user's explicit approval before being made — this covers edits to or
+deletion of an existing test/assertion. Adding new e2e tests doesn't need
+prior approval, but ask before touching what's already there, and explain
+why the change is needed when you do ask.
+
 ## Branch naming
 
 Branch names should be descriptive and closely mirror the ticket/issue

@@ -11,5 +11,20 @@ services:
     volumes:
       - budget-db-data:/var/lib/postgresql/data
 
+  # A separate, disposable database for the Playwright e2e suite (see
+  # playwright.config.ts and the "db:e2e:reset" script in package.json) -
+  # kept apart from `db` above so a test run can freely reset/reseed it
+  # without ever touching real dev data. Not persisted across restarts
+  # (no named volume) since it only ever holds throwaway state.
+  db-e2e:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: budget
+      POSTGRES_PASSWORD: budget
+      POSTGRES_DB: budget_e2e
+    ports:
+      - "5433:5432"
+
 volumes:
   budget-db-data:

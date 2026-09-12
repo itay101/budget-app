@@ -10,6 +10,10 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "TZ=Asia/Jerusalem jest",
+    "test:coverage": "TZ=Asia/Jerusalem jest --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "db:e2e:reset": "prisma migrate reset --force --skip-generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
@@ -24,6 +28,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.16.11",
     "@types/react": "^18.3.11",

@@ -1,0 +1,55 @@
+name: Cleanup PR artifacts
+
+# The Tests workflow uploads a coverage report and a Playwright trace
+# report (playwright-report/) on every push to a PR branch, so they're
+# there to debug from while the PR is open (see .github/workflows/
+# tests.yml and the README's Testing section). Once a PR is merged
+# they're no longer needed, so this deletes every artifact left behind
+# by its Tests runs rather than waiting out their retention window.
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  cleanup:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Delete this PR's Tests workflow artifacts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = context.payload.pull_request.head.ref;
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRuns,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: "tests.yml",
+                branch,
+              },
+            );
+
+            for (const run of runs) {
+              const artifacts = await github.paginate(
+                github.rest.actions.listWorkflowRunArtifacts,
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: run.id,
+                },
+              );
+
+              for (const artifact of artifacts) {
+                await github.rest.actions.deleteArtifact({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  artifact_id: artifact.id,
+                });
+                console.log(
+                  `Deleted artifact "${artifact.name}" (#${artifact.id}) from run ${run.id}`,
+                );
+              }
+            }
