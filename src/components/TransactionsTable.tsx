@@ -120,9 +120,12 @@ const inputClass =
 // need - leaving the rest of the row to the fields above it. A row with
 // every action showing at once (dirty + unreconciled) wraps to a second
 // line here rather than widening the column for that transient case.
+// The leading column is the bulk-select checkbox (#41) - just wide enough
+// for the input itself, desktop-only (mobile selects from the summary row
+// instead, see TransactionRow).
 const GRID_COLS_WITH_ACCOUNT =
-  "md:grid-cols-[130px_110px_1fr_1fr_1fr_100px_100px_80px]";
-const GRID_COLS = "md:grid-cols-[130px_1fr_1fr_1fr_100px_100px_80px]";
+  "md:grid-cols-[28px_130px_110px_1fr_1fr_1fr_100px_100px_80px]";
+const GRID_COLS = "md:grid-cols-[28px_130px_1fr_1fr_1fr_100px_100px_80px]";
 
 export function TransactionsTable({
   transactions,
@@ -132,6 +135,7 @@ export function TransactionsTable({
   createTransaction,
   updateTransaction,
   deleteTransaction,
+  deleteTransactions,
   reconcileTransaction,
   unreconcileTransaction,
   checkImportDuplicates,
@@ -156,6 +160,10 @@ export function TransactionsTable({
   createTransaction?: (formData: FormData) => Promise<void>;
   updateTransaction: (formData: FormData) => Promise<void>;
   deleteTransaction: (formData: FormData) => Promise<void>;
+  // Bulk delete (#41) for the "Delete N selected" action - takes a
+  // "transactionIds" JSON array instead of deleteTransaction's single
+  // "transactionId".
+  deleteTransactions: (formData: FormData) => Promise<void>;
   reconcileTransaction: (formData: FormData) => Promise<void>;
   unreconcileTransaction: (formData: FormData) => Promise<void>;
   // File Import (#35) - same single-account-only gating as
@@ -189,6 +197,57 @@ export function TransactionsTable({
   // addingNew - only meaningful when importTransactions/accountId were
   // passed in.
   const [importOpen, setImportOpen] = useState(false);
+
+  // The bulk-select checkboxes' current selection (#41), by transaction id.
+  // Pruned below whenever the (filtered) transaction list changes, so a
+  // selection can't outlive rows that scrolled out of the current filter or
+  // were just deleted.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeletePending, startBulkDeleteTransition] = useTransition();
+
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const visibleIds = new Set(transactions.map((t) => t.id));
+      const next = new Set([...prev].filter((id) => visibleIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [transactions]);
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const allSelected =
+    transactions.length > 0 && selectedIds.size === transactions.length;
+
+  function toggleSelectAll() {
+    setSelectedIds(
+      allSelected ? new Set() : new Set(transactions.map((t) => t.id)),
+    );
+  }
+
+  function handleBulkDelete() {
+    const count = selectedIds.size;
+    if (count === 0) return;
+    if (
+      !window.confirm(
+        `Delete ${count} transaction${count === 1 ? "" : "s"}? This can't be undone.`,
+      )
+    ) {
+      return;
+    }
+    const formData = new FormData();
+    formData.set("transactionIds", JSON.stringify([...selectedIds]));
+    startBulkDeleteTransition(async () => {
+      await deleteTransactions(formData);
+      setSelectedIds(new Set());
+    });
+  }
 
   const router = useRouter();
   const pathname = usePathname();
@@ -404,6 +463,38 @@ export function TransactionsTable({
         </div>
       </div>
 
+      {/* Bulk action bar (#41) - appears once any row's checkbox is
+          checked, either from a row itself (mobile summary or desktop
+          editor) or the header's "select all". Sits in place of, rather
+          than alongside, the toolbar's own affordances so it's unambiguous
+          which action a click applies to while a selection is active. */}
+      {selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-700/30 bg-brand-700/5 px-200 py-2 text-body">
+          <span className="font-medium text-neutral-800">
+            {selectedIds.size} selected
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              disabled={bulkDeletePending}
+              className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
+            >
+              Clear selection
+            </button>
+            <button
+              type="button"
+              onClick={handleBulkDelete}
+              disabled={bulkDeletePending}
+              className="flex items-center gap-1 rounded bg-danger px-2 py-1 text-small font-medium text-white hover:bg-danger/90 disabled:opacity-50"
+            >
+              <Icon name="delete" className="text-[1.1em]" />
+              {bulkDeletePending ? "Deleting…" : `Delete ${selectedIds.size}`}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-0">
         <datalist id="payee-suggestions">
           {payeeNames.map((name) => (
@@ -414,6 +505,16 @@ export function TransactionsTable({
         <div
           className={`hidden gap-2 border-b border-neutral-200 bg-neutral-100 px-200 py-2 text-small font-medium uppercase tracking-wide text-neutral-600 md:grid ${gridCols}`}
         >
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleSelectAll}
+              disabled={transactions.length === 0}
+              aria-label="Select all transactions"
+              className="h-4 w-4 rounded border-neutral-300 text-brand-700 focus:ring-brand-700"
+            />
+          </div>
           <div>Date</div>
           {showAccount && <div>Account</div>}
           <div>Payee</div>
@@ -457,6 +558,9 @@ export function TransactionsTable({
                 showAccount={showAccount}
                 gridCols={gridCols}
                 currency={currency}
+                selected={selectedIds.has(t.id)}
+                onToggleSelected={() => toggleSelected(t.id)}
+                selectionDisabled={bulkDeletePending}
               />
             </Fragment>
           );
@@ -597,6 +701,9 @@ function TransactionRow({
   showAccount,
   gridCols,
   currency,
+  selected,
+  onToggleSelected,
+  selectionDisabled,
 }: {
   transaction: TransactionRowData;
   categoryGroups: GroupOption[];
@@ -604,6 +711,11 @@ function TransactionRow({
   deleteTransaction: (formData: FormData) => Promise<void>;
   reconcileTransaction: (formData: FormData) => Promise<void>;
   unreconcileTransaction: (formData: FormData) => Promise<void>;
+  // Bulk-select checkbox state (#41), lifted up to TransactionsTable so a
+  // selection survives this row re-rendering (e.g. while it's mid-edit).
+  selected: boolean;
+  onToggleSelected: () => void;
+  selectionDisabled: boolean;
   showAccount: boolean;
   gridCols: string;
   currency: string;
@@ -768,49 +880,64 @@ function TransactionRow({
     >
       {/* Mobile-only: a compact summary row (payee, category pill, amount)
           you tap to open the editor below - the desktop table never shows
-          this, it always renders the editor as a normal row instead. */}
-      <button
-        type="button"
-        onClick={() => setExpanded(true)}
+          this, it always renders the editor as a normal row instead. The
+          bulk-select checkbox (#41) sits outside the tap target itself
+          (input can't nest inside a button) with its own click handler so
+          checking it doesn't also expand the row. */}
+      <div
         className={
           (expanded ? "hidden " : "flex ") +
-          "w-full items-start justify-between gap-3 px-200 py-3 text-left md:hidden"
+          "w-full items-start gap-2 px-200 py-3 md:hidden"
         }
       >
-        <div className="min-w-0">
-          <div className="flex items-center gap-1 truncate font-semibold text-neutral-800">
-            <Icon
-              name={isReconciled ? "lock" : "lock_open"}
-              label={isReconciled ? "Reconciled" : "Not reconciled"}
-              className={
-                "shrink-0 text-[1rem] " +
-                (isReconciled ? "text-brand-700" : "text-neutral-400")
-              }
-            />
-            <span className="truncate">
-              {committed.payeeName || "(No payee)"}
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelected}
+          disabled={selectionDisabled}
+          aria-label="Select transaction"
+          className="mt-1 h-4 w-4 shrink-0 rounded border-neutral-300 text-brand-700 focus:ring-brand-700"
+        />
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="flex flex-1 items-start justify-between gap-3 text-left"
+        >
+          <div className="min-w-0">
+            <div className="flex items-center gap-1 truncate font-semibold text-neutral-800">
+              <Icon
+                name={isReconciled ? "lock" : "lock_open"}
+                label={isReconciled ? "Reconciled" : "Not reconciled"}
+                className={
+                  "shrink-0 text-[1rem] " +
+                  (isReconciled ? "text-brand-700" : "text-neutral-400")
+                }
+              />
+              <span className="truncate">
+                {committed.payeeName || "(No payee)"}
+              </span>
+            </div>
+            <span className="mt-1 inline-block max-w-full truncate rounded-full bg-neutral-100 px-2 py-0.5 text-small text-neutral-600">
+              {categoryName ?? "Uncategorized"}
             </span>
           </div>
-          <span className="mt-1 inline-block max-w-full truncate rounded-full bg-neutral-100 px-2 py-0.5 text-small text-neutral-600">
-            {categoryName ?? "Uncategorized"}
-          </span>
-        </div>
-        <div className="shrink-0 text-right">
-          <div
-            className={
-              "font-medium " +
-              (summaryAmount < 0 ? "text-neutral-800" : "text-success")
-            }
-          >
-            {formatMilliunits(summaryAmount, currency)}
-          </div>
-          {showAccount && (
-            <div className="mt-0.5 max-w-[10rem] truncate text-small text-neutral-600">
-              {transaction.accountName}
+          <div className="shrink-0 text-right">
+            <div
+              className={
+                "font-medium " +
+                (summaryAmount < 0 ? "text-neutral-800" : "text-success")
+              }
+            >
+              {formatMilliunits(summaryAmount, currency)}
             </div>
-          )}
-        </div>
-      </button>
+            {showAccount && (
+              <div className="mt-0.5 max-w-[10rem] truncate text-small text-neutral-600">
+                {transaction.accountName}
+              </div>
+            )}
+          </div>
+        </button>
+      </div>
 
       <div
         className={
@@ -818,6 +945,20 @@ function TransactionRow({
           `grid-cols-2 gap-x-3 gap-y-2 px-200 py-3 md:grid md:items-center md:gap-2 md:py-1 ${gridCols}`
         }
       >
+        {/* Desktop-only: the bulk-select checkbox (#41) - on mobile,
+            selection happens from the collapsed summary row above instead,
+            so this stays hidden there rather than duplicating it. */}
+        <div className="hidden md:flex md:items-center">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelected}
+            disabled={selectionDisabled}
+            aria-label="Select transaction"
+            className="h-4 w-4 rounded border-neutral-300 text-brand-700 focus:ring-brand-700"
+          />
+        </div>
+
         {/* Mobile-only: collapse back to the summary row without needing
             to Cancel or Save first. */}
         <div className="col-span-2 -mb-1 flex justify-end md:hidden">
@@ -1102,6 +1243,12 @@ function NewTransactionRow({
       <div
         className={`grid grid-cols-2 gap-x-3 gap-y-2 px-200 py-3 md:grid md:items-center md:gap-2 md:py-1 ${gridCols}`}
       >
+        {/* Desktop-only placeholder for the bulk-select checkbox column
+            (#41) - a blank, uncommitted row can't be selected, but still
+            needs to occupy that column so the fields below line up with
+            the rest of the table. */}
+        <div className="hidden md:block" />
+
         <div className="col-span-2 md:col-span-1">
           <label className="mb-1 block text-small text-neutral-600 md:hidden">
             Date

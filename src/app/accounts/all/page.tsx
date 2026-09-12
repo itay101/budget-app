@@ -10,6 +10,7 @@ import { TransactionsTable } from "@/components/TransactionsTable";
 import {
   updateTransaction,
   deleteTransaction,
+  deleteTransactions,
   reconcileTransaction,
   unreconcileTransaction,
 } from "../actions";
@@ -96,6 +97,7 @@ export default async function AllAccountsPage({
         payeeNames={payeeNames}
         updateTransaction={updateTransaction}
         deleteTransaction={deleteTransaction}
+        deleteTransactions={deleteTransactions}
         reconcileTransaction={reconcileTransaction}
         unreconcileTransaction={unreconcileTransaction}
         currency={budget.currency}

@@ -388,6 +388,54 @@ export async function deleteTransaction(formData: FormData) {
 }
 
 /**
+ * Deletes several transactions at once (#41) - the multi-select counterpart
+ * to deleteTransaction, backing this action for the table's "Delete N
+ * selected" bulk action. Transactions can span more than one account on the
+ * /accounts/all view, so - unlike deleteTransaction, which only ever has one
+ * owning account to adjust - balance deltas are summed per account first and
+ * applied as one update per account, all inside the same prisma.$transaction
+ * as the deletes.
+ */
+export async function deleteTransactions(formData: FormData) {
+  const transactionIds: string[] = JSON.parse(
+    String(formData.get("transactionIds") ?? "[]"),
+  );
+  if (transactionIds.length === 0) {
+    return;
+  }
+
+  const transactions = await prisma.transaction.findMany({
+    where: { id: { in: transactionIds } },
+    select: { accountId: true, amount: true },
+  });
+
+  const deltaByAccount = new Map<string, number>();
+  for (const t of transactions) {
+    deltaByAccount.set(
+      t.accountId,
+      (deltaByAccount.get(t.accountId) ?? 0) + t.amount,
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.transaction.deleteMany({ where: { id: { in: transactionIds } } });
+    for (const [accountId, total] of deltaByAccount) {
+      await tx.account.update({
+        where: { id: accountId },
+        data: { balance: { decrement: total } },
+      });
+    }
+  });
+
+  for (const accountId of deltaByAccount.keys()) {
+    revalidatePath(`/accounts/${accountId}`);
+  }
+  revalidatePath("/accounts/all");
+  revalidatePath("/accounts");
+  revalidatePath("/budget");
+}
+
+/**
  * Reconciles an account: every transaction on it whose `cleared` isn't
  * already `"RECONCILED"` is flipped to `"RECONCILED"`. This is the
  * happy-path half of the Reconcile flow (#30) — the caller has already
