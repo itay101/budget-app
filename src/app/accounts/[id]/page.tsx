@@ -16,6 +16,7 @@ import {
   createTransaction,
   updateTransaction,
   deleteTransaction,
+  deleteTransactions,
   reconcileAccount,
   reconcileTransaction,
   unreconcileTransaction,
@@ -113,6 +114,7 @@ export default async function AccountPage({
           createTransaction={createTransaction}
           updateTransaction={updateTransaction}
           deleteTransaction={deleteTransaction}
+          deleteTransactions={deleteTransactions}
           reconcileTransaction={reconcileTransaction}
           unreconcileTransaction={unreconcileTransaction}
           checkImportDuplicates={checkImportDuplicates}
