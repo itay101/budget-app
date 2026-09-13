@@ -38,9 +38,17 @@ async function main() {
     process.exit(1);
   }
 
-  const existingOwnerCount = await prisma.budget.count({
-    where: { ownerId: { not: null } },
-  });
+  // Raw SQL, not the typed Prisma API: schema.prisma declares `ownerId`
+  // required (as of the 20260913150000_budget_owner_not_null migration),
+  // so Prisma Client's generated types no longer admit `null` as a value
+  // to query against — but this script's whole job is operating in the
+  // narrow, real window *before* that's true everywhere (a fresh
+  // environment, or one where that migration hasn't applied yet), where
+  // the column can still genuinely hold nulls at the database level
+  // regardless of what the schema says it "should" be.
+  const [{ count: existingOwnerCount }] = await prisma.$queryRaw<
+    [{ count: bigint }]
+  >`SELECT count(*) AS count FROM "Budget" WHERE "ownerId" IS NOT NULL`;
   if (existingOwnerCount > 0) {
     console.error(
       "At least one Budget already has an owner — this script is only for the very first bootstrap. Use the ordinary invite flow instead.",
@@ -74,10 +82,9 @@ async function main() {
     process.exit(1);
   }
 
-  const { count } = await prisma.budget.updateMany({
-    where: { ownerId: null },
-    data: { ownerId: user.id },
-  });
+  // Same reason as the count above: raw SQL to query/set a null ownerId
+  // that the typed API no longer believes can exist.
+  const count = await prisma.$executeRaw`UPDATE "Budget" SET "ownerId" = ${user.id}::uuid WHERE "ownerId" IS NULL`;
 
   console.log(
     `Invited ${email} (User ${user.id}) and made them owner of ${count} existing Budget(s). They'll get a magic-link email to complete sign-in.`,

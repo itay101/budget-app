@@ -23,8 +23,13 @@ export default defineConfig({
   reporter: process.env.CI
     ? [["github"], ["html", { open: "never" }]]
     : "list",
+  // Signs every test in as prisma/seed.ts's seeded owner via the e2e-only
+  // login shortcut (#72, docs/adr/0006) before any test runs, once, and
+  // shares the resulting session across all of them.
+  globalSetup: "./e2e/global-setup.ts",
   use: {
     baseURL: BASE_URL,
+    storageState: "e2e/.auth/user.json",
     // CI captures a trace for every test (not just failing/retried ones)
     // so the HTML report published as a PR artifact (see
     // .github/workflows/tests.yml) always has a trace to open for
@@ -47,6 +52,26 @@ export default defineConfig({
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-    env: { DATABASE_URL: E2E_DATABASE_URL },
+    env: {
+      DATABASE_URL: E2E_DATABASE_URL,
+      // Non-functional placeholders: @supabase/ssr's client constructor
+      // throws immediately if these are empty/undefined (see
+      // src/lib/supabase/{client,server,middleware}.ts), so the server
+      // can't even boot without *some* value — but e2e's Postgres has no
+      // real Supabase project behind it (see docs/adr/0006). The e2e
+      // login shortcut below skips ever needing a working Supabase
+      // connection at all; these just satisfy the constructor for the
+      // small number of code paths (middleware's fallback, /sign-in
+      // itself) that still construct a client.
+      NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co",
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder-anon-key",
+      // The e2e-only login shortcut (#72, docs/adr/0006) — set ONLY
+      // here, never a Vercel project setting. See
+      // src/lib/e2eTestAuth.ts's isE2ETestAuthEnabled for the second,
+      // independent guard (no VERCEL env var) that keeps this from ever
+      // taking effect outside a locally-run e2e process even if this
+      // value leaked somewhere it shouldn't.
+      E2E_TEST_AUTH_ENABLED: "1",
+    },
   },
 });
