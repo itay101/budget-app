@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Avatar } from "./Avatar";
 import { owner, viewerRole, isSharedWithViewer, type FakeBudget } from "./data";
+import { NewBudgetButton } from "./NewBudgetButton";
 import type { VariantProps } from "./SharingPrototypeApp";
 
 /**
@@ -110,6 +111,7 @@ export function VariantC({
               );
             })}
           </ul>
+          <NewBudgetButton />
         </div>
 
         <ul className="space-y-1">
