@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { CURRENT_BUDGET_COOKIE } from "@/lib/budget";
+import { CURRENT_BUDGET_COOKIE, softDeleteBudget } from "@/lib/budget";
 import { isCurrencyCode } from "@/lib/currencies";
 import { getCurrentUser } from "@/lib/auth";
 import { requireBudgetAccess, requireBudgetOwnership } from "@/lib/authorization";
@@ -130,13 +130,7 @@ export async function deleteBudget(formData: FormData) {
     throw new Error("Typed name doesn't match the budget's name");
   }
 
-  await prisma.$transaction([
-    prisma.budget.update({ where: { id: budgetId }, data: { deleted: true } }),
-    prisma.account.updateMany({
-      where: { budgetId },
-      data: { closed: true },
-    }),
-  ]);
+  await softDeleteBudget(budgetId);
 
   if (cookies().get(CURRENT_BUDGET_COOKIE)?.value === budgetId) {
     cookies().delete(CURRENT_BUDGET_COOKIE);
