@@ -8,13 +8,20 @@ transactions, shared between an owner and invited collaborators.
 **User**:
 An authenticated identity that can own and/or collaborate on one or more
 Budgets. Introduced alongside authentication; the app had no notion of a
-user before.
+user before. Deleting a User's account is blocked while they still own
+any Budget that has Collaborators — they must transfer or delete each
+such Budget first (see [ADR 0004](docs/adr/0004-ownership-transfer-preserves-access-account-deletion-blocks-on-owned-budgets.md));
+a Budget they own outright (no Collaborators) is soft-deleted
+automatically as part of account deletion, and every BudgetMembership
+where they're a Collaborator is deleted immediately, the same as leaving.
 
 **Owner**:
 The single User a Budget belongs to (`Budget.ownerId`), with exclusive
 rights to invite/remove Collaborators, transfer ownership, and delete the
 Budget. Every Budget has exactly one Owner at a time; ownership can be
-transferred to an existing Collaborator.
+transferred to an existing Collaborator, which converts the outgoing
+Owner into a Collaborator on that Budget rather than dropping their
+access (see [ADR 0004](docs/adr/0004-ownership-transfer-preserves-access-account-deletion-blocks-on-owned-budgets.md)).
 _Avoid_: Admin (not used — there's no role above Owner).
 
 **Collaborator**:
@@ -28,7 +35,10 @@ _Avoid_: Member, Editor, Viewer (no such distinction exists yet).
 The fact that a specific User is a Collaborator on a specific Budget.
 Does not include the Owner — the Owner relationship lives on
 `Budget.ownerId`, not as a BudgetMembership row. Carries no role: presence
-in this table means "collaborator," full stop.
+in this table means "collaborator," full stop. Removal (Owner-initiated)
+and leaving (Collaborator-initiated) both delete the row immediately, no
+grace period, and both produce the same `collaborator removed` AuditEntry
+action — the `actor` field is what distinguishes who did it.
 
 **Invite**:
 A pending, email-addressed request for someone to become a Collaborator
