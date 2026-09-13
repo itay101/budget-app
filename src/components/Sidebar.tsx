@@ -12,6 +12,7 @@ import {
 } from "@/app/budgets/actions";
 import { AddAccountPopover } from "@/components/AddAccountPopover";
 import { BudgetSwitcherPopover } from "@/components/BudgetSwitcherPopover";
+import { signOut } from "@/app/auth/actions";
 import { SidebarNav } from "./SidebarNav";
 
 export async function Sidebar() {
@@ -128,6 +129,15 @@ export async function Sidebar() {
           </>
         )}
       </div>
+
+      <form action={signOut} className="mt-300 border-t border-neutral-200 pt-200">
+        <button
+          type="submit"
+          className="w-full rounded px-3 py-1.5 text-left text-small text-neutral-600 hover:bg-neutral-100"
+        >
+          Sign out
+        </button>
+      </form>
     </nav>
   );
 }

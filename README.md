@@ -26,16 +26,40 @@ Atlassian Design System), applied as Tailwind tokens in
 
 See [`prisma/schema.prisma`](./prisma/schema.prisma):
 
-- `Budget` — the top-level container (single-user for now); also the unit
-  a currency lives in, since every account/category/transaction hangs off
-  one budget. Multiple budgets are supported (switch between them from the
-  sidebar), one per currency — see [`src/lib/currencies.ts`](./src/lib/currencies.ts)
-  and [`src/app/budgets/actions.ts`](./src/app/budgets/actions.ts)
+- `Budget` — the top-level container, owned by one `User` and optionally
+  shared with collaborators; also the unit a currency lives in, since
+  every account/category/transaction hangs off one budget. Multiple
+  budgets are supported (switch between them from the sidebar), one per
+  currency — see [`src/lib/currencies.ts`](./src/lib/currencies.ts) and
+  [`src/app/budgets/actions.ts`](./src/app/budgets/actions.ts)
 - `Account` — checking/savings/credit card/etc., on- or off-budget
 - `CategoryGroup` / `Category` — how spending is organized
 - `CategoryMonth` — how much was budgeted to a category in a given month
 - `Payee` — who a transaction was to/from
 - `Transaction` — the actual money movements
+- `User` / `Invite` / `BudgetMembership` — authentication and budget
+  sharing (owner + collaborators, invite-only signup); see
+  [CONTEXT.md](./CONTEXT.md) and [`docs/adr/`](./docs/adr) for the full
+  design
+- `AuditEntry` — a record of who changed what on a Budget
+
+## Authentication
+
+Sign-in is [Supabase Auth](https://supabase.com/docs/guides/auth)
+(magic-link email, no password) — see
+[docs/adr/0005](./docs/adr/0005-user-invite-budgetmembership-schema-is-locked-users-deactivate-not-delete.md)
+and [docs/adr/0006](./docs/adr/0006-e2e-gets-a-guarded-login-shortcut-previews-get-no-bypass.md).
+There is no signup page: an account only exists after being invited to a
+Budget by its owner, or via the one-time bootstrap below.
+
+- Set `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` /
+  `SUPABASE_SERVICE_ROLE_KEY` (see `.env.example`) to a real Supabase
+  project — sign-in doesn't work against the plain local Postgres
+  container `docker compose up -d` starts, since it has no `auth` schema.
+- **First-ever user in an environment:** nothing can invite them, so run
+  `npm run bootstrap:first-owner -- you@example.com` once (needs
+  `SUPABASE_SERVICE_ROLE_KEY` set) — it invites that email and makes them
+  owner of every pre-existing Budget. See the script's own comments.
 
 ## Getting started
 
@@ -151,6 +175,5 @@ features:
 
 - Credit card payment auto-categorization
 - Split transactions
-- Auth (multiple users, not just multiple budgets)
 - Reports (spending by category, net worth over time)
 - Import from YNAB's own export format
