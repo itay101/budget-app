@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { E2E_TEST_USER_ID } from "../src/lib/e2eTestAuth";
 
 const prisma = new PrismaClient();
 
@@ -11,8 +12,10 @@ function startOfMonth(date: Date): Date {
 // the same seed User instead of piling up duplicates. No real Supabase
 // credentials back this row — nothing at the database level requires
 // that (see docs/adr/0005/0006) — so local seeding doesn't need a live
-// Supabase project at all.
-const SEED_USER_ID = "00000000-0000-0000-0000-000000000001";
+// Supabase project at all. Shared with e2e's login shortcut (#72) — it's
+// the one user every e2e test runs as, via prisma/seed.ts's own run as
+// part of db:e2e:reset.
+const SEED_USER_ID = E2E_TEST_USER_ID;
 
 async function main() {
   const owner = await prisma.user.upsert({

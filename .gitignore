@@ -32,3 +32,6 @@ yarn-error.log*
 /playwright-report
 /blob-report
 /playwright/.cache
+
+# e2e login shortcut's saved session (#72) - regenerated every run
+/e2e/.auth
