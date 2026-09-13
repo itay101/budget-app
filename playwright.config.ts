@@ -47,6 +47,21 @@ export default defineConfig({
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-    env: { DATABASE_URL: E2E_DATABASE_URL },
+    env: {
+      DATABASE_URL: E2E_DATABASE_URL,
+      // Non-functional placeholders: @supabase/ssr's client constructor
+      // throws immediately if these are empty/undefined (see
+      // src/lib/supabase/{client,server,middleware}.ts), so the server
+      // can't even boot without *some* value — but e2e's Postgres has no
+      // real Supabase project behind it (see docs/adr/0006), and no test
+      // here signs in yet, so an unreachable placeholder host is enough:
+      // middleware's session check fails closed (no user, not a crash)
+      // and every page correctly redirects to /sign-in, same as prod
+      // behaves for a signed-out visitor. #72 replaces this with the
+      // guarded test-only login shortcut so tests can get past that
+      // redirect.
+      NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co",
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder-anon-key",
+    },
   },
 });

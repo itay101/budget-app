@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentBudget, listBudgets } from "@/lib/budget";
 import { formatMilliunits, getCurrencySymbol } from "@/lib/money";
 import { CURRENCY_OPTIONS } from "@/lib/currencies";
-import { createAccount } from "@/app/accounts/actions";
+import { createAccount } from "@/app/(app)/accounts/actions";
 import {
   createBudget,
   deleteBudget,
