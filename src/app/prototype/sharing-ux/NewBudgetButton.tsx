@@ -13,7 +13,7 @@ export function NewBudgetButton() {
       type="button"
       disabled
       title="Out of scope for this prototype — the real switcher's currency-picker flow for creating a budget is unchanged."
-      className="mt-1 flex w-full cursor-not-allowed items-center gap-1 rounded border-t border-neutral-200 px-2 pt-2 text-left text-small font-medium text-neutral-400"
+      className="mb-1 flex w-full cursor-not-allowed items-center gap-1 rounded border-b border-neutral-200 px-2 pb-2 text-left text-small font-medium text-neutral-400"
     >
       <Icon name="add" /> New budget
     </button>

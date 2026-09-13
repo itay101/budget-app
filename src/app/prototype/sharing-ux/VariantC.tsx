@@ -65,6 +65,7 @@ export function VariantC({
             </button>
           </div>
 
+          <NewBudgetButton />
           <ul className="space-y-1">
             {budgets.map((b) => {
               const shared = isSharedWithViewer(b);
@@ -111,7 +112,6 @@ export function VariantC({
               );
             })}
           </ul>
-          <NewBudgetButton />
         </div>
 
         <ul className="space-y-1">

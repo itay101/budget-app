@@ -141,6 +141,7 @@ function SwitcherGroup({
       <p className="mb-1 px-2 text-small font-medium uppercase tracking-wide text-neutral-600">
         {label}
       </p>
+      {!shared && <NewBudgetButton />}
       <ul className="space-y-0.5">
         {budgets.map((b) => (
           <li key={b.id}>
@@ -170,7 +171,6 @@ function SwitcherGroup({
           </li>
         ))}
       </ul>
-      {!shared && <NewBudgetButton />}
     </div>
   );
 }
