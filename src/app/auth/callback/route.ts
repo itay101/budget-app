@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/prisma";
+import { acceptPendingInvites } from "@/lib/invites";
 
 // Always run this on request — it exchanges a one-time code for a
 // session, never something to prerender or cache.
@@ -11,6 +13,12 @@ export const dynamic = "force-dynamic";
  * client), then sends the user on to wherever they were headed —
  * middleware.ts stashed that as `?next=` when it first redirected them
  * to /sign-in.
+ *
+ * This is also the "on sign-in" moment #73/ADR 0003 means for accepting
+ * a pending Invite: right after a session exists, before the redirect,
+ * any Invite addressed to this email is converted into a
+ * BudgetMembership (see acceptPendingInvites's doc comment for why this
+ * lives here rather than in getCurrentUser).
  */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -19,8 +27,16 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
+      if (data.user) {
+        const user = await prisma.user.findUnique({
+          where: { id: data.user.id },
+        });
+        if (user) {
+          await acceptPendingInvites(user);
+        }
+      }
       return NextResponse.redirect(`${origin}${next}`);
     }
   }
