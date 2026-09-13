@@ -32,9 +32,13 @@ in this table means "collaborator," full stop.
 
 **Invite**:
 A pending, email-addressed request for someone to become a Collaborator
-on a Budget, created by the Owner before the invitee has an account. The
-invitee's first sign-in with that email converts the Invite into a
-BudgetMembership.
+on a Budget, created by an Owner. A sign-in with that email — the
+invitee's very first, if they had no account yet, or their next ordinary
+one if they already did — converts the Invite into a BudgetMembership.
+An Invite never expires on its own and is single-use: an Owner cancels it
+outright to retract it, after which it can no longer be accepted, and
+"resending" means canceling and creating a fresh Invite, not reviving the
+same one.
 _Avoid_: Invitation (either is fine informally, but "Invite" is the noun
 used in code/schema).
 
@@ -43,8 +47,8 @@ A record that a User made a specific change to a Budget's data. Scoped to
 a Budget; exists so an Owner or Collaborator can see who changed what.
 Covers every Budget-scoped mutation — accounts, categories, category-month
 budgeted amounts, payees, transactions, and membership changes (invite
-sent/accepted, collaborator removed, ownership transferred) — not just
-transactions. Captures a field-level diff of what changed (see
+sent/accepted/revoked, collaborator removed, ownership transferred) — not
+just transactions. Captures a field-level diff of what changed (see
 [ADR 0002](docs/adr/0002-audit-entry-is-a-single-polymorphic-table-with-field-diffs.md)
 for the data model), referencing the mutated row polymorphically rather
 than through a per-entity-type table. The actor is always a User (owner
