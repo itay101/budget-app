@@ -39,7 +39,17 @@ _Avoid_: Invitation (either is fine informally, but "Invite" is the noun
 used in code/schema).
 
 **AuditEntry**:
-A record that a User made a specific change to a Budget's data (e.g. an
-edited Transaction, a changed budgeted amount). Scoped to a Budget;
-exists so an Owner or Collaborator can see who changed what.
+A record that a User made a specific change to a Budget's data. Scoped to
+a Budget; exists so an Owner or Collaborator can see who changed what.
+Covers every Budget-scoped mutation — accounts, categories, category-month
+budgeted amounts, payees, transactions, and membership changes (invite
+sent/accepted, collaborator removed, ownership transferred) — not just
+transactions. Captures a field-level diff of what changed (see
+[ADR 0002](docs/adr/0002-audit-entry-is-a-single-polymorphic-table-with-field-diffs.md)
+for the data model), referencing the mutated row polymorphically rather
+than through a per-entity-type table. The actor is always a User (owner
+or collaborator) — never a system/cron actor, since this only covers
+changes made by people. Kept forever; no retention/pruning in scope.
+Capturing the data is the whole deliverable for the initial effort — a UI
+to view the log is a separate, later effort.
 _Avoid_: Audit log (that's the collection; AuditEntry is one row in it).
