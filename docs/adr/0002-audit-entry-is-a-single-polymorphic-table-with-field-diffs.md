@@ -22,6 +22,10 @@ in this app are small (a handful of scalar fields), so there's no size
 pressure pushing toward snapshots; the downside is every write site needs
 to compute its own diff rather than just recording that a write happened.
 
+`AuditEntry.actor` is always a User (owner or collaborator) — never a
+system or cron process, since this only covers changes made by people —
+and entries are kept forever, with no retention or pruning in scope.
+
 ## Considered options
 
 - **Per-entity-type audit tables** — rejected: real FKs and full
