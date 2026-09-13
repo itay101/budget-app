@@ -31,11 +31,32 @@ model Budget {
   // is left to a future cleanup job that doesn't exist yet. A deleted
   // budget is invisible to every query in src/lib/budget.ts.
   deleted        Boolean         @default(false)
+  // The single User this Budget belongs to (ADR 0001 — a direct FK, not a
+  // membership row, so "who owns this" is always exactly one unambiguous
+  // value). `onDelete: Restrict` is defensive: in practice a User row is
+  // never actually deleted (ADR 0005), only deactivated, and the
+  // deactivation trigger in this migration is what really enforces
+  // "can't orphan an owned Budget" — see the trigger's own comment.
+  //
+  // Nullable for now, not the `String` (required) the locked schema
+  // (ADR 0005) calls for: existing Budget rows predate any User to own
+  // them, and the mirror trigger below can't backfill a User that
+  // doesn't exist yet at migration time. The bootstrap script
+  // (scripts/bootstrap-first-owner.ts) fills this in for every
+  // pre-existing Budget once the first real Supabase user exists; #71
+  // (see docs/adr, "scope budget access") adds the follow-up migration
+  // that makes this NOT NULL for good, once every code path (starting
+  // with createBudget) always supplies it.
+  ownerId        String?         @db.Uuid
+  owner          User?           @relation("BudgetOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   accounts       Account[]
   categoryGroups CategoryGroup[]
   payees         Payee[]
+  memberships    BudgetMembership[]
+  invites        Invite[]
+  auditEntries   AuditEntry[]
 }
 
 enum AccountType {
@@ -144,4 +165,130 @@ model Transaction {
   @@index([categoryId])
   @@index([payeeId])
   @@index([date])
+}
+
+// Authentication + budget sharing (see #56/#69, CONTEXT.md, and
+// docs/adr/0001 through 0005). `id` is a `uuid`, not this schema's usual
+// `cuid()` text id, because it must equal `auth.users.id` verbatim —
+// Supabase's own guidance is to reference nothing else off `auth.users`,
+// since every other column there can change out from under you. A
+// Postgres trigger (this migration) mirrors `auth.users` into this table
+// on signup and on email change; nothing here is ever written by the app
+// directly except `deactivatedAt`.
+model User {
+  id            String    @id @db.Uuid
+  // Lower-cased on write (by the mirroring trigger, and by app code for
+  // the one column it does touch — deactivatedAt).
+  email         String
+  // "Deleting your account" deactivates the User (this timestamp) and
+  // truly deletes the underlying Supabase credentials, but never removes
+  // this row (ADR 0005) — AuditEntry.actorId stays a plain required FK,
+  // permanently resolvable, forever. See the "prevent orphaning" trigger
+  // below for the backstop this implies.
+  deactivatedAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  ownedBudgets Budget[]           @relation("BudgetOwner")
+  memberships  BudgetMembership[]
+  invitesSent  Invite[]
+  auditEntries AuditEntry[]
+
+  // A partial unique index enforces email uniqueness only among active
+  // users (`WHERE "deactivatedAt" IS NULL`) — Prisma's schema DSL can't
+  // express that, so it lives in migration SQL instead, same as
+  // `Budget.currency` above. A later invite to the same address (after
+  // the old account's Supabase credentials were deleted) is then free to
+  // create a new, distinct User row.
+}
+
+// A User, other than the Owner, granted access to a Budget (ADR 0001) — no
+// `role` column, since Collaborator is the only access level in scope.
+// No status either: a row's existence *is* the membership; removal or
+// leaving (ADR 0004) deletes it outright, immediately, no grace period.
+model BudgetMembership {
+  id        String   @id @default(cuid())
+  budgetId  String
+  budget    Budget   @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([budgetId, userId])
+  @@index([userId])
+}
+
+// A pending, email-addressed request to become a Collaborator on a
+// Budget (ADR 0003). No `status` column — the row's mere existence is
+// "pending"; both acceptance (-> BudgetMembership) and cancellation
+// delete it outright, and AuditEntry is the permanent record of what
+// happened to it. No app-level expiry either (relies on Supabase's own
+// magic-link OTP expiry).
+model Invite {
+  id        String @id @default(cuid())
+  // Lower-cased on write.
+  email     String
+  budgetId  String
+  budget    Budget @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  invitedBy String @db.Uuid
+  inviter   User   @relation(fields: [invitedBy], references: [id])
+  // true: this Invite created a fresh, unconfirmed auth.users row via
+  //   admin.inviteUserByEmail — canceling must admin.deleteUser it too
+  //   (ADR 0003), or the old invite link keeps working.
+  // false: the email already had a confirmed account when invited — no
+  //   Supabase-side row exists for this Invite, so canceling must never
+  //   touch Supabase auth.
+  createdSupabaseUser Boolean
+  createdAt           DateTime @default(now())
+
+  @@unique([budgetId, email])
+  // Supports the accept-time lookup ("does the signed-in user's email
+  // have a pending Invite anywhere?"), separate from the per-budget
+  // uniqueness check above.
+  @@index([email])
+}
+
+// Covers every Budget-scoped mutation: accounts, categories, category-
+// month budgeted amounts, payees, transactions, and membership changes
+// (invites, collaborator removal, ownership transfer) — see ADR 0002.
+enum AuditEntityType {
+  BUDGET
+  ACCOUNT
+  CATEGORY_GROUP
+  CATEGORY
+  CATEGORY_MONTH
+  PAYEE
+  TRANSACTION
+  BUDGET_MEMBERSHIP
+  INVITE
+}
+
+// One polymorphic table per change (ADR 0002), rather than one table per
+// entity type or a full-row snapshot: a single "everything that happened
+// on this budget" query, at the cost of `entityId` not being a real FK —
+// referential integrity there is an app-layer concern, not the schema's.
+// Kept forever; no retention/pruning in scope.
+model AuditEntry {
+  id         String          @id @default(cuid())
+  budgetId   String
+  budget     Budget          @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  entityType AuditEntityType
+  // Not a real FK — see the model comment.
+  entityId   String
+  // Free text, not an enum: covers generic CRUD ("created"/"updated"/
+  // "deleted") and the membership-specific phrasing ADR 0002/0004 use
+  // verbatim ("invite sent"/"accepted"/"revoked", "collaborator
+  // removed", "ownership transferred").
+  action     String
+  // Always a User — never a system/cron process, since this only covers
+  // changes made by people. Required, no special onDelete behavior: safe
+  // only because User rows are never hard-deleted (ADR 0005).
+  actorId    String          @db.Uuid
+  actor      User            @relation(fields: [actorId], references: [id])
+  // Field-level diff: `{ fieldName: [oldValue, newValue] }`.
+  changes    Json
+  createdAt  DateTime        @default(now())
+
+  @@index([budgetId, createdAt])
+  @@index([entityType, entityId])
 }

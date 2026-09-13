@@ -17,10 +17,13 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "bootstrap:first-owner": "tsx scripts/bootstrap-first-owner.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.45.4",
     "@vercel/analytics": "^2.0.1",
     "exceljs": "^4.4.0",
     "next": "^14.2.15",
