@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireBudgetOwnership } from "@/lib/authorization";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { revokeInvite } from "@/lib/invites";
 
 /**
  * Supabase's own stable error codes (see
@@ -122,14 +123,10 @@ export async function sendInvite(
 }
 
 /**
- * Cancels a pending Invite. When it created an unconfirmed Supabase user
- * (`createdSupabaseUser`), that user is deleted first via
- * `admin.deleteUser`, and only then is the local `Invite` row removed —
- * that order matters (ADR 0003): if the Supabase call failed but the
- * local row were deleted anyway, the old invite link would keep working
- * with no local record left to accept it into. Owner-only, authorized
- * via the Invite's own Budget — a non-owner gets the same
- * "Budget not found" a stranger would (requireBudgetOwnership).
+ * Cancels a pending Invite (Owner-initiated) — see revokeInvite
+ * (src/lib/invites.ts) for the actual Supabase-then-local ordering this
+ * relies on. Authorized via the Invite's own Budget — a non-owner gets
+ * the same "Budget not found" a stranger would (requireBudgetOwnership).
  */
 export async function cancelInvite(formData: FormData): Promise<void> {
   const inviteId = String(formData.get("inviteId") ?? "");
@@ -144,24 +141,7 @@ export async function cancelInvite(formData: FormData): Promise<void> {
 
   await requireBudgetOwnership(invite.budgetId);
 
-  if (invite.createdSupabaseUser) {
-    // Invite only records *that* it created an auth.users row, not that
-    // row's id — re-derived here via the mirrored public.User row for
-    // this email, which always shares that id verbatim (ADR 0005).
-    const invitedUser = await prisma.user.findFirst({
-      where: { email: invite.email, deactivatedAt: null },
-    });
-    if (invitedUser) {
-      const { error } = await createAdminClient().auth.admin.deleteUser(
-        invitedUser.id,
-      );
-      if (error) {
-        throw new Error(`Failed to cancel invite: ${error.message}`);
-      }
-    }
-  }
-
-  await prisma.invite.delete({ where: { id: inviteId } });
+  await revokeInvite(invite);
   revalidatePath("/", "layout");
 }
 

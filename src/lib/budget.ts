@@ -55,6 +55,26 @@ export async function listBudgets() {
 }
 
 /**
+ * Marks a budget deleted and closes its accounts — the core of
+ * deleteBudget's explicit, confirmed flow (src/app/budgets/actions.ts)
+ * and of account deactivation's automatic one (src/app/auth/actions.ts,
+ * ADR 0004): a Budget the deactivating owner holds outright, with no
+ * Collaborators, is soft-deleted the same way, just without a
+ * "type the name to confirm" step in front of it. Doesn't touch the
+ * current-budget cookie or the Budget's pending Invites — callers handle
+ * whichever of those apply to them.
+ */
+export async function softDeleteBudget(budgetId: string) {
+  await prisma.$transaction([
+    prisma.budget.update({ where: { id: budgetId }, data: { deleted: true } }),
+    prisma.account.updateMany({
+      where: { budgetId },
+      data: { closed: true },
+    }),
+  ]);
+}
+
+/**
  * Per-category running totals through a given month, keyed by category id:
  * everything ever budgeted (or spent/earned) in that category from the
  * beginning of time up to and including the month in question. Built by
