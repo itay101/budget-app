@@ -25,6 +25,9 @@ to compute its own diff rather than just recording that a write happened.
 `AuditEntry.actor` is always a User (owner or collaborator) — never a
 system or cron process, since this only covers changes made by people —
 and entries are kept forever, with no retention or pruning in scope.
+`actorId` is a required, non-nullable FK with no special `onDelete`
+behavior, safe only because `User` rows are never hard-deleted — see
+[ADR 0005](0005-user-invite-budgetmembership-schema-is-locked-users-deactivate-not-delete.md).
 
 ## Considered options
 
