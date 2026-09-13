@@ -14,6 +14,11 @@ creates a pending `Invite` row, which the app checks for and offers to
 accept on that user's next ordinary sign-in, rather than sending any
 notification email.
 
+An Invite has no app-level expiry: the underlying Supabase magic link
+already expires on its own per Supabase's shared 24h OTP setting, so a
+duplicate app-level TTL would just be redundant bookkeeping for no added
+benefit.
+
 ## Considered options
 
 - **Instant-add a known existing user directly as a BudgetMembership**,

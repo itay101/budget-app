@@ -34,14 +34,13 @@ in this table means "collaborator," full stop. Removal/leave mechanics:
 **Invite**:
 A pending, email-addressed request for someone to become a Collaborator
 on a Budget, created by an Owner, converted into a BudgetMembership by a
-sign-in with that email. Never expires on its own; single-use. Resend /
-revoke / existing-account mechanics: [ADR 0003](docs/adr/0003-invite-resend-and-existing-account-invites-route-around-a-non-idempotent-invite-api.md).
+sign-in with that email. Single-use. Resend / revoke / existing-account /
+expiry mechanics: [ADR 0003](docs/adr/0003-invite-resend-and-existing-account-invites-route-around-a-non-idempotent-invite-api.md).
 _Avoid_: Invitation (either is fine informally, but "Invite" is the noun
 used in code/schema).
 
 **AuditEntry**:
 A record that a User made a specific change to a Budget's data — scoped
 to a Budget, covering every Budget-scoped mutation (not just
-transactions). Actor is always a User, never a system/cron actor; kept
-forever, no retention/pruning. Data model: [ADR 0002](docs/adr/0002-audit-entry-is-a-single-polymorphic-table-with-field-diffs.md).
+transactions). Data model, actor, and retention rules: [ADR 0002](docs/adr/0002-audit-entry-is-a-single-polymorphic-table-with-field-diffs.md).
 _Avoid_: Audit log (that's the collection; AuditEntry is one row in it).
