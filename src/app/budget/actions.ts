@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentBudget } from "@/lib/budget";
+import {
+  requireCategoryAccess,
+  requireCategoryGroupAccess,
+} from "@/lib/authorization";
 import { numberToMilliunits } from "@/lib/money";
 
 export async function createCategoryGroup(formData: FormData) {
@@ -37,6 +41,7 @@ export async function createCategory(formData: FormData) {
   if (!categoryGroupId || !name) {
     throw new Error("Category group and name are required");
   }
+  await requireCategoryGroupAccess(categoryGroupId);
 
   const last = await prisma.category.findFirst({
     where: { categoryGroupId },
@@ -64,6 +69,7 @@ export async function renameCategoryGroup(formData: FormData) {
   if (!name) {
     throw new Error("Category group name is required");
   }
+  await requireCategoryGroupAccess(categoryGroupId);
 
   await prisma.categoryGroup.update({
     where: { id: categoryGroupId },
@@ -83,6 +89,7 @@ export async function renameCategory(formData: FormData) {
   if (!name) {
     throw new Error("Category name is required");
   }
+  await requireCategoryAccess(categoryId);
 
   await prisma.category.update({
     where: { id: categoryId },
@@ -103,6 +110,7 @@ export async function setCategoryHidden(formData: FormData) {
   if (!categoryId) {
     throw new Error("categoryId is required");
   }
+  await requireCategoryAccess(categoryId);
 
   await prisma.category.update({
     where: { id: categoryId },
@@ -118,6 +126,7 @@ export async function deleteCategoryGroup(formData: FormData) {
   if (!categoryGroupId) {
     throw new Error("categoryGroupId is required");
   }
+  await requireCategoryGroupAccess(categoryGroupId);
 
   const categoryCount = await prisma.category.count({
     where: { categoryGroupId },
@@ -149,6 +158,20 @@ export async function moveCategory(formData: FormData) {
   }
   if (categoryId === beforeCategoryId) {
     return;
+  }
+
+  const [{ budgetId: sourceBudgetId }, { budgetId: targetBudgetId }] =
+    await Promise.all([
+      requireCategoryAccess(categoryId),
+      requireCategoryGroupAccess(targetGroupId),
+    ]);
+  // Both ids are independently authorized above, but a move across
+  // budgets would still corrupt data (a Category's budget is implied by
+  // its CategoryGroup) even between two budgets the same user can
+  // access — e.g. two of their own budgets, or one they own and one they
+  // collaborate on.
+  if (sourceBudgetId !== targetBudgetId) {
+    throw new Error("Cannot move a category to a different budget");
   }
 
   const targetCategories = await prisma.category.findMany({
@@ -194,6 +217,15 @@ export async function transferAvailable(formData: FormData) {
     throw new Error("Cannot move money to the same category");
   }
 
+  const [{ budgetId: fromBudgetId }, { budgetId: toBudgetId }] =
+    await Promise.all([
+      requireCategoryAccess(fromCategoryId),
+      requireCategoryAccess(toCategoryId),
+    ]);
+  if (fromBudgetId !== toBudgetId) {
+    throw new Error("Cannot move money between different budgets");
+  }
+
   const month = new Date(monthInput);
   const amount = numberToMilliunits(Number(amountInput) || 0);
 
@@ -231,6 +263,7 @@ export async function setBudgeted(formData: FormData) {
   if (!categoryId || !monthInput) {
     throw new Error("categoryId and month are required");
   }
+  await requireCategoryAccess(categoryId);
 
   const month = new Date(monthInput);
   const budgeted = numberToMilliunits(Number(amountInput) || 0);

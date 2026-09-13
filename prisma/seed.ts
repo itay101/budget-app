@@ -6,9 +6,23 @@ function startOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
+// A fixed id/email so re-running the seed against a non-empty database
+// (unlike db:e2e:reset, which always starts from a fresh schema) reuses
+// the same seed User instead of piling up duplicates. No real Supabase
+// credentials back this row — nothing at the database level requires
+// that (see docs/adr/0005/0006) — so local seeding doesn't need a live
+// Supabase project at all.
+const SEED_USER_ID = "00000000-0000-0000-0000-000000000001";
+
 async function main() {
+  const owner = await prisma.user.upsert({
+    where: { id: SEED_USER_ID },
+    create: { id: SEED_USER_ID, email: "seed@example.com" },
+    update: {},
+  });
+
   const budget = await prisma.budget.create({
-    data: { name: "My Budget" },
+    data: { name: "My Budget", ownerId: owner.id },
   });
 
   const checking = await prisma.account.create({

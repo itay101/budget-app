@@ -3,6 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentBudget } from "@/lib/budget";
+import { getCurrentUser } from "@/lib/auth";
+import {
+  accessibleBudgetWhere,
+  requireAccountAccess,
+  requireBudgetAccess,
+  requireTransactionAccess,
+} from "@/lib/authorization";
 import { numberToMilliunits } from "@/lib/money";
 import {
   ACCOUNT_TYPES,
@@ -105,10 +112,7 @@ export async function createTransaction(formData: FormData) {
     throw new Error("Date is required");
   }
 
-  const account = await prisma.account.findUniqueOrThrow({
-    where: { id: accountId },
-    select: { budgetId: true },
-  });
+  const { budgetId } = await requireAccountAccess(accountId);
 
   const payeeName = String(formData.get("payeeName") ?? "").trim();
   const categoryId = String(formData.get("categoryId") ?? "") || null;
@@ -117,7 +121,7 @@ export async function createTransaction(formData: FormData) {
 
   await prisma.$transaction(async (tx) => {
     const payeeId = payeeName
-      ? await findOrCreatePayee(tx, account.budgetId, payeeName)
+      ? await findOrCreatePayee(tx, budgetId, payeeName)
       : null;
 
     await tx.transaction.create({
@@ -162,6 +166,7 @@ export async function checkImportDuplicates(
   if (!accountId) {
     throw new Error("accountId is required");
   }
+  await requireAccountAccess(accountId);
 
   const rows: ImportRow[] = JSON.parse(String(formData.get("rows") ?? "[]"));
   if (rows.length === 0) {
@@ -212,10 +217,7 @@ export async function importTransactions(formData: FormData) {
     return;
   }
 
-  const account = await prisma.account.findUniqueOrThrow({
-    where: { id: accountId },
-    select: { budgetId: true },
-  });
+  const { budgetId } = await requireAccountAccess(accountId);
 
   await prisma.$transaction(async (tx) => {
     // Payees repeat heavily within one import file (the same merchant over
@@ -234,7 +236,7 @@ export async function importTransactions(formData: FormData) {
         const cacheKey = payeeName.toLowerCase();
         payeeId = payeeIds.get(cacheKey) ?? null;
         if (!payeeId) {
-          payeeId = await findOrCreatePayee(tx, account.budgetId, payeeName);
+          payeeId = await findOrCreatePayee(tx, budgetId, payeeName);
           payeeIds.set(cacheKey, payeeId);
         }
       }
@@ -281,6 +283,7 @@ export async function updateTransaction(formData: FormData) {
       account: { select: { budgetId: true } },
     },
   });
+  await requireBudgetAccess(transaction.account.budgetId);
 
   const data: {
     date?: Date;
@@ -361,8 +364,13 @@ export async function deleteTransaction(formData: FormData) {
 
   const transaction = await prisma.transaction.findUniqueOrThrow({
     where: { id: transactionId },
-    select: { accountId: true, amount: true },
+    select: {
+      accountId: true,
+      amount: true,
+      account: { select: { budgetId: true } },
+    },
   });
+  await requireBudgetAccess(transaction.account.budgetId);
 
   await prisma.$transaction(async (tx) => {
     await tx.transaction.delete({ where: { id: transactionId } });
@@ -389,10 +397,20 @@ export async function deleteTransactions(formData: FormData) {
     return;
   }
 
+  // Scoped to budgets this user can access as part of the query itself
+  // (rather than fetched-then-checked) — a transactionId from a Budget
+  // this user has no access to is silently excluded, the same way an
+  // already-nonexistent id already was, rather than throwing and
+  // revealing that *something* exists at that id.
+  const user = await getCurrentUser();
   const transactions = await prisma.transaction.findMany({
-    where: { id: { in: transactionIds } },
-    select: { accountId: true, amount: true },
+    where: {
+      id: { in: transactionIds },
+      account: { budget: { deleted: false, ...accessibleBudgetWhere(user.id) } },
+    },
+    select: { id: true, accountId: true, amount: true },
   });
+  const authorizedIds = transactions.map((t) => t.id);
 
   const deltaByAccount = new Map<string, number>();
   for (const t of transactions) {
@@ -403,7 +421,7 @@ export async function deleteTransactions(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
-    await tx.transaction.deleteMany({ where: { id: { in: transactionIds } } });
+    await tx.transaction.deleteMany({ where: { id: { in: authorizedIds } } });
     await applyBalanceDeltas(tx, deltaByAccount);
   });
 
@@ -424,6 +442,7 @@ export async function reconcileAccount(formData: FormData) {
   if (!accountId) {
     throw new Error("accountId is required");
   }
+  await requireAccountAccess(accountId);
 
   await prisma.$transaction(async (tx) => {
     await tx.transaction.updateMany({
@@ -446,6 +465,7 @@ export async function reconcileTransaction(formData: FormData) {
     throw new Error("transactionId is required");
   }
 
+  await requireTransactionAccess(transactionId);
   const transaction = await prisma.transaction.findUniqueOrThrow({
     where: { id: transactionId },
     select: { accountId: true },
@@ -472,6 +492,7 @@ export async function unreconcileTransaction(formData: FormData) {
     throw new Error("transactionId is required");
   }
 
+  await requireTransactionAccess(transactionId);
   const transaction = await prisma.transaction.findUniqueOrThrow({
     where: { id: transactionId },
     select: { accountId: true },
@@ -497,6 +518,7 @@ export async function updateAccount(formData: FormData) {
   if (!accountId) {
     throw new Error("accountId is required");
   }
+  await requireAccountAccess(accountId);
 
   const data: {
     name?: string;
