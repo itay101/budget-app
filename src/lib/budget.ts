@@ -45,13 +45,52 @@ export async function getCurrentBudget() {
   });
 }
 
+export type BudgetSummary = {
+  id: string;
+  name: string;
+  currency: string;
+  /** Whether the signed-in user is this Budget's Owner (vs. a Collaborator). */
+  isOwner: boolean;
+  /** The Owner's email — only meaningful for a budget this user doesn't own. */
+  ownerEmail: string;
+  /** Only populated for budgets this user owns — see BudgetSwitcherPopover's
+   * inline collaborator management (#76); a Collaborator doesn't get the
+   * rest of a Budget's membership list handed to them. */
+  collaborators: { userId: string; email: string }[];
+  pendingInvites: { id: string; email: string }[];
+};
+
 /** Every non-deleted budget this user can access (owns or collaborates
- * on), for the sidebar's budget switcher. */
-export async function listBudgets() {
+ * on), for the sidebar's budget switcher — including, for the ones they
+ * own, enough of their collaborator/pending-invite state to manage them
+ * inline (#76) without a second round trip. */
+export async function listBudgets(): Promise<BudgetSummary[]> {
   const user = await getCurrentUser();
-  return prisma.budget.findMany({
+  const budgets = await prisma.budget.findMany({
     where: { deleted: false, ...accessibleBudgetWhere(user.id) },
     orderBy: { createdAt: "asc" },
+    include: {
+      owner: { select: { email: true } },
+      memberships: { include: { user: { select: { email: true } } } },
+      invites: { select: { id: true, email: true }, orderBy: { createdAt: "asc" } },
+    },
+  });
+
+  return budgets.map((b) => {
+    const isOwner = b.ownerId === user.id;
+    return {
+      id: b.id,
+      name: b.name,
+      currency: b.currency,
+      isOwner,
+      ownerEmail: b.owner.email,
+      collaborators: isOwner
+        ? b.memberships.map((m) => ({ userId: m.userId, email: m.user.email }))
+        : [],
+      pendingInvites: isOwner
+        ? b.invites.map((i) => ({ id: i.id, email: i.email }))
+        : [],
+    };
   });
 }
 
