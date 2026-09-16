@@ -34,3 +34,12 @@ title they implement, not just `ticket-<number>-<random suffix>`. e.g. for
 "Add a free-text filter (memo/payee) to the transactions list", prefer
 something like `claude/add-memo-payee-filter-<suffix>` over
 `claude/ticket-22-<suffix>`.
+
+## Commit structure
+
+Split a PR's changes into logical, atomic commits rather than one big
+commit — e.g. a schema/migration change as its own commit, a shared
+helper extraction as another, the actual feature logic as another. Each
+commit should be reviewable on its own and have a clear, descriptive
+message explaining what that commit does and why, not just a mention in
+the overall PR description.
