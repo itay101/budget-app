@@ -11,11 +11,14 @@
  * everything downstream of this script assumes it already ran.
  *
  * Needs SUPABASE_SERVICE_ROLE_KEY (the secret key, never the anon key —
- * never expose this to the browser) in the environment it runs against.
- * Not committed anywhere and not something an AI session has access to;
- * run this yourself:
+ * never expose this to the browser) and APP_URL (the environment's own
+ * origin, e.g. https://budget-app.vercel.app or a preview URL — no
+ * request to derive it from here, unlike inviteActions.ts's ordinary
+ * invite flow) in the environment it runs against. Not committed
+ * anywhere and not something an AI session has access to; run this
+ * yourself:
  *
- *   SUPABASE_SERVICE_ROLE_KEY=... npx tsx scripts/bootstrap-first-owner.ts you@example.com
+ *   SUPABASE_SERVICE_ROLE_KEY=... APP_URL=https://your-env.example.com npx tsx scripts/bootstrap-first-owner.ts you@example.com
  */
 import { createClient } from "@supabase/supabase-js";
 import { PrismaClient } from "@prisma/client";
@@ -31,9 +34,10 @@ async function main() {
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceRoleKey) {
+  const appUrl = process.env.APP_URL;
+  if (!supabaseUrl || !serviceRoleKey || !appUrl) {
     console.error(
-      "NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must both be set",
+      "NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and APP_URL must all be set",
     );
     process.exit(1);
   }
@@ -62,9 +66,16 @@ async function main() {
 
   // Sends a real magic-link invite email — the same primitive the
   // ordinary invite flow (#73) uses, so this first user's sign-in
-  // experience isn't a special case.
+  // experience isn't a special case. redirectTo matters here: without
+  // it, Supabase falls back to the project's dashboard-configured Site
+  // URL (defaults to http://localhost:3000) instead of this
+  // environment's actual origin, and sends the link straight to `/`
+  // rather than /auth/callback, which is the route that actually
+  // exchanges the code for a session (see src/app/auth/callback/route.ts).
+  const callbackUrl = new URL("/auth/callback", appUrl).toString();
   const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
     email,
+    { redirectTo: callbackUrl },
   );
   if (error || !data.user) {
     console.error(`Failed to invite ${email}:`, error?.message);
