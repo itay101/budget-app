@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { diffFields, recordAuditEntry } from "@/lib/audit";
 
 /**
  * The interactive-transaction client every helper here takes, so a
@@ -62,13 +63,28 @@ export async function applyBalanceDeltas(
  * `name` is matched as given — callers are expected to have already
  * trimmed it, and an empty name isn't meaningful here (callers treat that
  * as "no payee" and don't call this at all).
+ *
+ * Writes the PAYEE "created" AuditEntry (#75/ADR 0002) itself, only on the
+ * create path — a plain lookup that finds an existing payee isn't a
+ * mutation, so it has nothing to log.
  */
 export async function findOrCreatePayee(
   tx: TransactionClient,
   budgetId: string,
   name: string,
+  actorId: string,
 ): Promise<string> {
   const existing = await tx.payee.findFirst({ where: { budgetId, name } });
   if (existing) return existing.id;
-  return (await tx.payee.create({ data: { budgetId, name } })).id;
+
+  const created = await tx.payee.create({ data: { budgetId, name } });
+  await recordAuditEntry(tx, {
+    budgetId,
+    entityType: "PAYEE",
+    entityId: created.id,
+    action: "created",
+    actorId,
+    changes: diffFields({}, { name }),
+  });
+  return created.id;
 }

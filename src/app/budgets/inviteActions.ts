@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { requireBudgetOwnership } from "@/lib/authorization";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revokeInvite } from "@/lib/invites";
+import { diffFields, recordAuditEntry } from "@/lib/audit";
 
 /**
  * Supabase's own stable error codes (see
@@ -95,8 +96,18 @@ export async function sendInvite(
   }
 
   try {
-    await prisma.invite.create({
-      data: { budgetId, email, invitedBy: user.id, createdSupabaseUser },
+    await prisma.$transaction(async (tx) => {
+      const invite = await tx.invite.create({
+        data: { budgetId, email, invitedBy: user.id, createdSupabaseUser },
+      });
+      await recordAuditEntry(tx, {
+        budgetId,
+        entityType: "INVITE",
+        entityId: invite.id,
+        action: "invite sent",
+        actorId: user.id,
+        changes: diffFields({}, { email, createdSupabaseUser }),
+      });
     });
   } catch (err) {
     // The local write is what actually makes this Invite "exist" — if it
@@ -139,9 +150,9 @@ export async function cancelInvite(formData: FormData): Promise<void> {
     throw new Error("Invite not found");
   }
 
-  await requireBudgetOwnership(invite.budgetId);
+  const { user } = await requireBudgetOwnership(invite.budgetId);
 
-  await revokeInvite(invite);
+  await revokeInvite(invite, user.id);
   revalidatePath("/", "layout");
 }
 

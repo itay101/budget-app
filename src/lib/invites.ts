@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { diffFields, recordAuditEntries, recordAuditEntry } from "@/lib/audit";
 import type { Invite, User } from "@prisma/client";
 
 /**
@@ -10,9 +11,11 @@ import type { Invite, User } from "@prisma/client";
  * into. Shared between `cancelInvite`
  * (src/app/budgets/inviteActions.ts, the Owner-facing action) and account
  * deactivation (src/app/auth/actions.ts, ADR 0004 — canceling a Budget's
- * pending Invites as part of its automatic soft-delete).
+ * pending Invites as part of its automatic soft-delete) — `actorId` is
+ * the Owner in the former, the deactivating Owner themselves in the
+ * latter.
  */
-export async function revokeInvite(invite: Invite): Promise<void> {
+export async function revokeInvite(invite: Invite, actorId: string): Promise<void> {
   if (invite.createdSupabaseUser) {
     // Invite only records *that* it created an auth.users row, not that
     // row's id — re-derived here via the mirrored public.User row for
@@ -29,7 +32,17 @@ export async function revokeInvite(invite: Invite): Promise<void> {
       }
     }
   }
-  await prisma.invite.delete({ where: { id: invite.id } });
+  await prisma.$transaction(async (tx) => {
+    await tx.invite.delete({ where: { id: invite.id } });
+    await recordAuditEntry(tx, {
+      budgetId: invite.budgetId,
+      entityType: "INVITE",
+      entityId: invite.id,
+      action: "invite revoked",
+      actorId,
+      changes: diffFields({ email: invite.email }, {}),
+    });
+  });
 }
 
 /**
@@ -61,18 +74,29 @@ export async function acceptPendingInvites(user: User): Promise<void> {
     return;
   }
 
-  await prisma.$transaction([
-    ...invites.map((invite) =>
-      prisma.budgetMembership.upsert({
+  await prisma.$transaction(async (tx) => {
+    for (const invite of invites) {
+      await tx.budgetMembership.upsert({
         where: {
           budgetId_userId: { budgetId: invite.budgetId, userId: user.id },
         },
         create: { budgetId: invite.budgetId, userId: user.id },
         update: {},
-      }),
-    ),
-    prisma.invite.deleteMany({
+      });
+    }
+    await tx.invite.deleteMany({
       where: { id: { in: invites.map((invite) => invite.id) } },
-    }),
-  ]);
+    });
+    await recordAuditEntries(
+      tx,
+      invites.map((invite) => ({
+        budgetId: invite.budgetId,
+        entityType: "INVITE" as const,
+        entityId: invite.id,
+        action: "invite accepted",
+        actorId: user.id,
+        changes: diffFields({ email: invite.email }, {}),
+      })),
+    );
+  });
 }

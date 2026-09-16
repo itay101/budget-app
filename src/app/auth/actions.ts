@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { CURRENT_BUDGET_COOKIE, softDeleteBudget } from "@/lib/budget";
 import { getCurrentUser } from "@/lib/auth";
 import { revokeInvite } from "@/lib/invites";
+import { diffFields, recordAuditEntries } from "@/lib/audit";
 
 export async function signOut() {
   const supabase = createClient();
@@ -59,18 +60,37 @@ export async function deactivateAccount(): Promise<{ error?: string }> {
       where: { budgetId: budget.id },
     });
     for (const invite of invites) {
-      await revokeInvite(invite);
+      await revokeInvite(invite, user.id);
     }
-    await softDeleteBudget(budget.id);
+    await softDeleteBudget(budget.id, user.id);
   }
 
-  await prisma.$transaction([
-    prisma.budgetMembership.deleteMany({ where: { userId: user.id } }),
-    prisma.user.update({
+  // The User's own collaborations elsewhere are dropped the same way
+  // leaveBudget drops one — same "collaborator removed" AuditEntry
+  // action, `actorId` the deactivating user themselves.
+  const memberships = await prisma.budgetMembership.findMany({
+    where: { userId: user.id },
+    select: { id: true, budgetId: true },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.budgetMembership.deleteMany({ where: { userId: user.id } });
+    await recordAuditEntries(
+      tx,
+      memberships.map((membership) => ({
+        budgetId: membership.budgetId,
+        entityType: "BUDGET_MEMBERSHIP" as const,
+        entityId: membership.id,
+        action: "collaborator removed",
+        actorId: user.id,
+        changes: diffFields({ userId: user.id }, {}),
+      })),
+    );
+    await tx.user.update({
       where: { id: user.id },
       data: { deactivatedAt: new Date() },
-    }),
-  ]);
+    });
+  });
 
   const { error } = await createAdminClient().auth.admin.deleteUser(user.id);
   if (error) {

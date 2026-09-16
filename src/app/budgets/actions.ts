@@ -8,6 +8,7 @@ import { CURRENT_BUDGET_COOKIE, softDeleteBudget } from "@/lib/budget";
 import { isCurrencyCode } from "@/lib/currencies";
 import { getCurrentUser } from "@/lib/auth";
 import { requireBudgetAccess, requireBudgetOwnership } from "@/lib/authorization";
+import { diffFields, recordAuditEntry } from "@/lib/audit";
 
 /**
  * Opens a new budget, owned by the signed-in user, in the given currency,
@@ -43,8 +44,19 @@ export async function createBudget(formData: FormData) {
 
   let budget;
   try {
-    budget = await prisma.budget.create({
-      data: { name, currency, ownerId: user.id },
+    budget = await prisma.$transaction(async (tx) => {
+      const created = await tx.budget.create({
+        data: { name, currency, ownerId: user.id },
+      });
+      await recordAuditEntry(tx, {
+        budgetId: created.id,
+        entityType: "BUDGET",
+        entityId: created.id,
+        action: "created",
+        actorId: user.id,
+        changes: diffFields({}, { name, currency, ownerId: user.id }),
+      });
+      return created;
     });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
@@ -76,9 +88,22 @@ export async function renameBudget(formData: FormData) {
     throw new Error("Budget name is required");
   }
 
-  await requireBudgetOwnership(budgetId);
+  const { user, budget } = await requireBudgetOwnership(budgetId);
+  if (name === budget.name) {
+    return;
+  }
 
-  await prisma.budget.update({ where: { id: budgetId }, data: { name } });
+  await prisma.$transaction(async (tx) => {
+    await tx.budget.update({ where: { id: budgetId }, data: { name } });
+    await recordAuditEntry(tx, {
+      budgetId,
+      entityType: "BUDGET",
+      entityId: budgetId,
+      action: "updated",
+      actorId: user.id,
+      changes: diffFields({ name: budget.name }, { name }),
+    });
+  });
 
   revalidatePath("/", "layout");
 }
@@ -125,12 +150,12 @@ export async function deleteBudget(formData: FormData) {
     throw new Error("budgetId is required");
   }
 
-  const { budget } = await requireBudgetOwnership(budgetId);
+  const { user, budget } = await requireBudgetOwnership(budgetId);
   if (confirmName !== budget.name) {
     throw new Error("Typed name doesn't match the budget's name");
   }
 
-  await softDeleteBudget(budgetId);
+  await softDeleteBudget(budgetId, user.id);
 
   if (cookies().get(CURRENT_BUDGET_COOKIE)?.value === budgetId) {
     cookies().delete(CURRENT_BUDGET_COOKIE);
