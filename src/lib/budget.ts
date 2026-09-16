@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { accessibleBudgetWhere } from "@/lib/authorization";
+import { diffFields, recordAuditEntry } from "@/lib/audit";
 
 /**
  * This app supports multiple budgets per user — one per currency (see
@@ -63,15 +64,28 @@ export async function listBudgets() {
  * "type the name to confirm" step in front of it. Doesn't touch the
  * current-budget cookie or the Budget's pending Invites — callers handle
  * whichever of those apply to them.
+ *
+ * Writes the BUDGET "deleted" AuditEntry (#75/ADR 0002) itself, atomically
+ * with the soft-delete, rather than leaving each caller to duplicate it —
+ * `actorId` is the Owner in deleteBudget's explicit flow, or the
+ * deactivating Owner themselves in account deactivation's automatic one.
  */
-export async function softDeleteBudget(budgetId: string) {
-  await prisma.$transaction([
-    prisma.budget.update({ where: { id: budgetId }, data: { deleted: true } }),
-    prisma.account.updateMany({
+export async function softDeleteBudget(budgetId: string, actorId: string) {
+  await prisma.$transaction(async (tx) => {
+    await tx.budget.update({ where: { id: budgetId }, data: { deleted: true } });
+    await tx.account.updateMany({
       where: { budgetId },
       data: { closed: true },
-    }),
-  ]);
+    });
+    await recordAuditEntry(tx, {
+      budgetId,
+      entityType: "BUDGET",
+      entityId: budgetId,
+      action: "deleted",
+      actorId,
+      changes: diffFields({ deleted: false }, { deleted: true }),
+    });
+  });
 }
 
 /**
