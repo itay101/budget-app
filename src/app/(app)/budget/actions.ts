@@ -3,10 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentBudget } from "@/lib/budget";
+import { getCurrentUser } from "@/lib/auth";
 import {
   requireCategoryAccess,
   requireCategoryGroupAccess,
 } from "@/lib/authorization";
+import { diffFields, recordAuditEntry } from "@/lib/audit";
 import { numberToMilliunits } from "@/lib/money";
 
 export async function createCategoryGroup(formData: FormData) {
@@ -17,18 +19,30 @@ export async function createCategoryGroup(formData: FormData) {
   }
 
   const budget = await getCurrentBudget();
+  const user = await getCurrentUser();
 
   const last = await prisma.categoryGroup.findFirst({
     where: { budgetId: budget.id },
     orderBy: { sortOrder: "desc" },
   });
+  const sortOrder = (last?.sortOrder ?? -1) + 1;
 
-  await prisma.categoryGroup.create({
-    data: {
+  await prisma.$transaction(async (tx) => {
+    const group = await tx.categoryGroup.create({
+      data: {
+        budgetId: budget.id,
+        name,
+        sortOrder,
+      },
+    });
+    await recordAuditEntry(tx, {
       budgetId: budget.id,
-      name,
-      sortOrder: (last?.sortOrder ?? -1) + 1,
-    },
+      entityType: "CATEGORY_GROUP",
+      entityId: group.id,
+      action: "created",
+      actorId: user.id,
+      changes: diffFields({}, { name, sortOrder }),
+    });
   });
 
   revalidatePath("/budget");
@@ -41,19 +55,30 @@ export async function createCategory(formData: FormData) {
   if (!categoryGroupId || !name) {
     throw new Error("Category group and name are required");
   }
-  await requireCategoryGroupAccess(categoryGroupId);
+  const { user, budgetId } = await requireCategoryGroupAccess(categoryGroupId);
 
   const last = await prisma.category.findFirst({
     where: { categoryGroupId },
     orderBy: { sortOrder: "desc" },
   });
+  const sortOrder = (last?.sortOrder ?? -1) + 1;
 
-  await prisma.category.create({
-    data: {
-      categoryGroupId,
-      name,
-      sortOrder: (last?.sortOrder ?? -1) + 1,
-    },
+  await prisma.$transaction(async (tx) => {
+    const category = await tx.category.create({
+      data: {
+        categoryGroupId,
+        name,
+        sortOrder,
+      },
+    });
+    await recordAuditEntry(tx, {
+      budgetId,
+      entityType: "CATEGORY",
+      entityId: category.id,
+      action: "created",
+      actorId: user.id,
+      changes: diffFields({}, { categoryGroupId, name, sortOrder }),
+    });
   });
 
   revalidatePath("/budget");
@@ -69,11 +94,29 @@ export async function renameCategoryGroup(formData: FormData) {
   if (!name) {
     throw new Error("Category group name is required");
   }
-  await requireCategoryGroupAccess(categoryGroupId);
+  const { user, budgetId } = await requireCategoryGroupAccess(categoryGroupId);
 
-  await prisma.categoryGroup.update({
+  const before = await prisma.categoryGroup.findUniqueOrThrow({
     where: { id: categoryGroupId },
-    data: { name },
+    select: { name: true },
+  });
+  if (name === before.name) {
+    return;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.categoryGroup.update({
+      where: { id: categoryGroupId },
+      data: { name },
+    });
+    await recordAuditEntry(tx, {
+      budgetId,
+      entityType: "CATEGORY_GROUP",
+      entityId: categoryGroupId,
+      action: "updated",
+      actorId: user.id,
+      changes: diffFields(before, { name }),
+    });
   });
 
   revalidatePath("/budget");
@@ -89,11 +132,29 @@ export async function renameCategory(formData: FormData) {
   if (!name) {
     throw new Error("Category name is required");
   }
-  await requireCategoryAccess(categoryId);
+  const { user, budgetId } = await requireCategoryAccess(categoryId);
 
-  await prisma.category.update({
+  const before = await prisma.category.findUniqueOrThrow({
     where: { id: categoryId },
-    data: { name },
+    select: { name: true },
+  });
+  if (name === before.name) {
+    return;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.category.update({
+      where: { id: categoryId },
+      data: { name },
+    });
+    await recordAuditEntry(tx, {
+      budgetId,
+      entityType: "CATEGORY",
+      entityId: categoryId,
+      action: "updated",
+      actorId: user.id,
+      changes: diffFields(before, { name }),
+    });
   });
 
   revalidatePath("/budget");
@@ -110,11 +171,29 @@ export async function setCategoryHidden(formData: FormData) {
   if (!categoryId) {
     throw new Error("categoryId is required");
   }
-  await requireCategoryAccess(categoryId);
+  const { user, budgetId } = await requireCategoryAccess(categoryId);
 
-  await prisma.category.update({
+  const before = await prisma.category.findUniqueOrThrow({
     where: { id: categoryId },
-    data: { hidden },
+    select: { hidden: true },
+  });
+  if (hidden === before.hidden) {
+    return;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.category.update({
+      where: { id: categoryId },
+      data: { hidden },
+    });
+    await recordAuditEntry(tx, {
+      budgetId,
+      entityType: "CATEGORY",
+      entityId: categoryId,
+      action: "updated",
+      actorId: user.id,
+      changes: diffFields(before, { hidden }),
+    });
   });
 
   revalidatePath("/budget");
@@ -126,7 +205,7 @@ export async function deleteCategoryGroup(formData: FormData) {
   if (!categoryGroupId) {
     throw new Error("categoryGroupId is required");
   }
-  await requireCategoryGroupAccess(categoryGroupId);
+  const { user, budgetId } = await requireCategoryGroupAccess(categoryGroupId);
 
   const categoryCount = await prisma.category.count({
     where: { categoryGroupId },
@@ -135,7 +214,22 @@ export async function deleteCategoryGroup(formData: FormData) {
     throw new Error("Only empty category groups can be deleted");
   }
 
-  await prisma.categoryGroup.delete({ where: { id: categoryGroupId } });
+  const before = await prisma.categoryGroup.findUniqueOrThrow({
+    where: { id: categoryGroupId },
+    select: { name: true, sortOrder: true },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.categoryGroup.delete({ where: { id: categoryGroupId } });
+    await recordAuditEntry(tx, {
+      budgetId,
+      entityType: "CATEGORY_GROUP",
+      entityId: categoryGroupId,
+      action: "deleted",
+      actorId: user.id,
+      changes: diffFields(before, {}),
+    });
+  });
 
   revalidatePath("/budget");
 }
@@ -160,11 +254,13 @@ export async function moveCategory(formData: FormData) {
     return;
   }
 
-  const [{ budgetId: sourceBudgetId }, { budgetId: targetBudgetId }] =
-    await Promise.all([
-      requireCategoryAccess(categoryId),
-      requireCategoryGroupAccess(targetGroupId),
-    ]);
+  const [
+    { user, budgetId: sourceBudgetId },
+    { budgetId: targetBudgetId },
+  ] = await Promise.all([
+    requireCategoryAccess(categoryId),
+    requireCategoryGroupAccess(targetGroupId),
+  ]);
   // Both ids are independently authorized above, but a move across
   // budgets would still corrupt data (a Category's budget is implied by
   // its CategoryGroup) even between two budgets the same user can
@@ -173,6 +269,11 @@ export async function moveCategory(formData: FormData) {
   if (sourceBudgetId !== targetBudgetId) {
     throw new Error("Cannot move a category to a different budget");
   }
+
+  const movedBefore = await prisma.category.findUniqueOrThrow({
+    where: { id: categoryId },
+    select: { categoryGroupId: true, sortOrder: true },
+  });
 
   const targetCategories = await prisma.category.findMany({
     where: { categoryGroupId: targetGroupId, id: { not: categoryId } },
@@ -191,15 +292,33 @@ export async function moveCategory(formData: FormData) {
           { id: categoryId },
           ...targetCategories.slice(insertAt),
         ];
+  const movedSortOrder = ordered.findIndex((c) => c.id === categoryId);
 
-  await prisma.$transaction(
-    ordered.map((c, index) =>
-      prisma.category.update({
-        where: { id: c.id },
-        data: { sortOrder: index, categoryGroupId: targetGroupId },
+  await prisma.$transaction(async (tx) => {
+    await Promise.all(
+      ordered.map((c, index) =>
+        tx.category.update({
+          where: { id: c.id },
+          data: { sortOrder: index, categoryGroupId: targetGroupId },
+        }),
+      ),
+    );
+    // Only the dragged category's move is a substantive audit-worthy
+    // change — the rest of `ordered` just gets renumbered `sortOrder` as
+    // a side effect of making room for it, which isn't its own
+    // meaningful event.
+    await recordAuditEntry(tx, {
+      budgetId: sourceBudgetId,
+      entityType: "CATEGORY",
+      entityId: categoryId,
+      action: "updated",
+      actorId: user.id,
+      changes: diffFields(movedBefore, {
+        categoryGroupId: targetGroupId,
+        sortOrder: movedSortOrder,
       }),
-    ),
-  );
+    });
+  });
 
   revalidatePath("/budget");
 }
@@ -217,7 +336,7 @@ export async function transferAvailable(formData: FormData) {
     throw new Error("Cannot move money to the same category");
   }
 
-  const [{ budgetId: fromBudgetId }, { budgetId: toBudgetId }] =
+  const [{ user, budgetId: fromBudgetId }, { budgetId: toBudgetId }] =
     await Promise.all([
       requireCategoryAccess(fromCategoryId),
       requireCategoryAccess(toCategoryId),
@@ -233,24 +352,51 @@ export async function transferAvailable(formData: FormData) {
     throw new Error("Amount must be greater than zero");
   }
 
+  const [fromBefore, toBefore] = await Promise.all([
+    prisma.categoryMonth.findUnique({
+      where: { categoryId_month: { categoryId: fromCategoryId, month } },
+      select: { budgeted: true },
+    }),
+    prisma.categoryMonth.findUnique({
+      where: { categoryId_month: { categoryId: toCategoryId, month } },
+      select: { budgeted: true },
+    }),
+  ]);
+
   // A transfer just shifts `budgeted` between the two categories for this
   // month — activity is untouched, so the two "available" figures move by
   // the same amount in opposite directions. Deliberately unguarded against
   // the source going negative: moving money out of an already-overspent
   // category (or past zero into one) is a normal, allowed move here, not
   // an error.
-  await prisma.$transaction([
-    prisma.categoryMonth.upsert({
+  await prisma.$transaction(async (tx) => {
+    const from = await tx.categoryMonth.upsert({
       where: { categoryId_month: { categoryId: fromCategoryId, month } },
       create: { categoryId: fromCategoryId, month, budgeted: -amount },
       update: { budgeted: { decrement: amount } },
-    }),
-    prisma.categoryMonth.upsert({
+    });
+    const to = await tx.categoryMonth.upsert({
       where: { categoryId_month: { categoryId: toCategoryId, month } },
       create: { categoryId: toCategoryId, month, budgeted: amount },
       update: { budgeted: { increment: amount } },
-    }),
-  ]);
+    });
+    await recordAuditEntry(tx, {
+      budgetId: fromBudgetId,
+      entityType: "CATEGORY_MONTH",
+      entityId: from.id,
+      action: "updated",
+      actorId: user.id,
+      changes: diffFields({ budgeted: fromBefore?.budgeted ?? 0 }, { budgeted: from.budgeted }),
+    });
+    await recordAuditEntry(tx, {
+      budgetId: fromBudgetId,
+      entityType: "CATEGORY_MONTH",
+      entityId: to.id,
+      action: "updated",
+      actorId: user.id,
+      changes: diffFields({ budgeted: toBefore?.budgeted ?? 0 }, { budgeted: to.budgeted }),
+    });
+  });
 
   revalidatePath("/budget");
 }
@@ -263,15 +409,33 @@ export async function setBudgeted(formData: FormData) {
   if (!categoryId || !monthInput) {
     throw new Error("categoryId and month are required");
   }
-  await requireCategoryAccess(categoryId);
+  const { user, budgetId } = await requireCategoryAccess(categoryId);
 
   const month = new Date(monthInput);
   const budgeted = numberToMilliunits(Number(amountInput) || 0);
 
-  await prisma.categoryMonth.upsert({
+  const before = await prisma.categoryMonth.findUnique({
     where: { categoryId_month: { categoryId, month } },
-    create: { categoryId, month, budgeted },
-    update: { budgeted },
+    select: { budgeted: true },
+  });
+  if (before && before.budgeted === budgeted) {
+    return;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const categoryMonth = await tx.categoryMonth.upsert({
+      where: { categoryId_month: { categoryId, month } },
+      create: { categoryId, month, budgeted },
+      update: { budgeted },
+    });
+    await recordAuditEntry(tx, {
+      budgetId,
+      entityType: "CATEGORY_MONTH",
+      entityId: categoryMonth.id,
+      action: "updated",
+      actorId: user.id,
+      changes: diffFields({ budgeted: before?.budgeted ?? 0 }, { budgeted }),
+    });
   });
 
   revalidatePath("/budget");
