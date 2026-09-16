@@ -10,6 +10,7 @@ function mockTx() {
   return {
     account: { update: jest.fn() },
     payee: { findFirst: jest.fn(), create: jest.fn() },
+    auditEntry: { create: jest.fn(), createMany: jest.fn() },
   };
 }
 
@@ -72,25 +73,36 @@ describe("findOrCreatePayee", () => {
     const tx = mockTx();
     tx.payee.findFirst.mockResolvedValue({ id: "payee-1" });
 
-    const id = await findOrCreatePayee(tx as never, "budget-1", "Coffee Shop");
+    const id = await findOrCreatePayee(tx as never, "budget-1", "Coffee Shop", "user-1");
 
     expect(id).toBe("payee-1");
     expect(tx.payee.findFirst).toHaveBeenCalledWith({
       where: { budgetId: "budget-1", name: "Coffee Shop" },
     });
     expect(tx.payee.create).not.toHaveBeenCalled();
+    expect(tx.auditEntry.create).not.toHaveBeenCalled();
   });
 
-  it("creates a payee when none matches yet", async () => {
+  it("creates a payee when none matches yet, and logs it", async () => {
     const tx = mockTx();
     tx.payee.findFirst.mockResolvedValue(null);
     tx.payee.create.mockResolvedValue({ id: "payee-2" });
 
-    const id = await findOrCreatePayee(tx as never, "budget-1", "New Payee");
+    const id = await findOrCreatePayee(tx as never, "budget-1", "New Payee", "user-1");
 
     expect(id).toBe("payee-2");
     expect(tx.payee.create).toHaveBeenCalledWith({
       data: { budgetId: "budget-1", name: "New Payee" },
+    });
+    expect(tx.auditEntry.create).toHaveBeenCalledWith({
+      data: {
+        budgetId: "budget-1",
+        entityType: "PAYEE",
+        entityId: "payee-2",
+        action: "created",
+        actorId: "user-1",
+        changes: { name: [null, "New Payee"] },
+      },
     });
   });
 });

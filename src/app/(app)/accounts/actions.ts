@@ -10,6 +10,7 @@ import {
   requireBudgetAccess,
   requireTransactionAccess,
 } from "@/lib/authorization";
+import { diffFields, recordAuditEntry, recordAuditEntries } from "@/lib/audit";
 import { numberToMilliunits } from "@/lib/money";
 import {
   ACCOUNT_TYPES,
@@ -54,6 +55,8 @@ export async function createAccount(formData: FormData) {
 
   const balance = numberToMilliunits(Number(balanceInput) || 0);
   const budget = await getCurrentBudget();
+  const user = await getCurrentUser();
+  const onBudget = !isDebtAccountType(type);
 
   await prisma.$transaction(async (tx) => {
     const account = await tx.account.create({
@@ -62,8 +65,16 @@ export async function createAccount(formData: FormData) {
         name,
         type,
         balance,
-        onBudget: !isDebtAccountType(type),
+        onBudget,
       },
+    });
+    await recordAuditEntry(tx, {
+      budgetId: budget.id,
+      entityType: "ACCOUNT",
+      entityId: account.id,
+      action: "created",
+      actorId: user.id,
+      changes: diffFields({}, { name, type, balance, onBudget }),
     });
 
     if (balance !== 0) {
@@ -75,9 +86,10 @@ export async function createAccount(formData: FormData) {
         tx,
         budget.id,
         STARTING_BALANCE_PAYEE,
+        user.id,
       );
 
-      await tx.transaction.create({
+      const startingTransaction = await tx.transaction.create({
         data: {
           accountId: account.id,
           payeeId,
@@ -86,6 +98,23 @@ export async function createAccount(formData: FormData) {
           memo: "Starting balance",
           cleared: "RECONCILED",
         },
+      });
+      await recordAuditEntry(tx, {
+        budgetId: budget.id,
+        entityType: "TRANSACTION",
+        entityId: startingTransaction.id,
+        action: "created",
+        actorId: user.id,
+        changes: diffFields(
+          {},
+          {
+            accountId: account.id,
+            payeeId,
+            date: startingTransaction.date,
+            amount: balance,
+            memo: "Starting balance",
+          },
+        ),
       });
     }
   });
@@ -112,27 +141,36 @@ export async function createTransaction(formData: FormData) {
     throw new Error("Date is required");
   }
 
-  const { budgetId } = await requireAccountAccess(accountId);
+  const { user, budgetId } = await requireAccountAccess(accountId);
 
   const payeeName = String(formData.get("payeeName") ?? "").trim();
   const categoryId = String(formData.get("categoryId") ?? "") || null;
   const memo = String(formData.get("memo") ?? "").trim() || null;
   const amount = numberToMilliunits(Number(formData.get("amount")) || 0);
+  const date = new Date(dateInput);
 
   await prisma.$transaction(async (tx) => {
     const payeeId = payeeName
-      ? await findOrCreatePayee(tx, budgetId, payeeName)
+      ? await findOrCreatePayee(tx, budgetId, payeeName, user.id)
       : null;
 
-    await tx.transaction.create({
+    const transaction = await tx.transaction.create({
       data: {
         accountId,
         payeeId,
         categoryId,
-        date: new Date(dateInput),
+        date,
         amount,
         memo,
       },
+    });
+    await recordAuditEntry(tx, {
+      budgetId,
+      entityType: "TRANSACTION",
+      entityId: transaction.id,
+      action: "created",
+      actorId: user.id,
+      changes: diffFields({}, { accountId, payeeId, categoryId, date, amount, memo }),
     });
 
     await applyBalanceDelta(tx, accountId, amount);
@@ -217,7 +255,7 @@ export async function importTransactions(formData: FormData) {
     return;
   }
 
-  const { budgetId } = await requireAccountAccess(accountId);
+  const { user, budgetId } = await requireAccountAccess(accountId);
 
   await prisma.$transaction(async (tx) => {
     // Payees repeat heavily within one import file (the same merchant over
@@ -226,33 +264,45 @@ export async function importTransactions(formData: FormData) {
     // database - once per row.
     const payeeIds = new Map<string, string>();
     let total = 0;
+    const auditEntries = [];
 
     for (const row of rows) {
       const amount = numberToMilliunits(row.amount);
       const payeeName = row.payeeName.trim();
+      const date = new Date(row.date);
+      const memo = row.memo.trim() || null;
 
       let payeeId: string | null = null;
       if (payeeName) {
         const cacheKey = payeeName.toLowerCase();
         payeeId = payeeIds.get(cacheKey) ?? null;
         if (!payeeId) {
-          payeeId = await findOrCreatePayee(tx, budgetId, payeeName);
+          payeeId = await findOrCreatePayee(tx, budgetId, payeeName, user.id);
           payeeIds.set(cacheKey, payeeId);
         }
       }
 
-      await tx.transaction.create({
+      const transaction = await tx.transaction.create({
         data: {
           accountId,
           payeeId,
-          date: new Date(row.date),
+          date,
           amount,
-          memo: row.memo.trim() || null,
+          memo,
         },
+      });
+      auditEntries.push({
+        budgetId,
+        entityType: "TRANSACTION" as const,
+        entityId: transaction.id,
+        action: "created",
+        actorId: user.id,
+        changes: diffFields({}, { accountId, payeeId, date, amount, memo }),
       });
       total += amount;
     }
 
+    await recordAuditEntries(tx, auditEntries);
     await applyBalanceDelta(tx, accountId, total);
   });
 
@@ -280,10 +330,14 @@ export async function updateTransaction(formData: FormData) {
     select: {
       accountId: true,
       amount: true,
+      date: true,
+      payeeId: true,
+      categoryId: true,
+      memo: true,
       account: { select: { budgetId: true } },
     },
   });
-  await requireBudgetAccess(transaction.account.budgetId);
+  const { user } = await requireBudgetAccess(transaction.account.budgetId);
 
   const data: {
     date?: Date;
@@ -333,11 +387,28 @@ export async function updateTransaction(formData: FormData) {
   await prisma.$transaction(async (tx) => {
     if (payeeName !== undefined) {
       data.payeeId = payeeName
-        ? await findOrCreatePayee(tx, transaction.account.budgetId, payeeName)
+        ? await findOrCreatePayee(tx, transaction.account.budgetId, payeeName, user.id)
         : null;
     }
 
     await tx.transaction.update({ where: { id: transactionId }, data });
+    await recordAuditEntry(tx, {
+      budgetId: transaction.account.budgetId,
+      entityType: "TRANSACTION",
+      entityId: transactionId,
+      action: "updated",
+      actorId: user.id,
+      changes: diffFields(
+        {
+          date: transaction.date,
+          payeeId: transaction.payeeId,
+          categoryId: transaction.categoryId,
+          memo: transaction.memo,
+          amount: transaction.amount,
+        },
+        data,
+      ),
+    });
 
     if (data.amount !== undefined && data.amount !== transaction.amount) {
       await applyBalanceDelta(
@@ -367,13 +438,35 @@ export async function deleteTransaction(formData: FormData) {
     select: {
       accountId: true,
       amount: true,
+      date: true,
+      payeeId: true,
+      categoryId: true,
+      memo: true,
       account: { select: { budgetId: true } },
     },
   });
-  await requireBudgetAccess(transaction.account.budgetId);
+  const { user } = await requireBudgetAccess(transaction.account.budgetId);
 
   await prisma.$transaction(async (tx) => {
     await tx.transaction.delete({ where: { id: transactionId } });
+    await recordAuditEntry(tx, {
+      budgetId: transaction.account.budgetId,
+      entityType: "TRANSACTION",
+      entityId: transactionId,
+      action: "deleted",
+      actorId: user.id,
+      changes: diffFields(
+        {
+          accountId: transaction.accountId,
+          date: transaction.date,
+          payeeId: transaction.payeeId,
+          categoryId: transaction.categoryId,
+          memo: transaction.memo,
+          amount: transaction.amount,
+        },
+        {},
+      ),
+    });
     await applyBalanceDelta(tx, transaction.accountId, -transaction.amount);
   });
 
@@ -408,7 +501,16 @@ export async function deleteTransactions(formData: FormData) {
       id: { in: transactionIds },
       account: { budget: { deleted: false, ...accessibleBudgetWhere(user.id) } },
     },
-    select: { id: true, accountId: true, amount: true },
+    select: {
+      id: true,
+      accountId: true,
+      amount: true,
+      date: true,
+      payeeId: true,
+      categoryId: true,
+      memo: true,
+      account: { select: { budgetId: true } },
+    },
   });
   const authorizedIds = transactions.map((t) => t.id);
 
@@ -422,6 +524,27 @@ export async function deleteTransactions(formData: FormData) {
 
   await prisma.$transaction(async (tx) => {
     await tx.transaction.deleteMany({ where: { id: { in: authorizedIds } } });
+    await recordAuditEntries(
+      tx,
+      transactions.map((t) => ({
+        budgetId: t.account.budgetId,
+        entityType: "TRANSACTION" as const,
+        entityId: t.id,
+        action: "deleted",
+        actorId: user.id,
+        changes: diffFields(
+          {
+            accountId: t.accountId,
+            date: t.date,
+            payeeId: t.payeeId,
+            categoryId: t.categoryId,
+            memo: t.memo,
+            amount: t.amount,
+          },
+          {},
+        ),
+      })),
+    );
     await applyBalanceDeltas(tx, deltaByAccount);
   });
 
@@ -442,13 +565,30 @@ export async function reconcileAccount(formData: FormData) {
   if (!accountId) {
     throw new Error("accountId is required");
   }
-  await requireAccountAccess(accountId);
+  const { user, budgetId } = await requireAccountAccess(accountId);
 
   await prisma.$transaction(async (tx) => {
-    await tx.transaction.updateMany({
+    const toReconcile = await tx.transaction.findMany({
       where: { accountId, cleared: { not: "RECONCILED" } },
+      select: { id: true, cleared: true },
+    });
+    if (toReconcile.length === 0) return;
+
+    await tx.transaction.updateMany({
+      where: { id: { in: toReconcile.map((t) => t.id) } },
       data: { cleared: "RECONCILED" },
     });
+    await recordAuditEntries(
+      tx,
+      toReconcile.map((t) => ({
+        budgetId,
+        entityType: "TRANSACTION" as const,
+        entityId: t.id,
+        action: "updated",
+        actorId: user.id,
+        changes: diffFields({ cleared: t.cleared }, { cleared: "RECONCILED" }),
+      })),
+    );
   });
 
   revalidateAccountPaths(accountId, { budget: false });
@@ -465,15 +605,25 @@ export async function reconcileTransaction(formData: FormData) {
     throw new Error("transactionId is required");
   }
 
-  await requireTransactionAccess(transactionId);
+  const { user, budgetId } = await requireTransactionAccess(transactionId);
   const transaction = await prisma.transaction.findUniqueOrThrow({
     where: { id: transactionId },
-    select: { accountId: true },
+    select: { accountId: true, cleared: true },
   });
 
-  await prisma.transaction.update({
-    where: { id: transactionId },
-    data: { cleared: "RECONCILED" },
+  await prisma.$transaction(async (tx) => {
+    await tx.transaction.update({
+      where: { id: transactionId },
+      data: { cleared: "RECONCILED" },
+    });
+    await recordAuditEntry(tx, {
+      budgetId,
+      entityType: "TRANSACTION",
+      entityId: transactionId,
+      action: "updated",
+      actorId: user.id,
+      changes: diffFields({ cleared: transaction.cleared }, { cleared: "RECONCILED" }),
+    });
   });
 
   revalidateAccountPaths(transaction.accountId, { budget: false });
@@ -492,15 +642,25 @@ export async function unreconcileTransaction(formData: FormData) {
     throw new Error("transactionId is required");
   }
 
-  await requireTransactionAccess(transactionId);
+  const { user, budgetId } = await requireTransactionAccess(transactionId);
   const transaction = await prisma.transaction.findUniqueOrThrow({
     where: { id: transactionId },
-    select: { accountId: true },
+    select: { accountId: true, cleared: true },
   });
 
-  await prisma.transaction.update({
-    where: { id: transactionId },
-    data: { cleared: "CLEARED" },
+  await prisma.$transaction(async (tx) => {
+    await tx.transaction.update({
+      where: { id: transactionId },
+      data: { cleared: "CLEARED" },
+    });
+    await recordAuditEntry(tx, {
+      budgetId,
+      entityType: "TRANSACTION",
+      entityId: transactionId,
+      action: "updated",
+      actorId: user.id,
+      changes: diffFields({ cleared: transaction.cleared }, { cleared: "CLEARED" }),
+    });
   });
 
   revalidateAccountPaths(transaction.accountId, { budget: false });
@@ -518,7 +678,7 @@ export async function updateAccount(formData: FormData) {
   if (!accountId) {
     throw new Error("accountId is required");
   }
-  await requireAccountAccess(accountId);
+  const { user, budgetId } = await requireAccountAccess(accountId);
 
   const data: {
     name?: string;
@@ -555,7 +715,22 @@ export async function updateAccount(formData: FormData) {
     return;
   }
 
-  await prisma.account.update({ where: { id: accountId }, data });
+  const before = await prisma.account.findUniqueOrThrow({
+    where: { id: accountId },
+    select: { name: true, type: true, onBudget: true, closed: true },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.account.update({ where: { id: accountId }, data });
+    await recordAuditEntry(tx, {
+      budgetId,
+      entityType: "ACCOUNT",
+      entityId: accountId,
+      action: "updated",
+      actorId: user.id,
+      changes: diffFields(before, data),
+    });
+  });
 
   revalidateAccountPaths(accountId);
 }
