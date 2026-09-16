@@ -10,6 +10,8 @@ import {
   renameBudget,
   switchBudget,
 } from "@/app/budgets/actions";
+import { cancelInvite, sendInvite } from "@/app/budgets/inviteActions";
+import { leaveBudget, removeCollaborator } from "@/app/budgets/membershipActions";
 import { AddAccountPopover } from "@/components/AddAccountPopover";
 import { BudgetSwitcherPopover } from "@/components/BudgetSwitcherPopover";
 import { signOut } from "@/app/auth/actions";
@@ -47,6 +49,10 @@ export async function Sidebar() {
           createBudget={createBudget}
           renameBudget={renameBudget}
           deleteBudget={deleteBudget}
+          sendInvite={sendInvite}
+          cancelInvite={cancelInvite}
+          removeCollaborator={removeCollaborator}
+          leaveBudget={leaveBudget}
         />
       </div>
 

@@ -5,7 +5,17 @@ import { createPortal } from "react-dom";
 import { Icon } from "@/components/Icon";
 import { usePopover } from "@/components/usePopover";
 
-type BudgetOption = { id: string; name: string; currency: string };
+type Collaborator = { userId: string; email: string };
+type PendingInvite = { id: string; email: string };
+type BudgetOption = {
+  id: string;
+  name: string;
+  currency: string;
+  isOwner: boolean;
+  ownerEmail: string;
+  collaborators: Collaborator[];
+  pendingInvites: PendingInvite[];
+};
 type CurrencyOption = { code: string; name: string };
 
 /**
@@ -23,10 +33,18 @@ type CurrencyOption = { code: string; name: string };
  * currency symbol is shown but not itself editable: it's fixed for a
  * budget's lifetime by createBudget's uniqueness guard.
  *
- * Each row in the budget list also has a delete (trash) icon — deletion
- * is deliberately hard to trigger by accident, requiring you to type the
- * budget's exact name to confirm (deleteBudget enforces the same check
- * server-side, since this popover isn't the only way to call it).
+ * The budget list (Variant A from #59's prototype, per #76) is grouped
+ * into "Your budgets" and "Shared with you". An owned row expands in
+ * place into its collaborator list (with a per-collaborator remove and a
+ * per-pending-invite cancel) plus an invite-by-email form, wired to #73/
+ * #74's actions rather than reimplementing them — managing collaborators
+ * never leaves the sidebar. Each owned row also keeps its delete (trash)
+ * icon — deliberately hard to trigger by accident, requiring you to type
+ * the budget's exact name to confirm (deleteBudget enforces the same
+ * check server-side, since this popover isn't the only way to call it).
+ * A shared row has neither: only a hover "Leave" action, since leaving/
+ * deleting/managing collaborators are exclusively the Owner's calls
+ * (CONTEXT.md).
  */
 export function BudgetSwitcherPopover({
   currentBudget,
@@ -37,8 +55,12 @@ export function BudgetSwitcherPopover({
   createBudget,
   renameBudget,
   deleteBudget,
+  sendInvite,
+  cancelInvite,
+  removeCollaborator,
+  leaveBudget,
 }: {
-  currentBudget: BudgetOption;
+  currentBudget: { id: string; name: string; currency: string };
   currencySymbol: string;
   budgets: BudgetOption[];
   availableCurrencies: CurrencyOption[];
@@ -46,21 +68,33 @@ export function BudgetSwitcherPopover({
   createBudget: (formData: FormData) => Promise<void>;
   renameBudget: (formData: FormData) => Promise<void>;
   deleteBudget: (formData: FormData) => Promise<void>;
+  sendInvite: (formData: FormData) => Promise<{ error?: string }>;
+  cancelInvite: (formData: FormData) => Promise<void>;
+  removeCollaborator: (formData: FormData) => Promise<void>;
+  leaveBudget: (formData: FormData) => Promise<void>;
 }) {
   const [adding, setAdding] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState(currentBudget.name);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmText, setConfirmText] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [inviteDraft, setInviteDraft] = useState("");
+  const [inviteError, setInviteError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const { open, setOpen, position, triggerRef, panelRef } = usePopover({
     width: 256, // matches the popover's w-64
     onDismiss: () => {
       setAdding(false);
       setDeletingId(null);
+      setExpandedId(null);
+      setInviteDraft("");
+      setInviteError(null);
     },
   });
   const formRef = useRef<HTMLFormElement>(null);
+  const owned = budgets.filter((b) => b.isOwner);
+  const shared = budgets.filter((b) => !b.isOwner);
 
   useEffect(() => {
     setNameDraft(currentBudget.name);
@@ -119,6 +153,54 @@ export function BudgetSwitcherPopover({
       await deleteBudget(formData);
       setDeletingId(null);
       setConfirmText("");
+      setOpen(false);
+    });
+  }
+
+  function toggleExpanded(budgetId: string) {
+    setExpandedId((cur) => (cur === budgetId ? null : budgetId));
+    setInviteDraft("");
+    setInviteError(null);
+  }
+
+  function handleInvite(e: React.FormEvent<HTMLFormElement>, budgetId: string) {
+    e.preventDefault();
+    setInviteError(null);
+    const formData = new FormData();
+    formData.set("budgetId", budgetId);
+    formData.set("email", inviteDraft);
+    startTransition(async () => {
+      const result = await sendInvite(formData);
+      if (result.error) {
+        setInviteError(result.error);
+        return;
+      }
+      setInviteDraft("");
+    });
+  }
+
+  function handleCancelInvite(inviteId: string) {
+    const formData = new FormData();
+    formData.set("inviteId", inviteId);
+    startTransition(async () => {
+      await cancelInvite(formData);
+    });
+  }
+
+  function handleRemoveCollaborator(budgetId: string, userId: string) {
+    const formData = new FormData();
+    formData.set("budgetId", budgetId);
+    formData.set("userId", userId);
+    startTransition(async () => {
+      await removeCollaborator(formData);
+    });
+  }
+
+  function handleLeave(budgetId: string) {
+    const formData = new FormData();
+    formData.set("budgetId", budgetId);
+    startTransition(async () => {
+      await leaveBudget(formData);
       setOpen(false);
     });
   }
@@ -189,158 +271,299 @@ export function BudgetSwitcherPopover({
             style={{ position: "fixed", top: position.top, left: position.left }}
             className="z-50 w-64 max-w-[calc(100vw-1rem)] rounded-lg border border-neutral-200 bg-neutral-0 p-3 text-left shadow-lg"
           >
-            <p className="mb-2 text-small font-medium text-neutral-800">
-              Budgets
-            </p>
-            <ul className="mb-2 space-y-0.5">
-              {budgets.map((b) =>
-                deletingId === b.id ? (
-                  <li
-                    key={b.id}
-                    className="space-y-1.5 rounded border border-danger/40 bg-danger/5 p-2"
-                  >
-                    <p className="text-small text-neutral-800">
-                      Type <span className="font-semibold">{b.name}</span> to
-                      delete it. Its accounts will be closed; nothing is
-                      removed from the database yet.
-                    </p>
+            <div className="mb-2">
+              <p className="mb-1 px-2 text-small font-medium uppercase tracking-wide text-neutral-600">
+                Your budgets
+              </p>
+
+              {!adding && availableCurrencies.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setAdding(true)}
+                  className="flex w-full items-center gap-1 rounded px-2 py-1 text-left text-small font-medium text-brand-700 hover:bg-brand-700/10"
+                >
+                  <Icon name="add" /> New budget
+                </button>
+              )}
+
+              {!adding && availableCurrencies.length === 0 && (
+                <p className="px-2 text-small text-neutral-600">
+                  Every supported currency already has a budget.
+                </p>
+              )}
+
+              {adding && (
+                <form
+                  ref={formRef}
+                  onSubmit={handleCreate}
+                  className="space-y-2 rounded border border-neutral-200 p-2"
+                >
+                  <div>
+                    <label
+                      className="block text-small text-neutral-600"
+                      htmlFor="new-budget-name"
+                    >
+                      Name
+                    </label>
                     <input
-                      value={confirmText}
-                      onChange={(e) => setConfirmText(e.target.value)}
+                      id="new-budget-name"
+                      name="name"
+                      required
                       autoFocus
-                      placeholder={b.name}
-                      aria-label={`Type "${b.name}" to confirm deletion`}
-                      className="w-full rounded border border-neutral-200 px-2 py-1 text-small focus:border-danger focus:outline-none focus:ring-1 focus:ring-danger"
+                      className="mt-1 w-full rounded border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
                     />
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDeletingId(null);
-                          setConfirmText("");
-                        }}
-                        className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        disabled={confirmText !== b.name || pending}
-                        onClick={() => handleDelete(b.id)}
-                        className="rounded bg-danger px-2 py-1 text-small font-medium text-white hover:bg-danger/90 disabled:opacity-50"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </li>
-                ) : (
-                  <li key={b.id} className="flex items-center gap-1">
+                  </div>
+                  <div>
+                    <label
+                      className="block text-small text-neutral-600"
+                      htmlFor="new-budget-currency"
+                    >
+                      Currency
+                    </label>
+                    <select
+                      id="new-budget-currency"
+                      name="currency"
+                      defaultValue={availableCurrencies[0]?.code}
+                      className="mt-1 w-full rounded border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                    >
+                      {availableCurrencies.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.code} — {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-1">
                     <button
                       type="button"
+                      onClick={() => setAdding(false)}
+                      className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
                       disabled={pending}
-                      onClick={() => handleSwitch(b.id)}
+                      className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+                    >
+                      {pending ? "Creating…" : "Create"}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              <ul className="mt-1 space-y-0.5">
+                {owned.map((b) =>
+                  deletingId === b.id ? (
+                    <li
+                      key={b.id}
+                      className="space-y-1.5 rounded border border-danger/40 bg-danger/5 p-2"
+                    >
+                      <p className="text-small text-neutral-800">
+                        Type <span className="font-semibold">{b.name}</span> to
+                        delete it. Its accounts will be closed; nothing is
+                        removed from the database yet.
+                      </p>
+                      <input
+                        value={confirmText}
+                        onChange={(e) => setConfirmText(e.target.value)}
+                        autoFocus
+                        placeholder={b.name}
+                        aria-label={`Type "${b.name}" to confirm deletion`}
+                        className="w-full rounded border border-neutral-200 px-2 py-1 text-small focus:border-danger focus:outline-none focus:ring-1 focus:ring-danger"
+                      />
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeletingId(null);
+                            setConfirmText("");
+                          }}
+                          className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={confirmText !== b.name || pending}
+                          onClick={() => handleDelete(b.id)}
+                          className="rounded bg-danger px-2 py-1 text-small font-medium text-white hover:bg-danger/90 disabled:opacity-50"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </li>
+                  ) : (
+                    <li key={b.id} className="rounded">
+                      <div
+                        className={
+                          "flex items-center gap-1 rounded px-2 py-1 text-small " +
+                          (b.id === currentBudget.id
+                            ? "bg-brand-700/10 font-medium text-brand-700"
+                            : "text-neutral-800 hover:bg-neutral-100")
+                        }
+                      >
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => handleSwitch(b.id)}
+                          className="min-w-0 flex-1 text-left"
+                        >
+                          <span className="block truncate">{b.name}</span>
+                        </button>
+                        {b.collaborators.length > 0 && (
+                          <span
+                            className="flex shrink-0 items-center gap-0.5 text-neutral-600"
+                            title={`${b.collaborators.length} collaborator(s)`}
+                          >
+                            <Icon name="group" className="text-[16px]" />
+                            {b.collaborators.length}
+                          </span>
+                        )}
+                        {b.pendingInvites.length > 0 && (
+                          <span className="shrink-0 rounded-full bg-warning/15 px-1.5 text-[10px] font-medium text-warning">
+                            {b.pendingInvites.length} pending
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(b.id)}
+                          title="Manage collaborators"
+                          className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+                        >
+                          <Icon
+                            name={expandedId === b.id ? "expand_less" : "person_add"}
+                            label="Manage collaborators"
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeletingId(b.id);
+                            setConfirmText("");
+                          }}
+                          title="Delete budget"
+                          className="shrink-0 rounded p-1 text-neutral-400 hover:bg-danger/10 hover:text-danger"
+                        >
+                          <Icon name="delete" label="Delete budget" />
+                        </button>
+                      </div>
+
+                      {expandedId === b.id && (
+                        <div className="ml-2 mt-1 space-y-1.5 rounded border border-neutral-200 bg-neutral-100 p-2">
+                          {b.collaborators.map((c) => (
+                            <div key={c.userId} className="flex items-center gap-1.5">
+                              <span className="min-w-0 flex-1 truncate text-small text-neutral-800">
+                                {c.email}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={pending}
+                                onClick={() => handleRemoveCollaborator(b.id, c.userId)}
+                                title="Remove collaborator"
+                                className="shrink-0 rounded p-0.5 text-neutral-400 hover:bg-danger/10 hover:text-danger"
+                              >
+                                <Icon name="close" className="text-[16px]" label="Remove collaborator" />
+                              </button>
+                            </div>
+                          ))}
+                          {b.pendingInvites.map((invite) => (
+                            <div key={invite.id} className="flex items-center gap-1.5">
+                              <span className="min-w-0 flex-1 truncate text-small text-neutral-600">
+                                {invite.email}
+                              </span>
+                              <span className="shrink-0 text-[10px] text-neutral-600">
+                                pending
+                              </span>
+                              <button
+                                type="button"
+                                disabled={pending}
+                                onClick={() => handleCancelInvite(invite.id)}
+                                title="Cancel invite"
+                                className="shrink-0 rounded p-0.5 text-neutral-400 hover:bg-danger/10 hover:text-danger"
+                              >
+                                <Icon name="close" className="text-[16px]" label="Cancel invite" />
+                              </button>
+                            </div>
+                          ))}
+                          {b.collaborators.length === 0 && b.pendingInvites.length === 0 && (
+                            <p className="text-small text-neutral-600">
+                              No collaborators yet.
+                            </p>
+                          )}
+                          <form
+                            onSubmit={(e) => handleInvite(e, b.id)}
+                            className="flex items-center gap-1 pt-1"
+                          >
+                            <input
+                              value={inviteDraft}
+                              onChange={(e) => setInviteDraft(e.target.value)}
+                              type="email"
+                              required
+                              placeholder="Invite by email…"
+                              aria-label="Invite by email"
+                              className="min-w-0 flex-1 rounded border border-neutral-200 bg-neutral-0 px-2 py-1 text-small focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                            />
+                            <button
+                              type="submit"
+                              disabled={pending}
+                              className="shrink-0 rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+                            >
+                              Invite
+                            </button>
+                          </form>
+                          {inviteError && (
+                            <p className="text-small text-danger">{inviteError}</p>
+                          )}
+                        </div>
+                      )}
+                    </li>
+                  ),
+                )}
+              </ul>
+            </div>
+
+            {shared.length > 0 && (
+              <div>
+                <p className="mb-1 px-2 text-small font-medium uppercase tracking-wide text-neutral-600">
+                  Shared with you
+                </p>
+                <ul className="space-y-0.5">
+                  {shared.map((b) => (
+                    <li
+                      key={b.id}
                       className={
-                        "flex min-w-0 flex-1 items-center justify-between gap-2 rounded px-2 py-1 text-small " +
+                        "group flex items-center gap-1 rounded px-2 py-1 text-small " +
                         (b.id === currentBudget.id
                           ? "bg-brand-700/10 font-medium text-brand-700"
                           : "text-neutral-800 hover:bg-neutral-100")
                       }
                     >
-                      <span className="truncate">{b.name}</span>
-                      <span className="shrink-0 text-neutral-600">
-                        {b.currency}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDeletingId(b.id);
-                        setConfirmText("");
-                      }}
-                      title="Delete budget"
-                      className="shrink-0 rounded p-1 text-neutral-400 hover:bg-danger/10 hover:text-danger"
-                    >
-                      <Icon name="delete" label="Delete budget" />
-                    </button>
-                  </li>
-                ),
-              )}
-            </ul>
-
-            {!adding && availableCurrencies.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setAdding(true)}
-                className="flex w-full items-center gap-1 rounded px-2 py-1 text-left text-small font-medium text-brand-700 hover:bg-brand-700/10"
-              >
-                <Icon name="add" /> New budget
-              </button>
-            )}
-
-            {!adding && availableCurrencies.length === 0 && (
-              <p className="px-2 text-small text-neutral-600">
-                Every supported currency already has a budget.
-              </p>
-            )}
-
-            {adding && (
-              <form
-                ref={formRef}
-                onSubmit={handleCreate}
-                className="space-y-2 border-t border-neutral-200 pt-2"
-              >
-                <div>
-                  <label
-                    className="block text-small text-neutral-600"
-                    htmlFor="new-budget-name"
-                  >
-                    Name
-                  </label>
-                  <input
-                    id="new-budget-name"
-                    name="name"
-                    required
-                    autoFocus
-                    className="mt-1 w-full rounded border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-                  />
-                </div>
-                <div>
-                  <label
-                    className="block text-small text-neutral-600"
-                    htmlFor="new-budget-currency"
-                  >
-                    Currency
-                  </label>
-                  <select
-                    id="new-budget-currency"
-                    name="currency"
-                    defaultValue={availableCurrencies[0]?.code}
-                    className="mt-1 w-full rounded border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-                  >
-                    {availableCurrencies.map((c) => (
-                      <option key={c.code} value={c.code}>
-                        {c.code} — {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex justify-end gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setAdding(false)}
-                    className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={pending}
-                    className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
-                  >
-                    {pending ? "Creating…" : "Create"}
-                  </button>
-                </div>
-              </form>
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => handleSwitch(b.id)}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <span className="block truncate">
+                          {b.name}{" "}
+                          <span className="text-neutral-600">
+                            · {b.ownerEmail}
+                          </span>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => handleLeave(b.id)}
+                        className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-danger opacity-0 hover:bg-danger/10 group-hover:opacity-100"
+                      >
+                        Leave
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </div>,
           document.body,
