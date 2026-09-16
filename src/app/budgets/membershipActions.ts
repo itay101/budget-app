@@ -6,14 +6,14 @@ import { prisma } from "@/lib/prisma";
 import { CURRENT_BUDGET_COOKIE } from "@/lib/budget";
 import { getCurrentUser } from "@/lib/auth";
 import { requireBudgetOwnership } from "@/lib/authorization";
+import { diffFields, recordAuditEntry } from "@/lib/audit";
 
 /**
  * Removes a Collaborator from a Budget (Owner-initiated). Per ADR 0004,
  * this is the same underlying change `leaveBudget` below makes — the
  * `BudgetMembership` row is deleted immediately, no grace period — the
- * two are only distinguished by who's acting, which is what the shared
- * "collaborator removed" AuditEntry action's `actor` field will record
- * once #75 wires audit logging into this file.
+ * two are only distinguished by who's acting, recorded in the shared
+ * "collaborator removed" AuditEntry's `actorId` (#75).
  *
  * Owner-only, authorized via the Budget itself: a non-owner gets the
  * same "Budget not found" a stranger would (requireBudgetOwnership).
@@ -28,7 +28,7 @@ export async function removeCollaborator(formData: FormData): Promise<void> {
     throw new Error("userId is required");
   }
 
-  await requireBudgetOwnership(budgetId);
+  const { user } = await requireBudgetOwnership(budgetId);
 
   const membership = await prisma.budgetMembership.findUnique({
     where: { budgetId_userId: { budgetId, userId } },
@@ -37,7 +37,17 @@ export async function removeCollaborator(formData: FormData): Promise<void> {
     throw new Error("Not a collaborator on this budget");
   }
 
-  await prisma.budgetMembership.delete({ where: { id: membership.id } });
+  await prisma.$transaction(async (tx) => {
+    await tx.budgetMembership.delete({ where: { id: membership.id } });
+    await recordAuditEntry(tx, {
+      budgetId,
+      entityType: "BUDGET_MEMBERSHIP",
+      entityId: membership.id,
+      action: "collaborator removed",
+      actorId: user.id,
+      changes: diffFields({ userId }, {}),
+    });
+  });
   revalidatePath("/", "layout");
 }
 
@@ -69,7 +79,17 @@ export async function leaveBudget(formData: FormData): Promise<void> {
     throw new Error("You're not a collaborator on this budget");
   }
 
-  await prisma.budgetMembership.delete({ where: { id: membership.id } });
+  await prisma.$transaction(async (tx) => {
+    await tx.budgetMembership.delete({ where: { id: membership.id } });
+    await recordAuditEntry(tx, {
+      budgetId,
+      entityType: "BUDGET_MEMBERSHIP",
+      entityId: membership.id,
+      action: "collaborator removed",
+      actorId: user.id,
+      changes: diffFields({ userId: user.id }, {}),
+    });
+  });
 
   if (cookies().get(CURRENT_BUDGET_COOKIE)?.value === budgetId) {
     cookies().delete(CURRENT_BUDGET_COOKIE);
@@ -113,13 +133,21 @@ export async function transferOwnership(formData: FormData): Promise<void> {
     throw new Error("Only an existing collaborator can be made the owner");
   }
 
-  await prisma.$transaction([
-    prisma.budget.update({ where: { id: budgetId }, data: { ownerId: newOwnerId } }),
-    prisma.budgetMembership.delete({ where: { id: membership.id } }),
-    prisma.budgetMembership.create({
+  await prisma.$transaction(async (tx) => {
+    await tx.budget.update({ where: { id: budgetId }, data: { ownerId: newOwnerId } });
+    await tx.budgetMembership.delete({ where: { id: membership.id } });
+    await tx.budgetMembership.create({
       data: { budgetId, userId: currentOwner.id },
-    }),
-  ]);
+    });
+    await recordAuditEntry(tx, {
+      budgetId,
+      entityType: "BUDGET_MEMBERSHIP",
+      entityId: budgetId,
+      action: "ownership transferred",
+      actorId: currentOwner.id,
+      changes: diffFields({ ownerId: currentOwner.id }, { ownerId: newOwnerId }),
+    });
+  });
 
   revalidatePath("/", "layout");
 }
