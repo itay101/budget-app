@@ -1,5 +1,36 @@
 import { prisma } from "@/lib/prisma";
-import type { User } from "@prisma/client";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { Invite, User } from "@prisma/client";
+
+/**
+ * Revokes a single pending Invite: deletes the unconfirmed Supabase user
+ * it created (if any) before removing the local row (ADR 0003) — if the
+ * Supabase call failed but the local row were deleted anyway, the old
+ * invite link would keep working with no local record left to accept it
+ * into. Shared between `cancelInvite`
+ * (src/app/budgets/inviteActions.ts, the Owner-facing action) and account
+ * deactivation (src/app/auth/actions.ts, ADR 0004 — canceling a Budget's
+ * pending Invites as part of its automatic soft-delete).
+ */
+export async function revokeInvite(invite: Invite): Promise<void> {
+  if (invite.createdSupabaseUser) {
+    // Invite only records *that* it created an auth.users row, not that
+    // row's id — re-derived here via the mirrored public.User row for
+    // this email, which always shares that id verbatim (ADR 0005).
+    const invitedUser = await prisma.user.findFirst({
+      where: { email: invite.email, deactivatedAt: null },
+    });
+    if (invitedUser) {
+      const { error } = await createAdminClient().auth.admin.deleteUser(
+        invitedUser.id,
+      );
+      if (error) {
+        throw new Error(`Failed to cancel invite: ${error.message}`);
+      }
+    }
+  }
+  await prisma.invite.delete({ where: { id: invite.id } });
+}
 
 /**
  * Converts every pending Invite addressed to this user's email into a
