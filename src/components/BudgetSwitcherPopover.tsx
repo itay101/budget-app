@@ -42,9 +42,9 @@ type CurrencyOption = { code: string; name: string };
  * icon — deliberately hard to trigger by accident, requiring you to type
  * the budget's exact name to confirm (deleteBudget enforces the same
  * check server-side, since this popover isn't the only way to call it).
- * A shared row has neither: only a hover "Leave" action, since leaving/
- * deleting/managing collaborators are exclusively the Owner's calls
- * (CONTEXT.md).
+ * A shared row has neither affordance: it shows the Owner's email and a
+ * visible "Leave" action instead, since only Owners can delete budgets
+ * or manage collaborators (CONTEXT.md).
  */
 export function BudgetSwitcherPopover({
   currentBudget,
