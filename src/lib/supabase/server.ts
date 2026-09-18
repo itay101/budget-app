@@ -11,8 +11,8 @@ import { createServerClient } from "@supabase/ssr";
  * that keeps a session alive across page loads. Server Actions and Route
  * Handlers *can* set cookies, and do.
  */
-export function createClient() {
-  const cookieStore = cookies();
+export async function createClient() {
+  const cookieStore = await cookies();
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

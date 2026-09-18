@@ -25,7 +25,7 @@ export const CURRENT_BUDGET_COOKIE = "budgetId";
 export async function getCurrentBudget() {
   const user = await getCurrentUser();
   const where = accessibleBudgetWhere(user.id);
-  const selectedId = cookies().get(CURRENT_BUDGET_COOKIE)?.value;
+  const selectedId = (await cookies()).get(CURRENT_BUDGET_COOKIE)?.value;
 
   if (selectedId) {
     const selected = await prisma.budget.findFirst({

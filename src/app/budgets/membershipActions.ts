@@ -91,8 +91,9 @@ export async function leaveBudget(formData: FormData): Promise<void> {
     });
   });
 
-  if (cookies().get(CURRENT_BUDGET_COOKIE)?.value === budgetId) {
-    cookies().delete(CURRENT_BUDGET_COOKIE);
+  const cookieStore = await cookies();
+  if (cookieStore.get(CURRENT_BUDGET_COOKIE)?.value === budgetId) {
+    cookieStore.delete(CURRENT_BUDGET_COOKIE);
   }
   revalidatePath("/", "layout");
 }

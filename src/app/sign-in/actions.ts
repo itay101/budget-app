@@ -24,8 +24,8 @@ export async function sendSignInLink(
     return { error: "Email is required" };
   }
 
-  const supabase = createClient();
-  const origin = headers().get("origin");
+  const supabase = await createClient();
+  const origin = (await headers()).get("origin");
   const callbackUrl = new URL("/auth/callback", origin ?? undefined);
   if (next) {
     callbackUrl.searchParams.set("next", next);
@@ -65,8 +65,8 @@ export async function signInWithGoogle(
 ): Promise<{ error?: string }> {
   const next = String(formData.get("next") ?? "");
 
-  const supabase = createClient();
-  const origin = headers().get("origin");
+  const supabase = await createClient();
+  const origin = (await headers()).get("origin");
   const callbackUrl = new URL("/auth/callback", origin ?? undefined);
   if (next) {
     callbackUrl.searchParams.set("next", next);

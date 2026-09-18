@@ -77,7 +77,7 @@ export async function sendInvite(
     };
   }
 
-  const origin = headers().get("origin");
+  const origin = (await headers()).get("origin");
   const callbackUrl = new URL("/auth/callback", origin ?? undefined);
 
   type InviteUserByEmailResult = Awaited<

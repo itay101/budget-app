@@ -65,7 +65,7 @@ export async function createBudget(formData: FormData) {
     throw err;
   }
 
-  cookies().set(CURRENT_BUDGET_COOKIE, budget.id, { path: "/" });
+  (await cookies()).set(CURRENT_BUDGET_COOKIE, budget.id, { path: "/" });
   revalidatePath("/", "layout");
 }
 
@@ -118,7 +118,7 @@ export async function switchBudget(formData: FormData) {
 
   const { budget } = await requireBudgetAccess(budgetId);
 
-  cookies().set(CURRENT_BUDGET_COOKIE, budget.id, { path: "/" });
+  (await cookies()).set(CURRENT_BUDGET_COOKIE, budget.id, { path: "/" });
   revalidatePath("/", "layout");
 }
 
@@ -157,8 +157,9 @@ export async function deleteBudget(formData: FormData) {
 
   await softDeleteBudget(budgetId, user.id);
 
-  if (cookies().get(CURRENT_BUDGET_COOKIE)?.value === budgetId) {
-    cookies().delete(CURRENT_BUDGET_COOKIE);
+  const cookieStore = await cookies();
+  if (cookieStore.get(CURRENT_BUDGET_COOKIE)?.value === budgetId) {
+    cookieStore.delete(CURRENT_BUDGET_COOKIE);
   }
 
   revalidatePath("/", "layout");

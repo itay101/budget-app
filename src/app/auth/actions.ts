@@ -11,7 +11,7 @@ import { revokeInvite } from "@/lib/invites";
 import { diffFields, recordAuditEntries } from "@/lib/audit";
 
 export async function signOut() {
-  const supabase = createClient();
+  const supabase = await createClient();
   await supabase.auth.signOut();
   redirect("/sign-in");
 }
@@ -101,8 +101,8 @@ export async function deactivateAccount(): Promise<{ error?: string }> {
   // underlying auth.users row is gone), so a client-side signOut call
   // failing here doesn't leave anything actually signed in — it just
   // clears the local session cookie, best-effort.
-  const supabase = createClient();
+  const supabase = await createClient();
   await supabase.auth.signOut().catch(() => {});
-  cookies().delete(CURRENT_BUDGET_COOKIE);
+  (await cookies()).delete(CURRENT_BUDGET_COOKIE);
   redirect("/sign-in");
 }
