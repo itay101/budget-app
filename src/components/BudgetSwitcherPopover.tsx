@@ -18,6 +18,12 @@ type BudgetOption = {
 };
 type CurrencyOption = { code: string; name: string };
 
+function actionErrorMessage(err: unknown, action: string): string {
+  return err instanceof Error
+    ? err.message
+    : `Failed to ${action}. Please try again.`;
+}
+
 /**
  * Sidebar control for which budget (= which currency) the app is
  * currently showing — click to switch to another existing budget, or open
@@ -81,6 +87,7 @@ export function BudgetSwitcherPopover({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [inviteDraft, setInviteDraft] = useState("");
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const { open, setOpen, position, triggerRef, panelRef } = usePopover({
     width: 256, // matches the popover's w-64
@@ -90,6 +97,7 @@ export function BudgetSwitcherPopover({
       setExpandedId(null);
       setInviteDraft("");
       setInviteError(null);
+      setActionError(null);
     },
   });
   const formRef = useRef<HTMLFormElement>(null);
@@ -182,8 +190,13 @@ export function BudgetSwitcherPopover({
   function handleCancelInvite(inviteId: string) {
     const formData = new FormData();
     formData.set("inviteId", inviteId);
+    setActionError(null);
     startTransition(async () => {
-      await cancelInvite(formData);
+      try {
+        await cancelInvite(formData);
+      } catch (err) {
+        setActionError(actionErrorMessage(err, "cancel the invite"));
+      }
     });
   }
 
@@ -191,17 +204,27 @@ export function BudgetSwitcherPopover({
     const formData = new FormData();
     formData.set("budgetId", budgetId);
     formData.set("userId", userId);
+    setActionError(null);
     startTransition(async () => {
-      await removeCollaborator(formData);
+      try {
+        await removeCollaborator(formData);
+      } catch (err) {
+        setActionError(actionErrorMessage(err, "remove the collaborator"));
+      }
     });
   }
 
   function handleLeave(budgetId: string) {
     const formData = new FormData();
     formData.set("budgetId", budgetId);
+    setActionError(null);
     startTransition(async () => {
-      await leaveBudget(formData);
-      setOpen(false);
+      try {
+        await leaveBudget(formData);
+        setOpen(false);
+      } catch (err) {
+        setActionError(actionErrorMessage(err, "leave the budget"));
+      }
     });
   }
 
@@ -271,6 +294,12 @@ export function BudgetSwitcherPopover({
             style={{ position: "fixed", top: position.top, left: position.left }}
             className="z-50 w-64 max-w-[calc(100vw-1rem)] rounded-lg border border-neutral-200 bg-neutral-0 p-3 text-left shadow-lg"
           >
+            {actionError && (
+              <p className="mb-2 rounded bg-danger/10 px-2 py-1 text-small text-danger">
+                {actionError}
+              </p>
+            )}
+
             <div className="mb-2">
               <p className="mb-1 px-2 text-small font-medium uppercase tracking-wide text-neutral-600">
                 Your budgets
