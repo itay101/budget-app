@@ -80,10 +80,27 @@ export async function sendInvite(
   const origin = headers().get("origin");
   const callbackUrl = new URL("/auth/callback", origin ?? undefined);
 
-  const { data, error } =
-    await createAdminClient().auth.admin.inviteUserByEmail(email, {
-      redirectTo: callbackUrl.toString(),
-    });
+  type InviteUserByEmailResult = Awaited<
+    ReturnType<
+      ReturnType<typeof createAdminClient>["auth"]["admin"]["inviteUserByEmail"]
+    >
+  >;
+  let inviteResult: InviteUserByEmailResult;
+  try {
+    inviteResult = await createAdminClient().auth.admin.inviteUserByEmail(
+      email,
+      { redirectTo: callbackUrl.toString() },
+    );
+  } catch (err) {
+    // createAdminClient()/inviteUserByEmail can throw synchronously (e.g. a
+    // misconfigured SUPABASE_SERVICE_ROLE_KEY) rather than resolving with
+    // an AuthError — surface that as an inline error too, instead of an
+    // unhandled rejection that crashes the whole popover.
+    return {
+      error: err instanceof Error ? err.message : "Failed to send the invite.",
+    };
+  }
+  const { data, error } = inviteResult;
 
   let createdSupabaseUser: boolean;
   if (error) {
