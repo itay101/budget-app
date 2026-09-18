@@ -27,7 +27,7 @@ export async function getCurrentUser(): Promise<User> {
   // ever run; everywhere else (including every Vercel deployment) this
   // is always false and the real Supabase flow below is the only path.
   if (isE2ETestAuthEnabled()) {
-    const testUserId = cookies().get(E2E_TEST_USER_COOKIE)?.value;
+    const testUserId = (await cookies()).get(E2E_TEST_USER_COOKIE)?.value;
     if (testUserId) {
       const testUser = await prisma.user.findUnique({
         where: { id: testUserId },
@@ -38,7 +38,7 @@ export async function getCurrentUser(): Promise<User> {
     }
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user: supabaseUser },
   } = await supabase.auth.getUser();

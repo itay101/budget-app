@@ -30,13 +30,14 @@ export default async function AccountPage({
   params,
   searchParams,
 }: {
-  params: { id: string };
-  searchParams: { [key: string]: string | string[] | undefined };
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
+  const [{ id }, resolvedSearchParams] = await Promise.all([params, searchParams]);
   const budget = await getCurrentBudget();
 
   const account = await prisma.account.findFirst({
-    where: { id: params.id, budgetId: budget.id },
+    where: { id, budgetId: budget.id },
   });
 
   if (!account) {
@@ -46,7 +47,7 @@ export default async function AccountPage({
   // The four transactions-list filters (#19-#22) are pushed down into this
   // `where` clause instead of being applied client-side (#24), so only the
   // rows the current filters actually select are ever fetched.
-  const filters = parseTransactionFilters(searchParams);
+  const filters = parseTransactionFilters(resolvedSearchParams);
 
   const [
     transactions,

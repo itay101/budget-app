@@ -21,8 +21,9 @@ export const dynamic = "force-dynamic";
 export default async function AllAccountsPage({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined };
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
+  const resolvedSearchParams = await searchParams;
   const budget = await getCurrentBudget();
 
   // Starting-balance transactions (see createAccount) only make sense in
@@ -38,7 +39,7 @@ export default async function AllAccountsPage({
   // The four transactions-list filters (#19-#22) are pushed down into this
   // `where` clause instead of being applied client-side (#24), so only the
   // rows the current filters actually select are ever fetched.
-  const filters = parseTransactionFilters(searchParams);
+  const filters = parseTransactionFilters(resolvedSearchParams);
 
   const [
     accounts,
