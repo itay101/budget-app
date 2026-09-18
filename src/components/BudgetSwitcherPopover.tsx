@@ -556,7 +556,7 @@ export function BudgetSwitcherPopover({
                         type="button"
                         disabled={pending}
                         onClick={() => handleLeave(b.id)}
-                        className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-danger opacity-0 hover:bg-danger/10 group-hover:opacity-100"
+                        className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-danger hover:bg-danger/10"
                       >
                         Leave
                       </button>
