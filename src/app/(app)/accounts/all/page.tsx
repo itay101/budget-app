@@ -40,23 +40,27 @@ export default async function AllAccountsPage({
   // rows the current filters actually select are ever fetched.
   const filters = parseTransactionFilters(searchParams);
 
-  const [accounts, transactions, totalCount, { categoryGroups, payeeNames }] =
-    await Promise.all([
-      prisma.account.findMany({
-        where: { budgetId: budget.id, closed: false },
-      }),
-      prisma.transaction.findMany({
-        where: { ...baseWhere, ...transactionFiltersWhere(filters) },
-        orderBy: { date: "desc" },
-        include: {
-          payee: true,
-          category: true,
-          account: { select: { name: true } },
-        },
-      }),
-      prisma.transaction.count({ where: baseWhere }),
-      getTransactionEditOptions(budget.id),
-    ]);
+  const [
+    accounts,
+    transactions,
+    totalCount,
+    { categoryGroups, payeeNames, payeeLastCategory },
+  ] = await Promise.all([
+    prisma.account.findMany({
+      where: { budgetId: budget.id, closed: false },
+    }),
+    prisma.transaction.findMany({
+      where: { ...baseWhere, ...transactionFiltersWhere(filters) },
+      orderBy: { date: "desc" },
+      include: {
+        payee: true,
+        category: true,
+        account: { select: { name: true } },
+      },
+    }),
+    prisma.transaction.count({ where: baseWhere }),
+    getTransactionEditOptions(budget.id),
+  ]);
 
   const total = accounts.reduce((sum, a) => sum + a.balance, 0);
 
@@ -64,9 +68,7 @@ export default async function AllAccountsPage({
     <div className="space-y-300">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <div>
-          <h1 className="text-h2 text-neutral-800 sm:text-h1">
-            All Accounts
-          </h1>
+          <h1 className="text-h2 text-neutral-800 sm:text-h1">All Accounts</h1>
           <p className="text-body text-neutral-600">
             Every transaction across all {accounts.length} account
             {accounts.length === 1 ? "" : "s"}
@@ -87,6 +89,7 @@ export default async function AllAccountsPage({
         totalCount={totalCount}
         categoryGroups={categoryGroups}
         payeeNames={payeeNames}
+        payeeLastCategory={payeeLastCategory}
         updateTransaction={updateTransaction}
         deleteTransaction={deleteTransaction}
         deleteTransactions={deleteTransactions}

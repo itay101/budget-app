@@ -48,16 +48,19 @@ export default async function AccountPage({
   // rows the current filters actually select are ever fetched.
   const filters = parseTransactionFilters(searchParams);
 
-  const [transactions, totalCount, { categoryGroups, payeeNames }] =
-    await Promise.all([
-      prisma.transaction.findMany({
-        where: { accountId: account.id, ...transactionFiltersWhere(filters) },
-        orderBy: { date: "desc" },
-        include: { payee: true, category: true },
-      }),
-      prisma.transaction.count({ where: { accountId: account.id } }),
-      getTransactionEditOptions(budget.id),
-    ]);
+  const [
+    transactions,
+    totalCount,
+    { categoryGroups, payeeNames, payeeLastCategory },
+  ] = await Promise.all([
+    prisma.transaction.findMany({
+      where: { accountId: account.id, ...transactionFiltersWhere(filters) },
+      orderBy: { date: "desc" },
+      include: { payee: true, category: true },
+    }),
+    prisma.transaction.count({ where: { accountId: account.id } }),
+    getTransactionEditOptions(budget.id),
+  ]);
 
   return (
     <ReconciliationProvider
@@ -103,6 +106,7 @@ export default async function AccountPage({
           totalCount={totalCount}
           categoryGroups={categoryGroups}
           payeeNames={payeeNames}
+          payeeLastCategory={payeeLastCategory}
           createTransaction={createTransaction}
           updateTransaction={updateTransaction}
           deleteTransaction={deleteTransaction}

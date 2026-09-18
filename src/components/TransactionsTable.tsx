@@ -165,6 +165,7 @@ export function TransactionsTable({
   totalCount,
   categoryGroups,
   payeeNames,
+  payeeLastCategory,
   createTransaction,
   updateTransaction,
   deleteTransaction,
@@ -187,6 +188,11 @@ export function TransactionsTable({
   totalCount: number;
   categoryGroups: GroupOption[];
   payeeNames: string[];
+  // Per-payee default category (#88): the categoryId of that payee's most
+  // recent categorized transaction, keyed by payee name (same key space as
+  // `payeeNames`) - used to auto-fill a row's category as soon as its
+  // payee is set, as long as the row doesn't already have one.
+  payeeLastCategory: Record<string, string>;
   // Only passed (together with `accountId`) on the single-account page
   // (#34) - accounts/all has no single implicit account for a new
   // transaction to land on, so "Add Transaction" doesn't render there.
@@ -427,16 +433,19 @@ export function TransactionsTable({
         <ReconciliationBar balance={accountBalance} currency={currency} />
       )}
 
-      {importOpen && checkImportDuplicates && importTransactions && accountId && (
-        <ImportTransactionsModal
-          accountId={accountId}
-          accountType={accountType}
-          currency={currency}
-          checkImportDuplicates={checkImportDuplicates}
-          importTransactions={importTransactions}
-          onClose={() => setImportOpen(false)}
-        />
-      )}
+      {importOpen &&
+        checkImportDuplicates &&
+        importTransactions &&
+        accountId && (
+          <ImportTransactionsModal
+            accountId={accountId}
+            accountType={accountType}
+            currency={currency}
+            checkImportDuplicates={checkImportDuplicates}
+            importTransactions={importTransactions}
+            onClose={() => setImportOpen(false)}
+          />
+        )}
 
       {/* Toolbar: "Add Transaction" (#34) on the left, opening a blank
           expanded row at the top of the table; the filter bar (memo/payee
@@ -566,6 +575,7 @@ export function TransactionsTable({
           <NewTransactionRow
             accountId={accountId}
             categoryGroups={categoryGroups}
+            payeeLastCategory={payeeLastCategory}
             createTransaction={createTransaction}
             gridCols={gridCols}
             currency={currency}
@@ -588,6 +598,7 @@ export function TransactionsTable({
               <TransactionRow
                 transaction={t}
                 categoryGroups={categoryGroups}
+                payeeLastCategory={payeeLastCategory}
                 updateTransaction={updateTransaction}
                 deleteTransaction={deleteTransaction}
                 reconcileTransaction={reconcileTransaction}
@@ -731,6 +742,7 @@ function ReconciliationBar({
 function TransactionRow({
   transaction,
   categoryGroups,
+  payeeLastCategory,
   updateTransaction,
   deleteTransaction,
   reconcileTransaction,
@@ -744,6 +756,7 @@ function TransactionRow({
 }: {
   transaction: TransactionRowData;
   categoryGroups: GroupOption[];
+  payeeLastCategory: Record<string, string>;
   updateTransaction: (formData: FormData) => Promise<void>;
   deleteTransaction: (formData: FormData) => Promise<void>;
   reconcileTransaction: (formData: FormData) => Promise<void>;
@@ -795,6 +808,21 @@ function TransactionRow({
 
   function patch(fields: Partial<Draft>) {
     setDraft((d) => ({ ...d, ...fields }));
+  }
+
+  // Payee changes get their own handler (#88): as long as the row doesn't
+  // already have a category, setting the payee to one with a remembered
+  // default category (see payeeLastCategory) fills that category in too,
+  // rather than leaving the user to reselect what they almost always pick
+  // anyway. A category the user already chose is never overridden.
+  function handlePayeeChange(name: string) {
+    const defaultCategoryId = payeeLastCategory[name];
+    setDraft((d) => ({
+      ...d,
+      payeeName: name,
+      categoryId:
+        !d.categoryId && defaultCategoryId ? defaultCategoryId : d.categoryId,
+    }));
   }
 
   function handleCancel() {
@@ -969,7 +997,11 @@ function TransactionRow({
             title="Collapse"
             className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
           >
-            <Icon name="expand_less" label="Collapse" className="text-[1.1em]" />
+            <Icon
+              name="expand_less"
+              label="Collapse"
+              className="text-[1.1em]"
+            />
           </button>
         </div>
 
@@ -1001,7 +1033,7 @@ function TransactionRow({
             value={draft.payeeName}
             list="payee-suggestions"
             placeholder="Payee"
-            onChange={(e) => patch({ payeeName: e.target.value })}
+            onChange={(e) => handlePayeeChange(e.target.value)}
             className={inputClass}
           />
         </div>
@@ -1188,6 +1220,7 @@ function TransactionRow({
 function NewTransactionRow({
   accountId,
   categoryGroups,
+  payeeLastCategory,
   createTransaction,
   gridCols,
   currency,
@@ -1195,6 +1228,7 @@ function NewTransactionRow({
 }: {
   accountId: string;
   categoryGroups: GroupOption[];
+  payeeLastCategory: Record<string, string>;
   createTransaction: (formData: FormData) => Promise<void>;
   gridCols: string;
   currency: string;
@@ -1205,6 +1239,18 @@ function NewTransactionRow({
 
   function patch(fields: Partial<Draft>) {
     setDraft((d) => ({ ...d, ...fields }));
+  }
+
+  // Same auto-fill as TransactionRow.handlePayeeChange (#88), for the blank
+  // "Add Transaction" row.
+  function handlePayeeChange(name: string) {
+    const defaultCategoryId = payeeLastCategory[name];
+    setDraft((d) => ({
+      ...d,
+      payeeName: name,
+      categoryId:
+        !d.categoryId && defaultCategoryId ? defaultCategoryId : d.categoryId,
+    }));
   }
 
   function formDataFromDraft() {
@@ -1271,7 +1317,7 @@ function NewTransactionRow({
             value={draft.payeeName}
             list="payee-suggestions"
             placeholder="Payee"
-            onChange={(e) => patch({ payeeName: e.target.value })}
+            onChange={(e) => handlePayeeChange(e.target.value)}
             className={inputClass}
           />
         </div>
