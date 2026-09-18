@@ -15,7 +15,7 @@ import {
 } from "@/lib/importParsing";
 import { formatMilliunits, numberToMilliunits } from "@/lib/money";
 import { Icon } from "@/components/Icon";
-import type { ImportRow } from "@/app/accounts/actions";
+import type { ImportRow } from "@/app/(app)/accounts/actions";
 import { isDebtAccountType, type AccountType } from "@/lib/accountTypes";
 import {
   loadImportMapping,

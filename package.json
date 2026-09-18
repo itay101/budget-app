@@ -10,13 +10,20 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "TZ=Asia/Jerusalem jest",
+    "test:coverage": "TZ=Asia/Jerusalem jest --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "db:e2e:reset": "prisma migrate reset --force --skip-generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "bootstrap:first-owner": "tsx scripts/bootstrap-first-owner.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.45.4",
     "@vercel/analytics": "^2.0.1",
     "exceljs": "^4.4.0",
     "next": "^14.2.15",
@@ -24,6 +31,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.16.11",
     "@types/react": "^18.3.11",

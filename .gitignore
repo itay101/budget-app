@@ -25,3 +25,13 @@ yarn-error.log*
 # prisma
 /prisma/dev.db
 /prisma/dev.db-journal
+
+# test output
+/coverage
+/test-results
+/playwright-report
+/blob-report
+/playwright/.cache
+
+# e2e login shortcut's saved session (#72) - regenerated every run
+/e2e/.auth
