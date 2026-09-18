@@ -178,12 +178,16 @@ export function BudgetSwitcherPopover({
     formData.set("budgetId", budgetId);
     formData.set("email", inviteDraft);
     startTransition(async () => {
-      const result = await sendInvite(formData);
-      if (result.error) {
-        setInviteError(result.error);
-        return;
+      try {
+        const result = await sendInvite(formData);
+        if (result.error) {
+          setInviteError(result.error);
+          return;
+        }
+        setInviteDraft("");
+      } catch (err) {
+        setInviteError(actionErrorMessage(err, "send the invite"));
       }
-      setInviteDraft("");
     });
   }
 
