@@ -45,12 +45,14 @@ See [`prisma/schema.prisma`](./prisma/schema.prisma):
 
 ## Authentication
 
-Sign-in is [Supabase Auth](https://supabase.com/docs/guides/auth)
-(magic-link email, no password) — see
+Sign-in is [Supabase Auth](https://supabase.com/docs/guides/auth) —
+magic-link email (no password), or Google — see
 [docs/adr/0005](./docs/adr/0005-user-invite-budgetmembership-schema-is-locked-users-deactivate-not-delete.md)
 and [docs/adr/0006](./docs/adr/0006-e2e-gets-a-guarded-login-shortcut-previews-get-no-bypass.md).
 There is no signup page: an account only exists after being invited to a
-Budget by its owner, or via the one-time bootstrap below.
+Budget by its owner, or via the one-time bootstrap below. This holds for
+Google sign-in too — a Google account with no matching invite/existing
+account is rejected at `/auth/callback` (see that route's doc comment).
 
 - Set `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` /
   `SUPABASE_SERVICE_ROLE_KEY` (see `.env.example`) to a real Supabase
@@ -60,6 +62,14 @@ Budget by its owner, or via the one-time bootstrap below.
   `npm run bootstrap:first-owner -- you@example.com` once (needs
   `SUPABASE_SERVICE_ROLE_KEY` set) — it invites that email and makes them
   owner of every pre-existing Budget. See the script's own comments.
+- **To enable Google sign-in** on a given Supabase project: in the
+  [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
+  create an OAuth 2.0 Client ID (Web application) with authorized redirect
+  URI `https://<your-project-ref>.supabase.co/auth/v1/callback` (find the
+  exact value under Supabase's own Authentication -> Providers -> Google
+  panel), then paste that client's ID/secret into that same Supabase
+  panel and enable the provider. Nothing needs to change in this app's own
+  env vars — see `.env.example`.
 
 ## Getting started
 
