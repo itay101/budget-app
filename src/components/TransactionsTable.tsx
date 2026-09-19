@@ -25,6 +25,7 @@ import {
 } from "@/lib/dateRange";
 import { FILTER_PARAMS } from "@/lib/transactionFilters";
 import { MoneyInput } from "@/components/MoneyInput";
+import { CategoryOptions } from "@/components/CategoryOptions";
 import { Icon } from "@/components/Icon";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { CategoryFilter } from "@/components/CategoryFilter";
@@ -1009,31 +1010,14 @@ function TransactionRow({
           <label className="mb-1 block text-small text-neutral-600 md:hidden">
             Category
           </label>
-          {isStartingBalance ? (
-            <div
-              className={inputClass + " text-neutral-400"}
-              title="Starting balance can't be categorized"
-            >
-              Uncategorized
-            </div>
-          ) : (
-            <select
-              value={draft.categoryId}
-              onChange={(e) => patch({ categoryId: e.target.value })}
-              className={inputClass}
-            >
-              <option value="">Uncategorized</option>
-              {categoryGroups.map((group) => (
-                <optgroup key={group.id} label={group.name}>
-                  {group.categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          )}
+          <CategoryOptions
+            groups={categoryGroups}
+            value={draft.categoryId}
+            onChange={(value) => patch({ categoryId: value })}
+            disabled={isStartingBalance}
+            disabledTitle="Starting balance can't be categorized"
+            className={inputClass}
+          />
         </div>
 
         <div className="col-span-2 md:col-span-1">
@@ -1280,22 +1264,12 @@ function NewTransactionRow({
           <label className="mb-1 block text-small text-neutral-600 md:hidden">
             Category
           </label>
-          <select
+          <CategoryOptions
+            groups={categoryGroups}
             value={draft.categoryId}
-            onChange={(e) => patch({ categoryId: e.target.value })}
+            onChange={(value) => patch({ categoryId: value })}
             className={inputClass}
-          >
-            <option value="">Uncategorized</option>
-            {categoryGroups.map((group) => (
-              <optgroup key={group.id} label={group.name}>
-                {group.categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+          />
         </div>
 
         <div className="col-span-2 md:col-span-1">
