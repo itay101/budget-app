@@ -732,7 +732,7 @@ export async function updateAccount(formData: FormData) {
       entityId: accountId,
       actorId: user.id,
       before,
-      after: data,
+      after: { ...before, ...data },
       apply: () => tx.account.update({ where: { id: accountId }, data }),
     }),
   );
