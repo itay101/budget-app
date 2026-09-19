@@ -80,6 +80,97 @@ export async function recordAuditEntry(
 }
 
 /**
+ * The fields every auditedCreate/auditedUpdate/auditedDelete call shares —
+ * everything an AuditEntryInput needs except `entityId`/`changes`, which
+ * differ by shape (a create only knows its entityId after `apply` runs; an
+ * update/delete already has one) and are added by each wrapper below.
+ */
+interface AuditedBase {
+  tx: TransactionClient;
+  budgetId: string;
+  entityType: AuditEntityType;
+  actorId: string;
+  /** Defaults to "created"/"updated"/"deleted" per wrapper - override for
+   * ADR 0002/0004's membership-specific phrasing. */
+  action?: string;
+}
+
+/**
+ * Collapses the before-select → apply → diff → recordAuditEntry
+ * choreography (#93) that's otherwise hand-assembled at every mutation call
+ * site into the three shapes those sites actually need. `apply()` is
+ * awaited with no try/catch: a throw propagates straight out and Prisma
+ * rolls back everything already done inside the caller's own
+ * `$transaction`, exactly as it did before this existed. `revalidatePath`
+ * and any "skip if unchanged" early-return stay the caller's concern,
+ * outside this seam - the former is a Next.js cache detail with per-site
+ * path sets, the latter needs to run *before* `apply` even starts.
+ *
+ * A create has no "before" - entityId/fields are derived from apply()'s own
+ * result, not supplied up front, so a caller can't hand-maintain a field
+ * list that drifts from what was actually written.
+ */
+export async function auditedCreate<T>(
+  p: AuditedBase & {
+    apply: () => Promise<T>;
+    entityId: (result: T) => string;
+    fields: (result: T) => Record<string, unknown>;
+  },
+): Promise<T> {
+  const result = await p.apply();
+  await recordAuditEntry(p.tx, {
+    budgetId: p.budgetId,
+    entityType: p.entityType,
+    entityId: p.entityId(result),
+    action: p.action ?? "created",
+    actorId: p.actorId,
+    changes: diffFields({}, p.fields(result)),
+  });
+  return result;
+}
+
+/** An update has both a "before" and "after" - see auditedCreate. */
+export async function auditedUpdate<T>(
+  p: AuditedBase & {
+    entityId: string;
+    before: Record<string, unknown>;
+    after: Record<string, unknown>;
+    apply: () => Promise<T>;
+  },
+): Promise<T> {
+  const result = await p.apply();
+  await recordAuditEntry(p.tx, {
+    budgetId: p.budgetId,
+    entityType: p.entityType,
+    entityId: p.entityId,
+    action: p.action ?? "updated",
+    actorId: p.actorId,
+    changes: diffFields(p.before, p.after),
+  });
+  return result;
+}
+
+/** A delete has no "after" - see auditedCreate. */
+export async function auditedDelete<T>(
+  p: AuditedBase & {
+    entityId: string;
+    before: Record<string, unknown>;
+    apply: () => Promise<T>;
+  },
+): Promise<T> {
+  const result = await p.apply();
+  await recordAuditEntry(p.tx, {
+    budgetId: p.budgetId,
+    entityType: p.entityType,
+    entityId: p.entityId,
+    action: p.action ?? "deleted",
+    actorId: p.actorId,
+    changes: diffFields(p.before, {}),
+  });
+  return result;
+}
+
+/**
  * The bulk counterpart to recordAuditEntry, for a caller (importTransactions,
  * deleteTransactions, acceptPendingInvites) that already has one entry per
  * row rather than a single mutation — one `createMany` instead of N
