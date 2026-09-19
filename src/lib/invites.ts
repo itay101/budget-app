@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { diffFields, recordAuditEntries, recordAuditEntry } from "@/lib/audit";
+import { auditedDelete, diffFields, recordAuditEntries } from "@/lib/audit";
 import type { Invite, User } from "@prisma/client";
 
 /**
@@ -32,17 +32,18 @@ export async function revokeInvite(invite: Invite, actorId: string): Promise<voi
       }
     }
   }
-  await prisma.$transaction(async (tx) => {
-    await tx.invite.delete({ where: { id: invite.id } });
-    await recordAuditEntry(tx, {
+  await prisma.$transaction((tx) =>
+    auditedDelete({
+      tx,
       budgetId: invite.budgetId,
       entityType: "INVITE",
       entityId: invite.id,
-      action: "invite revoked",
       actorId,
-      changes: diffFields({ email: invite.email }, {}),
-    });
-  });
+      action: "invite revoked",
+      before: { email: invite.email },
+      apply: () => tx.invite.delete({ where: { id: invite.id } }),
+    }),
+  );
 }
 
 /**
