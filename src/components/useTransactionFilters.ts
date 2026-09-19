@@ -31,10 +31,15 @@ export function useTransactionFilters(searchParams: URLSearchParams) {
   // `updateParams` needs the *current* search params at the time it
   // actually runs, not the ones closed over when its caller was defined -
   // otherwise the debounced memo update below can fire after a later
-  // render (e.g. a category change) and clobber it with a stale URL. Kept
-  // in sync every render, same as usePopover's onDismissRef.
+  // render (e.g. a category change) and clobber it with a stale URL. Synced
+  // from an effect rather than during render itself, since this hook uses
+  // useTransition - React can render (and mutate a ref) speculatively for
+  // an interrupted/superseded update it never commits, which a plain
+  // render-time assignment would still leak into the ref.
   const searchParamsRef = useRef(searchParams);
-  searchParamsRef.current = searchParams;
+  useEffect(() => {
+    searchParamsRef.current = searchParams;
+  }, [searchParams]);
 
   const {
     dateFrom,
