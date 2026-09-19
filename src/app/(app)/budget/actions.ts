@@ -8,7 +8,7 @@ import {
   requireCategoryAccess,
   requireCategoryGroupAccess,
 } from "@/lib/authorization";
-import { diffFields, recordAuditEntry } from "@/lib/audit";
+import { auditedUpdate, diffFields, recordAuditEntry } from "@/lib/audit";
 import { numberToMilliunits } from "@/lib/money";
 
 export async function createCategoryGroup(formData: FormData) {
@@ -104,20 +104,18 @@ export async function renameCategoryGroup(formData: FormData) {
     return;
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.categoryGroup.update({
-      where: { id: categoryGroupId },
-      data: { name },
-    });
-    await recordAuditEntry(tx, {
+  await prisma.$transaction((tx) =>
+    auditedUpdate({
+      tx,
       budgetId,
       entityType: "CATEGORY_GROUP",
       entityId: categoryGroupId,
-      action: "updated",
       actorId: user.id,
-      changes: diffFields(before, { name }),
-    });
-  });
+      before,
+      after: { name },
+      apply: () => tx.categoryGroup.update({ where: { id: categoryGroupId }, data: { name } }),
+    }),
+  );
 
   revalidatePath("/budget");
 }
@@ -142,20 +140,18 @@ export async function renameCategory(formData: FormData) {
     return;
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.category.update({
-      where: { id: categoryId },
-      data: { name },
-    });
-    await recordAuditEntry(tx, {
+  await prisma.$transaction((tx) =>
+    auditedUpdate({
+      tx,
       budgetId,
       entityType: "CATEGORY",
       entityId: categoryId,
-      action: "updated",
       actorId: user.id,
-      changes: diffFields(before, { name }),
-    });
-  });
+      before,
+      after: { name },
+      apply: () => tx.category.update({ where: { id: categoryId }, data: { name } }),
+    }),
+  );
 
   revalidatePath("/budget");
 }
@@ -181,20 +177,18 @@ export async function setCategoryHidden(formData: FormData) {
     return;
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.category.update({
-      where: { id: categoryId },
-      data: { hidden },
-    });
-    await recordAuditEntry(tx, {
+  await prisma.$transaction((tx) =>
+    auditedUpdate({
+      tx,
       budgetId,
       entityType: "CATEGORY",
       entityId: categoryId,
-      action: "updated",
       actorId: user.id,
-      changes: diffFields(before, { hidden }),
-    });
-  });
+      before,
+      after: { hidden },
+      apply: () => tx.category.update({ where: { id: categoryId }, data: { hidden } }),
+    }),
+  );
 
   revalidatePath("/budget");
 }
