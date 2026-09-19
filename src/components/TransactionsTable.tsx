@@ -10,11 +10,13 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { formatMilliunits, milliunitsToNumber } from "@/lib/money";
 import {
-  formatMilliunits,
-  milliunitsToNumber,
-  numberToMilliunits,
-} from "@/lib/money";
+  amountFromDraft,
+  applyPayeeChange,
+  draftAmountInput,
+  type Draft,
+} from "@/lib/transactionDraft";
 import {
   DATE_RANGE_PRESETS,
   DateRangePreset,
@@ -80,15 +82,6 @@ function toRowData(t: TransactionInput): TransactionRowData {
   };
 }
 
-type Draft = {
-  date: string;
-  payeeName: string;
-  categoryId: string;
-  memo: string;
-  inflow: string;
-  outflow: string;
-};
-
 function draftFrom(t: TransactionRowData): Draft {
   return {
     date: t.date.slice(0, 10),
@@ -111,16 +104,6 @@ function blankDraft(): Draft {
     inflow: "",
     outflow: "",
   };
-}
-
-// The signed milliunits amount a draft's inflow/outflow pair currently
-// represents (same "whichever side has a value wins" rule used when the
-// form is actually submitted) - used to show a single net amount in the
-// mobile summary row, where inflow/outflow aren't separate columns.
-function amountFromDraft(draft: Draft): number {
-  const inflow = numberToMilliunits(Number(draft.inflow) || 0);
-  const outflow = numberToMilliunits(Number(draft.outflow) || 0);
-  return inflow > 0 ? inflow : outflow ? -outflow : 0;
 }
 
 function categoryNameFor(
@@ -810,19 +793,8 @@ function TransactionRow({
     setDraft((d) => ({ ...d, ...fields }));
   }
 
-  // Payee changes get their own handler (#88): as long as the row doesn't
-  // already have a category, setting the payee to one with a remembered
-  // default category (see payeeLastCategory) fills that category in too,
-  // rather than leaving the user to reselect what they almost always pick
-  // anyway. A category the user already chose is never overridden.
   function handlePayeeChange(name: string) {
-    const defaultCategoryId = payeeLastCategory[name];
-    setDraft((d) => ({
-      ...d,
-      payeeName: name,
-      categoryId:
-        !d.categoryId && defaultCategoryId ? defaultCategoryId : d.categoryId,
-    }));
+    setDraft((d) => applyPayeeChange(d, name, payeeLastCategory));
   }
 
   function handleCancel() {
@@ -837,18 +809,13 @@ function TransactionRow({
       return;
     }
 
-    const inflowValue = Number(draft.inflow) || 0;
-    const outflowValue = Number(draft.outflow) || 0;
-    const amount =
-      inflowValue > 0 ? inflowValue : outflowValue ? -outflowValue : 0;
-
     const formData = new FormData();
     formData.set("transactionId", transaction.id);
     formData.set("date", draft.date);
     formData.set("payeeName", draft.payeeName);
     formData.set("categoryId", draft.categoryId);
     formData.set("memo", draft.memo);
-    formData.set("amount", String(amount));
+    formData.set("amount", String(draftAmountInput(draft)));
 
     startTransition(async () => {
       await updateTransaction(formData);
@@ -1241,31 +1208,18 @@ function NewTransactionRow({
     setDraft((d) => ({ ...d, ...fields }));
   }
 
-  // Same auto-fill as TransactionRow.handlePayeeChange (#88), for the blank
-  // "Add Transaction" row.
   function handlePayeeChange(name: string) {
-    const defaultCategoryId = payeeLastCategory[name];
-    setDraft((d) => ({
-      ...d,
-      payeeName: name,
-      categoryId:
-        !d.categoryId && defaultCategoryId ? defaultCategoryId : d.categoryId,
-    }));
+    setDraft((d) => applyPayeeChange(d, name, payeeLastCategory));
   }
 
   function formDataFromDraft() {
-    const inflowValue = Number(draft.inflow) || 0;
-    const outflowValue = Number(draft.outflow) || 0;
-    const amount =
-      inflowValue > 0 ? inflowValue : outflowValue ? -outflowValue : 0;
-
     const formData = new FormData();
     formData.set("accountId", accountId);
     formData.set("date", draft.date);
     formData.set("payeeName", draft.payeeName);
     formData.set("categoryId", draft.categoryId);
     formData.set("memo", draft.memo);
-    formData.set("amount", String(amount));
+    formData.set("amount", String(draftAmountInput(draft)));
     return formData;
   }
 
