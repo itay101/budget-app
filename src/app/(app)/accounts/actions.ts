@@ -15,7 +15,6 @@ import {
   auditedDelete,
   auditedUpdate,
   diffFields,
-  recordAuditEntry,
   recordAuditEntries,
 } from "@/lib/audit";
 import { numberToMilliunits } from "@/lib/money";
@@ -66,22 +65,17 @@ export async function createAccount(formData: FormData) {
   const onBudget = !isDebtAccountType(type);
 
   await prisma.$transaction(async (tx) => {
-    const account = await tx.account.create({
-      data: {
-        budgetId: budget.id,
-        name,
-        type,
-        balance,
-        onBudget,
-      },
-    });
-    await recordAuditEntry(tx, {
+    const account = await auditedCreate({
+      tx,
       budgetId: budget.id,
       entityType: "ACCOUNT",
-      entityId: account.id,
-      action: "created",
       actorId: user.id,
-      changes: diffFields({}, { name, type, balance, onBudget }),
+      apply: () =>
+        tx.account.create({
+          data: { budgetId: budget.id, name, type, balance, onBudget },
+        }),
+      entityId: (a) => a.id,
+      fields: () => ({ name, type, balance, onBudget }),
     });
 
     if (balance !== 0) {
@@ -96,32 +90,30 @@ export async function createAccount(formData: FormData) {
         user.id,
       );
 
-      const startingTransaction = await tx.transaction.create({
-        data: {
-          accountId: account.id,
-          payeeId,
-          date: new Date(),
-          amount: balance,
-          memo: "Starting balance",
-          cleared: "RECONCILED",
-        },
-      });
-      await recordAuditEntry(tx, {
+      await auditedCreate({
+        tx,
         budgetId: budget.id,
         entityType: "TRANSACTION",
-        entityId: startingTransaction.id,
-        action: "created",
         actorId: user.id,
-        changes: diffFields(
-          {},
-          {
-            accountId: account.id,
-            payeeId,
-            date: startingTransaction.date,
-            amount: balance,
-            memo: "Starting balance",
-          },
-        ),
+        apply: () =>
+          tx.transaction.create({
+            data: {
+              accountId: account.id,
+              payeeId,
+              date: new Date(),
+              amount: balance,
+              memo: "Starting balance",
+              cleared: "RECONCILED",
+            },
+          }),
+        entityId: (t) => t.id,
+        fields: (t) => ({
+          accountId: account.id,
+          payeeId,
+          date: t.date,
+          amount: balance,
+          memo: "Starting balance",
+        }),
       });
     }
   });
