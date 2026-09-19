@@ -298,31 +298,30 @@ export async function moveCategory(formData: FormData) {
         ];
   const movedSortOrder = ordered.findIndex((c) => c.id === categoryId);
 
-  await prisma.$transaction(async (tx) => {
-    await Promise.all(
-      ordered.map((c, index) =>
-        tx.category.update({
-          where: { id: c.id },
-          data: { sortOrder: index, categoryGroupId: targetGroupId },
-        }),
-      ),
-    );
+  await prisma.$transaction((tx) =>
     // Only the dragged category's move is a substantive audit-worthy
     // change — the rest of `ordered` just gets renumbered `sortOrder` as
     // a side effect of making room for it, which isn't its own
     // meaningful event.
-    await recordAuditEntry(tx, {
+    auditedUpdate({
+      tx,
       budgetId: sourceBudgetId,
       entityType: "CATEGORY",
       entityId: categoryId,
-      action: "updated",
       actorId: user.id,
-      changes: diffFields(movedBefore, {
-        categoryGroupId: targetGroupId,
-        sortOrder: movedSortOrder,
-      }),
-    });
-  });
+      before: movedBefore,
+      after: { categoryGroupId: targetGroupId, sortOrder: movedSortOrder },
+      apply: () =>
+        Promise.all(
+          ordered.map((c, index) =>
+            tx.category.update({
+              where: { id: c.id },
+              data: { sortOrder: index, categoryGroupId: targetGroupId },
+            }),
+          ),
+        ),
+    }),
+  );
 
   revalidatePath("/budget");
 }
