@@ -8,9 +8,19 @@ import {
   requireCategoryAccess,
   requireCategoryGroupAccess,
 } from "@/lib/authorization";
-import { auditedUpdate, diffFields, recordAuditEntry } from "@/lib/audit";
+import {
+  auditedCreate,
+  auditedDelete,
+  auditedUpdate,
+  diffFields,
+  recordAuditEntry,
+} from "@/lib/audit";
 import { numberToMilliunits } from "@/lib/money";
 
+/**
+ * Creates a new category group, appended after every existing group in
+ * this budget's sort order.
+ */
 export async function createCategoryGroup(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
 
@@ -27,27 +37,28 @@ export async function createCategoryGroup(formData: FormData) {
   });
   const sortOrder = (last?.sortOrder ?? -1) + 1;
 
-  await prisma.$transaction(async (tx) => {
-    const group = await tx.categoryGroup.create({
-      data: {
-        budgetId: budget.id,
-        name,
-        sortOrder,
-      },
-    });
-    await recordAuditEntry(tx, {
+  await prisma.$transaction((tx) =>
+    auditedCreate({
+      tx,
       budgetId: budget.id,
       entityType: "CATEGORY_GROUP",
-      entityId: group.id,
-      action: "created",
       actorId: user.id,
-      changes: diffFields({}, { name, sortOrder }),
-    });
-  });
+      apply: () =>
+        tx.categoryGroup.create({
+          data: { budgetId: budget.id, name, sortOrder },
+        }),
+      entityId: (group) => group.id,
+      fields: () => ({ name, sortOrder }),
+    }),
+  );
 
   revalidatePath("/budget");
 }
 
+/**
+ * Creates a new category in the given group, appended after every existing
+ * category in that group's sort order.
+ */
 export async function createCategory(formData: FormData) {
   const categoryGroupId = String(formData.get("categoryGroupId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
@@ -63,23 +74,20 @@ export async function createCategory(formData: FormData) {
   });
   const sortOrder = (last?.sortOrder ?? -1) + 1;
 
-  await prisma.$transaction(async (tx) => {
-    const category = await tx.category.create({
-      data: {
-        categoryGroupId,
-        name,
-        sortOrder,
-      },
-    });
-    await recordAuditEntry(tx, {
+  await prisma.$transaction((tx) =>
+    auditedCreate({
+      tx,
       budgetId,
       entityType: "CATEGORY",
-      entityId: category.id,
-      action: "created",
       actorId: user.id,
-      changes: diffFields({}, { categoryGroupId, name, sortOrder }),
-    });
-  });
+      apply: () =>
+        tx.category.create({
+          data: { categoryGroupId, name, sortOrder },
+        }),
+      entityId: (category) => category.id,
+      fields: () => ({ categoryGroupId, name, sortOrder }),
+    }),
+  );
 
   revalidatePath("/budget");
 }
@@ -203,6 +211,10 @@ export async function setCategoryHidden(formData: FormData) {
   revalidatePath("/budget");
 }
 
+/**
+ * Deletes a category group. Only allowed once it's empty — deleting a
+ * nonempty group would otherwise silently orphan its categories.
+ */
 export async function deleteCategoryGroup(formData: FormData) {
   const categoryGroupId = String(formData.get("categoryGroupId") ?? "");
 
@@ -223,17 +235,17 @@ export async function deleteCategoryGroup(formData: FormData) {
     select: { name: true, sortOrder: true },
   });
 
-  await prisma.$transaction(async (tx) => {
-    await tx.categoryGroup.delete({ where: { id: categoryGroupId } });
-    await recordAuditEntry(tx, {
+  await prisma.$transaction((tx) =>
+    auditedDelete({
+      tx,
       budgetId,
       entityType: "CATEGORY_GROUP",
       entityId: categoryGroupId,
-      action: "deleted",
       actorId: user.id,
-      changes: diffFields(before, {}),
-    });
-  });
+      before,
+      apply: () => tx.categoryGroup.delete({ where: { id: categoryGroupId } }),
+    }),
+  );
 
   revalidatePath("/budget");
 }
@@ -298,31 +310,30 @@ export async function moveCategory(formData: FormData) {
         ];
   const movedSortOrder = ordered.findIndex((c) => c.id === categoryId);
 
-  await prisma.$transaction(async (tx) => {
-    await Promise.all(
-      ordered.map((c, index) =>
-        tx.category.update({
-          where: { id: c.id },
-          data: { sortOrder: index, categoryGroupId: targetGroupId },
-        }),
-      ),
-    );
+  await prisma.$transaction((tx) =>
     // Only the dragged category's move is a substantive audit-worthy
     // change — the rest of `ordered` just gets renumbered `sortOrder` as
     // a side effect of making room for it, which isn't its own
     // meaningful event.
-    await recordAuditEntry(tx, {
+    auditedUpdate({
+      tx,
       budgetId: sourceBudgetId,
       entityType: "CATEGORY",
       entityId: categoryId,
-      action: "updated",
       actorId: user.id,
-      changes: diffFields(movedBefore, {
-        categoryGroupId: targetGroupId,
-        sortOrder: movedSortOrder,
-      }),
-    });
-  });
+      before: movedBefore,
+      after: { categoryGroupId: targetGroupId, sortOrder: movedSortOrder },
+      apply: () =>
+        Promise.all(
+          ordered.map((c, index) =>
+            tx.category.update({
+              where: { id: c.id },
+              data: { sortOrder: index, categoryGroupId: targetGroupId },
+            }),
+          ),
+        ),
+    }),
+  );
 
   revalidatePath("/budget");
 }

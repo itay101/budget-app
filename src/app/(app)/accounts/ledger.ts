@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { diffFields, recordAuditEntry } from "@/lib/audit";
+import { auditedCreate } from "@/lib/audit";
 
 /**
  * The interactive-transaction client every helper here takes, so a
@@ -77,14 +77,14 @@ export async function findOrCreatePayee(
   const existing = await tx.payee.findFirst({ where: { budgetId, name } });
   if (existing) return existing.id;
 
-  const created = await tx.payee.create({ data: { budgetId, name } });
-  await recordAuditEntry(tx, {
+  const created = await auditedCreate({
+    tx,
     budgetId,
     entityType: "PAYEE",
-    entityId: created.id,
-    action: "created",
     actorId,
-    changes: diffFields({}, { name }),
+    apply: () => tx.payee.create({ data: { budgetId, name } }),
+    entityId: (payee) => payee.id,
+    fields: () => ({ name }),
   });
   return created.id;
 }

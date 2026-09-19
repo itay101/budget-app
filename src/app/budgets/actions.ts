@@ -9,7 +9,7 @@ import { isCurrencyCode } from "@/lib/currencies";
 import { getCurrentUser } from "@/lib/auth";
 import { requireBudgetAccess, requireBudgetOwnership } from "@/lib/authorization";
 import { revokeInvite } from "@/lib/invites";
-import { diffFields, recordAuditEntry } from "@/lib/audit";
+import { auditedUpdate, diffFields, recordAuditEntry } from "@/lib/audit";
 
 /**
  * Opens a new budget, owned by the signed-in user, in the given currency,
@@ -94,17 +94,18 @@ export async function renameBudget(formData: FormData) {
     return;
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.budget.update({ where: { id: budgetId }, data: { name } });
-    await recordAuditEntry(tx, {
+  await prisma.$transaction((tx) =>
+    auditedUpdate({
+      tx,
       budgetId,
       entityType: "BUDGET",
       entityId: budgetId,
-      action: "updated",
       actorId: user.id,
-      changes: diffFields({ name: budget.name }, { name }),
-    });
-  });
+      before: { name: budget.name },
+      after: { name },
+      apply: () => tx.budget.update({ where: { id: budgetId }, data: { name } }),
+    }),
+  );
 
   revalidatePath("/", "layout");
 }

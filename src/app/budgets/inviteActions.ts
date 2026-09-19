@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { requireBudgetOwnership } from "@/lib/authorization";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revokeInvite } from "@/lib/invites";
-import { diffFields, recordAuditEntry } from "@/lib/audit";
+import { auditedCreate } from "@/lib/audit";
 
 /**
  * Supabase's own stable error codes (see
@@ -113,19 +113,21 @@ export async function sendInvite(
   }
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const invite = await tx.invite.create({
-        data: { budgetId, email, invitedBy: user.id, createdSupabaseUser },
-      });
-      await recordAuditEntry(tx, {
+    await prisma.$transaction((tx) =>
+      auditedCreate({
+        tx,
         budgetId,
         entityType: "INVITE",
-        entityId: invite.id,
-        action: "invite sent",
         actorId: user.id,
-        changes: diffFields({}, { email, createdSupabaseUser }),
-      });
-    });
+        action: "invite sent",
+        apply: () =>
+          tx.invite.create({
+            data: { budgetId, email, invitedBy: user.id, createdSupabaseUser },
+          }),
+        entityId: (invite) => invite.id,
+        fields: () => ({ email, createdSupabaseUser }),
+      }),
+    );
   } catch (err) {
     // The local write is what actually makes this Invite "exist" — if it
     // fails after inviteUserByEmail already created a Supabase user, undo

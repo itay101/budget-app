@@ -10,7 +10,13 @@ import {
   requireBudgetAccess,
   requireTransactionAccess,
 } from "@/lib/authorization";
-import { auditedUpdate, diffFields, recordAuditEntry, recordAuditEntries } from "@/lib/audit";
+import {
+  auditedCreate,
+  auditedDelete,
+  auditedUpdate,
+  diffFields,
+  recordAuditEntries,
+} from "@/lib/audit";
 import { numberToMilliunits } from "@/lib/money";
 import {
   ACCOUNT_TYPES,
@@ -40,6 +46,11 @@ function revalidateAccountPaths(
   if (budget) revalidatePath("/budget");
 }
 
+/**
+ * Creates a new account, optionally seeding it with a Starting Balance
+ * transaction (see the note below) so a nonzero opening balance isn't just
+ * a bare number with no transaction behind it.
+ */
 export async function createAccount(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const typeInput = String(formData.get("type") ?? "CHECKING");
@@ -59,22 +70,17 @@ export async function createAccount(formData: FormData) {
   const onBudget = !isDebtAccountType(type);
 
   await prisma.$transaction(async (tx) => {
-    const account = await tx.account.create({
-      data: {
-        budgetId: budget.id,
-        name,
-        type,
-        balance,
-        onBudget,
-      },
-    });
-    await recordAuditEntry(tx, {
+    const account = await auditedCreate({
+      tx,
       budgetId: budget.id,
       entityType: "ACCOUNT",
-      entityId: account.id,
-      action: "created",
       actorId: user.id,
-      changes: diffFields({}, { name, type, balance, onBudget }),
+      apply: () =>
+        tx.account.create({
+          data: { budgetId: budget.id, name, type, balance, onBudget },
+        }),
+      entityId: (a) => a.id,
+      fields: () => ({ name, type, balance, onBudget }),
     });
 
     if (balance !== 0) {
@@ -89,32 +95,30 @@ export async function createAccount(formData: FormData) {
         user.id,
       );
 
-      const startingTransaction = await tx.transaction.create({
-        data: {
-          accountId: account.id,
-          payeeId,
-          date: new Date(),
-          amount: balance,
-          memo: "Starting balance",
-          cleared: "RECONCILED",
-        },
-      });
-      await recordAuditEntry(tx, {
+      await auditedCreate({
+        tx,
         budgetId: budget.id,
         entityType: "TRANSACTION",
-        entityId: startingTransaction.id,
-        action: "created",
         actorId: user.id,
-        changes: diffFields(
-          {},
-          {
-            accountId: account.id,
-            payeeId,
-            date: startingTransaction.date,
-            amount: balance,
-            memo: "Starting balance",
-          },
-        ),
+        apply: () =>
+          tx.transaction.create({
+            data: {
+              accountId: account.id,
+              payeeId,
+              date: new Date(),
+              amount: balance,
+              memo: "Starting balance",
+              cleared: "RECONCILED",
+            },
+          }),
+        entityId: (t) => t.id,
+        fields: (t) => ({
+          accountId: account.id,
+          payeeId,
+          date: t.date,
+          amount: balance,
+          memo: "Starting balance",
+        }),
       });
     }
   });
@@ -154,23 +158,17 @@ export async function createTransaction(formData: FormData) {
       ? await findOrCreatePayee(tx, budgetId, payeeName, user.id)
       : null;
 
-    const transaction = await tx.transaction.create({
-      data: {
-        accountId,
-        payeeId,
-        categoryId,
-        date,
-        amount,
-        memo,
-      },
-    });
-    await recordAuditEntry(tx, {
+    await auditedCreate({
+      tx,
       budgetId,
       entityType: "TRANSACTION",
-      entityId: transaction.id,
-      action: "created",
       actorId: user.id,
-      changes: diffFields({}, { accountId, payeeId, categoryId, date, amount, memo }),
+      apply: () =>
+        tx.transaction.create({
+          data: { accountId, payeeId, categoryId, date, amount, memo },
+        }),
+      entityId: (transaction) => transaction.id,
+      fields: () => ({ accountId, payeeId, categoryId, date, amount, memo }),
     });
 
     await applyBalanceDelta(tx, accountId, amount);
@@ -391,23 +389,21 @@ export async function updateTransaction(formData: FormData) {
         : null;
     }
 
-    await tx.transaction.update({ where: { id: transactionId }, data });
-    await recordAuditEntry(tx, {
+    await auditedUpdate({
+      tx,
       budgetId: transaction.account.budgetId,
       entityType: "TRANSACTION",
       entityId: transactionId,
-      action: "updated",
       actorId: user.id,
-      changes: diffFields(
-        {
-          date: transaction.date,
-          payeeId: transaction.payeeId,
-          categoryId: transaction.categoryId,
-          memo: transaction.memo,
-          amount: transaction.amount,
-        },
-        data,
-      ),
+      before: {
+        date: transaction.date,
+        payeeId: transaction.payeeId,
+        categoryId: transaction.categoryId,
+        memo: transaction.memo,
+        amount: transaction.amount,
+      },
+      after: data,
+      apply: () => tx.transaction.update({ where: { id: transactionId }, data }),
     });
 
     if (data.amount !== undefined && data.amount !== transaction.amount) {
@@ -448,24 +444,21 @@ export async function deleteTransaction(formData: FormData) {
   const { user } = await requireBudgetAccess(transaction.account.budgetId);
 
   await prisma.$transaction(async (tx) => {
-    await tx.transaction.delete({ where: { id: transactionId } });
-    await recordAuditEntry(tx, {
+    await auditedDelete({
+      tx,
       budgetId: transaction.account.budgetId,
       entityType: "TRANSACTION",
       entityId: transactionId,
-      action: "deleted",
       actorId: user.id,
-      changes: diffFields(
-        {
-          accountId: transaction.accountId,
-          date: transaction.date,
-          payeeId: transaction.payeeId,
-          categoryId: transaction.categoryId,
-          memo: transaction.memo,
-          amount: transaction.amount,
-        },
-        {},
-      ),
+      before: {
+        accountId: transaction.accountId,
+        date: transaction.date,
+        payeeId: transaction.payeeId,
+        categoryId: transaction.categoryId,
+        memo: transaction.memo,
+        amount: transaction.amount,
+      },
+      apply: () => tx.transaction.delete({ where: { id: transactionId } }),
     });
     await applyBalanceDelta(tx, transaction.accountId, -transaction.amount);
   });
