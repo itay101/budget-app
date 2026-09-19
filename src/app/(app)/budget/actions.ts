@@ -8,7 +8,7 @@ import {
   requireCategoryAccess,
   requireCategoryGroupAccess,
 } from "@/lib/authorization";
-import { diffFields, recordAuditEntry } from "@/lib/audit";
+import { auditedUpdate, diffFields, recordAuditEntry } from "@/lib/audit";
 import { numberToMilliunits } from "@/lib/money";
 
 export async function createCategoryGroup(formData: FormData) {
@@ -84,6 +84,10 @@ export async function createCategory(formData: FormData) {
   revalidatePath("/budget");
 }
 
+/**
+ * Renames a category group using the trimmed name from `formData`. An unchanged
+ * name is a no-op; a successful rename is audited and revalidates the budget.
+ */
 export async function renameCategoryGroup(formData: FormData) {
   const categoryGroupId = String(formData.get("categoryGroupId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
@@ -104,24 +108,26 @@ export async function renameCategoryGroup(formData: FormData) {
     return;
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.categoryGroup.update({
-      where: { id: categoryGroupId },
-      data: { name },
-    });
-    await recordAuditEntry(tx, {
+  await prisma.$transaction((tx) =>
+    auditedUpdate({
+      tx,
       budgetId,
       entityType: "CATEGORY_GROUP",
       entityId: categoryGroupId,
-      action: "updated",
       actorId: user.id,
-      changes: diffFields(before, { name }),
-    });
-  });
+      before,
+      after: { name },
+      apply: () => tx.categoryGroup.update({ where: { id: categoryGroupId }, data: { name } }),
+    }),
+  );
 
   revalidatePath("/budget");
 }
 
+/**
+ * Renames a category using the trimmed name from `formData`. An unchanged name
+ * is a no-op; a successful rename is audited and revalidates the budget.
+ */
 export async function renameCategory(formData: FormData) {
   const categoryId = String(formData.get("categoryId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
@@ -142,28 +148,28 @@ export async function renameCategory(formData: FormData) {
     return;
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.category.update({
-      where: { id: categoryId },
-      data: { name },
-    });
-    await recordAuditEntry(tx, {
+  await prisma.$transaction((tx) =>
+    auditedUpdate({
+      tx,
       budgetId,
       entityType: "CATEGORY",
       entityId: categoryId,
-      action: "updated",
       actorId: user.id,
-      changes: diffFields(before, { name }),
-    });
-  });
+      before,
+      after: { name },
+      apply: () => tx.category.update({ where: { id: categoryId }, data: { name } }),
+    }),
+  );
 
   revalidatePath("/budget");
 }
 
-// Hiding is purely presentational — the category keeps its real
-// categoryGroupId and sortOrder, so unhiding puts it right back where it
-// was. The budget page is what collects every hidden category into the
-// synthetic "Hidden" section at read time.
+/**
+ * Sets whether a category appears in the synthetic "Hidden" section without
+ * changing its category group or sort order, so unhiding restores its original
+ * position. An unchanged state is a no-op; a successful change is audited and
+ * revalidates the budget.
+ */
 export async function setCategoryHidden(formData: FormData) {
   const categoryId = String(formData.get("categoryId") ?? "");
   const hidden = String(formData.get("hidden") ?? "") === "true";
@@ -181,20 +187,18 @@ export async function setCategoryHidden(formData: FormData) {
     return;
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.category.update({
-      where: { id: categoryId },
-      data: { hidden },
-    });
-    await recordAuditEntry(tx, {
+  await prisma.$transaction((tx) =>
+    auditedUpdate({
+      tx,
       budgetId,
       entityType: "CATEGORY",
       entityId: categoryId,
-      action: "updated",
       actorId: user.id,
-      changes: diffFields(before, { hidden }),
-    });
-  });
+      before,
+      after: { hidden },
+      apply: () => tx.category.update({ where: { id: categoryId }, data: { hidden } }),
+    }),
+  );
 
   revalidatePath("/budget");
 }
