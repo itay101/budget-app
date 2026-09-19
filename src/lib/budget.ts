@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { accessibleBudgetWhere } from "@/lib/authorization";
-import { diffFields, recordAuditEntry } from "@/lib/audit";
+import { auditedUpdate } from "@/lib/audit";
 
 /**
  * This app supports multiple budgets per user — one per currency (see
@@ -110,21 +110,25 @@ export async function listBudgets(): Promise<BudgetSummary[]> {
  * deactivating Owner themselves in account deactivation's automatic one.
  */
 export async function softDeleteBudget(budgetId: string, actorId: string) {
-  await prisma.$transaction(async (tx) => {
-    await tx.budget.update({ where: { id: budgetId }, data: { deleted: true } });
-    await tx.account.updateMany({
-      where: { budgetId },
-      data: { closed: true },
-    });
-    await recordAuditEntry(tx, {
+  await prisma.$transaction((tx) =>
+    auditedUpdate({
+      tx,
       budgetId,
       entityType: "BUDGET",
       entityId: budgetId,
-      action: "deleted",
       actorId,
-      changes: diffFields({ deleted: false }, { deleted: true }),
-    });
-  });
+      action: "deleted",
+      before: { deleted: false },
+      after: { deleted: true },
+      apply: async () => {
+        await tx.budget.update({ where: { id: budgetId }, data: { deleted: true } });
+        await tx.account.updateMany({
+          where: { budgetId },
+          data: { closed: true },
+        });
+      },
+    }),
+  );
 }
 
 /**
