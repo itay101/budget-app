@@ -28,6 +28,14 @@ export function useTransactionFilters(searchParams: URLSearchParams) {
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
 
+  // `updateParams` needs the *current* search params at the time it
+  // actually runs, not the ones closed over when its caller was defined -
+  // otherwise the debounced memo update below can fire after a later
+  // render (e.g. a category change) and clobber it with a stale URL. Kept
+  // in sync every render, same as usePopover's onDismissRef.
+  const searchParamsRef = useRef(searchParams);
+  searchParamsRef.current = searchParams;
+
   const {
     dateFrom,
     dateTo,
@@ -56,7 +64,7 @@ export function useTransactionFilters(searchParams: URLSearchParams) {
   // re-fetches with the new filters. Wrapped in a transition so `isPending`
   // can dim the table while the new query is in flight.
   function updateParams(patch: Record<string, string | null>) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParamsRef.current.toString());
     for (const [key, value] of Object.entries(patch)) {
       if (value === null || value === "") params.delete(key);
       else params.set(key, value);
