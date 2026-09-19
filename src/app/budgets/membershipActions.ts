@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { CURRENT_BUDGET_COOKIE } from "@/lib/budget";
 import { getCurrentUser } from "@/lib/auth";
 import { requireBudgetOwnership } from "@/lib/authorization";
-import { auditedDelete, diffFields, recordAuditEntry } from "@/lib/audit";
+import { auditedDelete, auditedUpdate } from "@/lib/audit";
 
 /**
  * Removes a Collaborator from a Budget (Owner-initiated). Per ADR 0004,
@@ -136,21 +136,25 @@ export async function transferOwnership(formData: FormData): Promise<void> {
     throw new Error("Only an existing collaborator can be made the owner");
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.budget.update({ where: { id: budgetId }, data: { ownerId: newOwnerId } });
-    await tx.budgetMembership.delete({ where: { id: membership.id } });
-    await tx.budgetMembership.create({
-      data: { budgetId, userId: currentOwner.id },
-    });
-    await recordAuditEntry(tx, {
+  await prisma.$transaction((tx) =>
+    auditedUpdate({
+      tx,
       budgetId,
       entityType: "BUDGET_MEMBERSHIP",
       entityId: budgetId,
-      action: "ownership transferred",
       actorId: currentOwner.id,
-      changes: diffFields({ ownerId: currentOwner.id }, { ownerId: newOwnerId }),
-    });
-  });
+      action: "ownership transferred",
+      before: { ownerId: currentOwner.id },
+      after: { ownerId: newOwnerId },
+      apply: async () => {
+        await tx.budget.update({ where: { id: budgetId }, data: { ownerId: newOwnerId } });
+        await tx.budgetMembership.delete({ where: { id: membership.id } });
+        await tx.budgetMembership.create({
+          data: { budgetId, userId: currentOwner.id },
+        });
+      },
+    }),
+  );
 
   revalidatePath("/", "layout");
 }
