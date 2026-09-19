@@ -84,6 +84,10 @@ export async function createCategory(formData: FormData) {
   revalidatePath("/budget");
 }
 
+/**
+ * Renames a category group using the trimmed name from `formData`. An unchanged
+ * name is a no-op; a successful rename is audited and revalidates the budget.
+ */
 export async function renameCategoryGroup(formData: FormData) {
   const categoryGroupId = String(formData.get("categoryGroupId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
@@ -120,6 +124,10 @@ export async function renameCategoryGroup(formData: FormData) {
   revalidatePath("/budget");
 }
 
+/**
+ * Renames a category using the trimmed name from `formData`. An unchanged name
+ * is a no-op; a successful rename is audited and revalidates the budget.
+ */
 export async function renameCategory(formData: FormData) {
   const categoryId = String(formData.get("categoryId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
@@ -156,10 +164,12 @@ export async function renameCategory(formData: FormData) {
   revalidatePath("/budget");
 }
 
-// Hiding is purely presentational — the category keeps its real
-// categoryGroupId and sortOrder, so unhiding puts it right back where it
-// was. The budget page is what collects every hidden category into the
-// synthetic "Hidden" section at read time.
+/**
+ * Sets whether a category appears in the synthetic "Hidden" section without
+ * changing its category group or sort order, so unhiding restores its original
+ * position. An unchanged state is a no-op; a successful change is audited and
+ * revalidates the budget.
+ */
 export async function setCategoryHidden(formData: FormData) {
   const categoryId = String(formData.get("categoryId") ?? "");
   const hidden = String(formData.get("hidden") ?? "") === "true";

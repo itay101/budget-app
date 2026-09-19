@@ -129,7 +129,11 @@ export async function auditedCreate<T>(
   return result;
 }
 
-/** An update has both a "before" and "after" - see auditedCreate. */
+/**
+ * Applies an update, records the supplied before/after diff through `tx`, and
+ * returns the result of `apply`. If `apply` rejects, its error propagates and
+ * no audit entry is attempted; an empty diff also produces no entry.
+ */
 export async function auditedUpdate<T>(
   p: AuditedBase & {
     entityId: string;
@@ -150,7 +154,11 @@ export async function auditedUpdate<T>(
   return result;
 }
 
-/** A delete has no "after" - see auditedCreate. */
+/**
+ * Applies a deletion, records every supplied `before` field as removed through
+ * `tx`, and returns the result of `apply`. If `apply` rejects, its error
+ * propagates and no audit entry is attempted.
+ */
 export async function auditedDelete<T>(
   p: AuditedBase & {
     entityId: string;
