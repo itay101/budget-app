@@ -1,34 +1,25 @@
 "use client";
 
-import {
-  Fragment,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
+import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { formatMilliunits, milliunitsToNumber } from "@/lib/money";
 import {
-  formatMilliunits,
-  milliunitsToNumber,
-  numberToMilliunits,
-} from "@/lib/money";
-import {
-  DATE_RANGE_PRESETS,
-  DateRangePreset,
-  presetDateRange,
-  todayISODate,
-} from "@/lib/dateRange";
-import { FILTER_PARAMS } from "@/lib/transactionFilters";
+  amountFromDraft,
+  applyPayeeChange,
+  draftAmountInput,
+  type Draft,
+} from "@/lib/transactionDraft";
+import { todayISODate } from "@/lib/dateRange";
 import { MoneyInput } from "@/components/MoneyInput";
+import { CategoryOptions } from "@/components/CategoryOptions";
 import { Icon } from "@/components/Icon";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { CategoryFilter } from "@/components/CategoryFilter";
-import { FlowFilter, FlowFilterValue } from "@/components/FlowFilter";
+import { FlowFilter } from "@/components/FlowFilter";
 import { MemoFilter } from "@/components/MemoFilter";
 import { usePopover } from "@/components/usePopover";
+import { useTransactionFilters } from "@/components/useTransactionFilters";
 import { useReconciliation } from "@/components/ReconciliationContext";
 import { ImportTransactionsModal } from "@/components/ImportTransactionsModal";
 import type { AccountType } from "@/lib/accountTypes";
@@ -80,15 +71,6 @@ function toRowData(t: TransactionInput): TransactionRowData {
   };
 }
 
-type Draft = {
-  date: string;
-  payeeName: string;
-  categoryId: string;
-  memo: string;
-  inflow: string;
-  outflow: string;
-};
-
 function draftFrom(t: TransactionRowData): Draft {
   return {
     date: t.date.slice(0, 10),
@@ -111,16 +93,6 @@ function blankDraft(): Draft {
     inflow: "",
     outflow: "",
   };
-}
-
-// The signed milliunits amount a draft's inflow/outflow pair currently
-// represents (same "whichever side has a value wins" rule used when the
-// form is actually submitted) - used to show a single net amount in the
-// mobile summary row, where inflow/outflow aren't separate columns.
-function amountFromDraft(draft: Draft): number {
-  const inflow = numberToMilliunits(Number(draft.inflow) || 0);
-  const outflow = numberToMilliunits(Number(draft.outflow) || 0);
-  return inflow > 0 ? inflow : outflow ? -outflow : 0;
 }
 
 function categoryNameFor(
@@ -292,130 +264,25 @@ export function TransactionsTable({
     });
   }
 
-  const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [isPending, startTransition] = useTransition();
-
-  // The four filters (#19-#22) live in the URL rather than component state
-  // (see @/lib/transactionFilters) so the server-side query in
-  // accounts/[id]/page.tsx / accounts/all/page.tsx can be driven by the
-  // same params (#24) - `transactions` above already reflects them.
-  const dateFrom = searchParams.get(FILTER_PARAMS.dateFrom) ?? "";
-  const dateTo = searchParams.get(FILTER_PARAMS.dateTo) ?? "";
-  const rawPreset = searchParams.get(FILTER_PARAMS.preset);
-  const activePreset = DATE_RANGE_PRESETS.some((p) => p.key === rawPreset)
-    ? (rawPreset as DateRangePreset)
-    : null;
-  const categoryFilter = searchParams.get(FILTER_PARAMS.category) ?? "";
-  const rawDirection = searchParams.get(FILTER_PARAMS.direction);
-  const flowFilter: FlowFilterValue =
-    rawDirection === "inflow" || rawDirection === "outflow"
-      ? rawDirection
-      : "all";
-  const urlQuery = searchParams.get(FILTER_PARAMS.q) ?? "";
-
-  // The memo/payee text filter (#22) keeps its own local state so typing
-  // feels instant, pushing into the URL on a short debounce instead of
-  // navigating on every keystroke like the other filters do.
-  const [memoFilter, setMemoFilterState] = useState(urlQuery);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    setMemoFilterState(urlQuery);
-  }, [urlQuery]);
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, []);
-
-  // Merges `patch` into the current URL's search params (a null value
-  // deletes that param) and navigates, so the server component above
-  // re-fetches with the new filters. Wrapped in a transition so `isPending`
-  // can dim the table while the new query is in flight.
-  function updateParams(patch: Record<string, string | null>) {
-    const params = new URLSearchParams(searchParams.toString());
-    for (const [key, value] of Object.entries(patch)) {
-      if (value === null || value === "") params.delete(key);
-      else params.set(key, value);
-    }
-    const qs = params.toString();
-    startTransition(() => {
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-    });
-  }
-
-  function setMemoFilter(value: string) {
-    setMemoFilterState(value);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      updateParams({ [FILTER_PARAMS.q]: value });
-    }, 300);
-  }
-
-  // Whether any of the four filters above is currently narrowing the list -
-  // drives both the "Clear filters" button and the results summary below
-  // the table.
-  const hasActiveFilters =
-    dateFrom !== "" ||
-    dateTo !== "" ||
-    categoryFilter !== "" ||
-    flowFilter !== "all" ||
-    memoFilter !== "";
-
-  function clearAllFilters() {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    setMemoFilterState("");
-    updateParams({
-      [FILTER_PARAMS.dateFrom]: null,
-      [FILTER_PARAMS.dateTo]: null,
-      [FILTER_PARAMS.preset]: null,
-      [FILTER_PARAMS.category]: null,
-      [FILTER_PARAMS.direction]: null,
-      [FILTER_PARAMS.q]: null,
-    });
-  }
-
-  function handlePresetChange(preset: DateRangePreset) {
-    const range = presetDateRange(preset);
-    updateParams({
-      [FILTER_PARAMS.dateFrom]: range.from,
-      [FILTER_PARAMS.dateTo]: range.to,
-      [FILTER_PARAMS.preset]: preset,
-    });
-  }
-
-  function handleDateFromChange(value: string) {
-    updateParams({
-      [FILTER_PARAMS.dateFrom]: value,
-      [FILTER_PARAMS.preset]: null,
-    });
-  }
-
-  function handleDateToChange(value: string) {
-    updateParams({
-      [FILTER_PARAMS.dateTo]: value,
-      [FILTER_PARAMS.preset]: null,
-    });
-  }
-
-  function clearDateFilter() {
-    updateParams({
-      [FILTER_PARAMS.dateFrom]: null,
-      [FILTER_PARAMS.dateTo]: null,
-      [FILTER_PARAMS.preset]: null,
-    });
-  }
-
-  function handleCategoryChange(value: string) {
-    updateParams({ [FILTER_PARAMS.category]: value });
-  }
-
-  function handleFlowChange(value: FlowFilterValue) {
-    updateParams({
-      [FILTER_PARAMS.direction]: value === "all" ? null : value,
-    });
-  }
+  const {
+    dateFrom,
+    dateTo,
+    preset: activePreset,
+    category: categoryFilter,
+    flow: flowFilter,
+    memoFilter,
+    hasActiveFilters,
+    isPending,
+    setMemoFilter,
+    clearAllFilters,
+    handlePresetChange,
+    handleDateFromChange,
+    handleDateToChange,
+    clearDateFilter,
+    handleCategoryChange,
+    handleFlowChange,
+  } = useTransactionFilters(searchParams);
 
   // Consecutive transactions sharing a calendar day get one date-group
   // header between them on mobile (transactions already arrive sorted by
@@ -810,19 +677,8 @@ function TransactionRow({
     setDraft((d) => ({ ...d, ...fields }));
   }
 
-  // Payee changes get their own handler (#88): as long as the row doesn't
-  // already have a category, setting the payee to one with a remembered
-  // default category (see payeeLastCategory) fills that category in too,
-  // rather than leaving the user to reselect what they almost always pick
-  // anyway. A category the user already chose is never overridden.
   function handlePayeeChange(name: string) {
-    const defaultCategoryId = payeeLastCategory[name];
-    setDraft((d) => ({
-      ...d,
-      payeeName: name,
-      categoryId:
-        !d.categoryId && defaultCategoryId ? defaultCategoryId : d.categoryId,
-    }));
+    setDraft((d) => applyPayeeChange(d, name, payeeLastCategory));
   }
 
   function handleCancel() {
@@ -837,18 +693,13 @@ function TransactionRow({
       return;
     }
 
-    const inflowValue = Number(draft.inflow) || 0;
-    const outflowValue = Number(draft.outflow) || 0;
-    const amount =
-      inflowValue > 0 ? inflowValue : outflowValue ? -outflowValue : 0;
-
     const formData = new FormData();
     formData.set("transactionId", transaction.id);
     formData.set("date", draft.date);
     formData.set("payeeName", draft.payeeName);
     formData.set("categoryId", draft.categoryId);
     formData.set("memo", draft.memo);
-    formData.set("amount", String(amount));
+    formData.set("amount", String(draftAmountInput(draft)));
 
     startTransition(async () => {
       await updateTransaction(formData);
@@ -1042,31 +893,14 @@ function TransactionRow({
           <label className="mb-1 block text-small text-neutral-600 md:hidden">
             Category
           </label>
-          {isStartingBalance ? (
-            <div
-              className={inputClass + " text-neutral-400"}
-              title="Starting balance can't be categorized"
-            >
-              Uncategorized
-            </div>
-          ) : (
-            <select
-              value={draft.categoryId}
-              onChange={(e) => patch({ categoryId: e.target.value })}
-              className={inputClass}
-            >
-              <option value="">Uncategorized</option>
-              {categoryGroups.map((group) => (
-                <optgroup key={group.id} label={group.name}>
-                  {group.categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          )}
+          <CategoryOptions
+            groups={categoryGroups}
+            value={draft.categoryId}
+            onChange={(value) => patch({ categoryId: value })}
+            disabled={isStartingBalance}
+            disabledTitle="Starting balance can't be categorized"
+            className={inputClass}
+          />
         </div>
 
         <div className="col-span-2 md:col-span-1">
@@ -1241,31 +1075,18 @@ function NewTransactionRow({
     setDraft((d) => ({ ...d, ...fields }));
   }
 
-  // Same auto-fill as TransactionRow.handlePayeeChange (#88), for the blank
-  // "Add Transaction" row.
   function handlePayeeChange(name: string) {
-    const defaultCategoryId = payeeLastCategory[name];
-    setDraft((d) => ({
-      ...d,
-      payeeName: name,
-      categoryId:
-        !d.categoryId && defaultCategoryId ? defaultCategoryId : d.categoryId,
-    }));
+    setDraft((d) => applyPayeeChange(d, name, payeeLastCategory));
   }
 
   function formDataFromDraft() {
-    const inflowValue = Number(draft.inflow) || 0;
-    const outflowValue = Number(draft.outflow) || 0;
-    const amount =
-      inflowValue > 0 ? inflowValue : outflowValue ? -outflowValue : 0;
-
     const formData = new FormData();
     formData.set("accountId", accountId);
     formData.set("date", draft.date);
     formData.set("payeeName", draft.payeeName);
     formData.set("categoryId", draft.categoryId);
     formData.set("memo", draft.memo);
-    formData.set("amount", String(amount));
+    formData.set("amount", String(draftAmountInput(draft)));
     return formData;
   }
 
@@ -1326,22 +1147,12 @@ function NewTransactionRow({
           <label className="mb-1 block text-small text-neutral-600 md:hidden">
             Category
           </label>
-          <select
+          <CategoryOptions
+            groups={categoryGroups}
             value={draft.categoryId}
-            onChange={(e) => patch({ categoryId: e.target.value })}
+            onChange={(value) => patch({ categoryId: value })}
             className={inputClass}
-          >
-            <option value="">Uncategorized</option>
-            {categoryGroups.map((group) => (
-              <optgroup key={group.id} label={group.name}>
-                {group.categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+          />
         </div>
 
         <div className="col-span-2 md:col-span-1">
