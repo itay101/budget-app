@@ -1,6 +1,7 @@
 import {
   hasActiveTransactionFilters,
   parseTransactionFilters,
+  parseTransactionFiltersFromSearchParams,
 } from "./transactionFilters";
 
 describe("parseTransactionFilters", () => {
@@ -40,6 +41,37 @@ describe("parseTransactionFilters", () => {
       direction: "all",
       q: "",
     });
+  });
+});
+
+describe("parseTransactionFiltersFromSearchParams", () => {
+  it("keeps the first value for a duplicated query key, matching parseTransactionFilters/URLSearchParams.get", () => {
+    const params = new URLSearchParams();
+    params.append("direction", "inflow");
+    params.append("direction", "outflow");
+
+    expect(parseTransactionFiltersFromSearchParams(params).direction).toBe(
+      "inflow",
+    );
+    expect(params.get("direction")).toBe("inflow");
+  });
+
+  it("agrees with parseTransactionFilters on a single-valued URL", () => {
+    const params = new URLSearchParams({
+      from: "2026-01-01",
+      category: "cat-1",
+      direction: "outflow",
+      q: "coffee",
+    });
+
+    expect(parseTransactionFiltersFromSearchParams(params)).toEqual(
+      parseTransactionFilters({
+        from: "2026-01-01",
+        category: "cat-1",
+        direction: "outflow",
+        q: "coffee",
+      }),
+    );
   });
 });
 

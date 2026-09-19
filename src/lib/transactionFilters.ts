@@ -19,7 +19,13 @@ import type { FlowFilterValue } from "@/components/FlowFilter";
  * below always agree on it. */
 export const UNCATEGORIZED = "__uncategorized__";
 
-const PRESET_KEYS: readonly DateRangePreset[] = ["mtd", "30d", "3m", "ytd", "1y"];
+const PRESET_KEYS: readonly DateRangePreset[] = [
+  "mtd",
+  "30d",
+  "3m",
+  "ytd",
+  "1y",
+];
 
 // The URL search-param names the four filters are read from / written to.
 export const FILTER_PARAMS = {
@@ -67,6 +73,22 @@ export function parseTransactionFilters(
       direction === "inflow" || direction === "outflow" ? direction : "all",
     q: firstParam(searchParams, FILTER_PARAMS.q),
   };
+}
+
+/** The client-side counterpart of `parseTransactionFilters`, for
+ * `useTransactionFilters` (@/components/useTransactionFilters) to parse its
+ * `useSearchParams()` result through. `URLSearchParams.entries()` lists a
+ * repeated key's values in order, but `Object.fromEntries` keeps the
+ * *last* one for a repeated key - `parseTransactionFilters`/`firstParam`
+ * (and `URLSearchParams.get` itself) want the *first*, matching the
+ * server-side parse of the same URL - so the entries are reversed first,
+ * leaving the first-appearing value as the one still standing. */
+export function parseTransactionFiltersFromSearchParams(
+  searchParams: URLSearchParams,
+): TransactionFilters {
+  return parseTransactionFilters(
+    Object.fromEntries([...searchParams.entries()].reverse()),
+  );
 }
 
 // Transaction dates are stored as the UTC midnight instant of the
@@ -122,7 +144,9 @@ export function transactionFiltersWhere(
 }
 
 /** Whether any of the four filters is currently narrowing the list. */
-export function hasActiveTransactionFilters(filters: TransactionFilters): boolean {
+export function hasActiveTransactionFilters(
+  filters: TransactionFilters,
+): boolean {
   return (
     filters.dateFrom !== "" ||
     filters.dateTo !== "" ||

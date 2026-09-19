@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { DateRangePreset, presetDateRange } from "@/lib/dateRange";
 import {
   FILTER_PARAMS,
-  parseTransactionFilters,
+  parseTransactionFiltersFromSearchParams,
 } from "@/lib/transactionFilters";
 import type { FlowFilterValue } from "@/components/FlowFilter";
 
@@ -15,9 +15,9 @@ import type { FlowFilterValue } from "@/components/FlowFilter";
  * state. The filters live in the URL rather than component state (see
  * @/lib/transactionFilters) so the server-side query in
  * accounts/[id]/page.tsx / accounts/all/page.tsx can be driven by the same
- * params (#24) - parsing reuses `parseTransactionFilters`, the same pure
- * function that query already goes through, so the two never drift apart
- * on what a given URL means.
+ * params (#24) - parsing reuses `parseTransactionFiltersFromSearchParams` /
+ * `parseTransactionFilters`, the same pure functions that query already
+ * goes through, so the two never drift apart on what a given URL means.
  *
  * `searchParams` is the caller's own `useSearchParams()` result, passed in
  * rather than read here, so this hook's return value re-renders in step
@@ -35,7 +35,7 @@ export function useTransactionFilters(searchParams: URLSearchParams) {
     category,
     direction: flow,
     q: urlQuery,
-  } = parseTransactionFilters(Object.fromEntries(searchParams.entries()));
+  } = parseTransactionFiltersFromSearchParams(searchParams);
 
   // The memo/payee text filter keeps its own local state so typing feels
   // instant, pushing into the URL on a short debounce instead of
