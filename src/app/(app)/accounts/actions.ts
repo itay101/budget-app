@@ -10,7 +10,14 @@ import {
   requireBudgetAccess,
   requireTransactionAccess,
 } from "@/lib/authorization";
-import { auditedUpdate, diffFields, recordAuditEntry, recordAuditEntries } from "@/lib/audit";
+import {
+  auditedCreate,
+  auditedDelete,
+  auditedUpdate,
+  diffFields,
+  recordAuditEntry,
+  recordAuditEntries,
+} from "@/lib/audit";
 import { numberToMilliunits } from "@/lib/money";
 import {
   ACCOUNT_TYPES,
@@ -154,23 +161,17 @@ export async function createTransaction(formData: FormData) {
       ? await findOrCreatePayee(tx, budgetId, payeeName, user.id)
       : null;
 
-    const transaction = await tx.transaction.create({
-      data: {
-        accountId,
-        payeeId,
-        categoryId,
-        date,
-        amount,
-        memo,
-      },
-    });
-    await recordAuditEntry(tx, {
+    await auditedCreate({
+      tx,
       budgetId,
       entityType: "TRANSACTION",
-      entityId: transaction.id,
-      action: "created",
       actorId: user.id,
-      changes: diffFields({}, { accountId, payeeId, categoryId, date, amount, memo }),
+      apply: () =>
+        tx.transaction.create({
+          data: { accountId, payeeId, categoryId, date, amount, memo },
+        }),
+      entityId: (transaction) => transaction.id,
+      fields: () => ({ accountId, payeeId, categoryId, date, amount, memo }),
     });
 
     await applyBalanceDelta(tx, accountId, amount);
@@ -391,23 +392,21 @@ export async function updateTransaction(formData: FormData) {
         : null;
     }
 
-    await tx.transaction.update({ where: { id: transactionId }, data });
-    await recordAuditEntry(tx, {
+    await auditedUpdate({
+      tx,
       budgetId: transaction.account.budgetId,
       entityType: "TRANSACTION",
       entityId: transactionId,
-      action: "updated",
       actorId: user.id,
-      changes: diffFields(
-        {
-          date: transaction.date,
-          payeeId: transaction.payeeId,
-          categoryId: transaction.categoryId,
-          memo: transaction.memo,
-          amount: transaction.amount,
-        },
-        data,
-      ),
+      before: {
+        date: transaction.date,
+        payeeId: transaction.payeeId,
+        categoryId: transaction.categoryId,
+        memo: transaction.memo,
+        amount: transaction.amount,
+      },
+      after: data,
+      apply: () => tx.transaction.update({ where: { id: transactionId }, data }),
     });
 
     if (data.amount !== undefined && data.amount !== transaction.amount) {
@@ -448,24 +447,21 @@ export async function deleteTransaction(formData: FormData) {
   const { user } = await requireBudgetAccess(transaction.account.budgetId);
 
   await prisma.$transaction(async (tx) => {
-    await tx.transaction.delete({ where: { id: transactionId } });
-    await recordAuditEntry(tx, {
+    await auditedDelete({
+      tx,
       budgetId: transaction.account.budgetId,
       entityType: "TRANSACTION",
       entityId: transactionId,
-      action: "deleted",
       actorId: user.id,
-      changes: diffFields(
-        {
-          accountId: transaction.accountId,
-          date: transaction.date,
-          payeeId: transaction.payeeId,
-          categoryId: transaction.categoryId,
-          memo: transaction.memo,
-          amount: transaction.amount,
-        },
-        {},
-      ),
+      before: {
+        accountId: transaction.accountId,
+        date: transaction.date,
+        payeeId: transaction.payeeId,
+        categoryId: transaction.categoryId,
+        memo: transaction.memo,
+        amount: transaction.amount,
+      },
+      apply: () => tx.transaction.delete({ where: { id: transactionId } }),
     });
     await applyBalanceDelta(tx, transaction.accountId, -transaction.amount);
   });
