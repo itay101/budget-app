@@ -8,7 +8,13 @@ import {
   requireCategoryAccess,
   requireCategoryGroupAccess,
 } from "@/lib/authorization";
-import { auditedUpdate, diffFields, recordAuditEntry } from "@/lib/audit";
+import {
+  auditedCreate,
+  auditedDelete,
+  auditedUpdate,
+  diffFields,
+  recordAuditEntry,
+} from "@/lib/audit";
 import { numberToMilliunits } from "@/lib/money";
 
 export async function createCategoryGroup(formData: FormData) {
@@ -27,23 +33,20 @@ export async function createCategoryGroup(formData: FormData) {
   });
   const sortOrder = (last?.sortOrder ?? -1) + 1;
 
-  await prisma.$transaction(async (tx) => {
-    const group = await tx.categoryGroup.create({
-      data: {
-        budgetId: budget.id,
-        name,
-        sortOrder,
-      },
-    });
-    await recordAuditEntry(tx, {
+  await prisma.$transaction((tx) =>
+    auditedCreate({
+      tx,
       budgetId: budget.id,
       entityType: "CATEGORY_GROUP",
-      entityId: group.id,
-      action: "created",
       actorId: user.id,
-      changes: diffFields({}, { name, sortOrder }),
-    });
-  });
+      apply: () =>
+        tx.categoryGroup.create({
+          data: { budgetId: budget.id, name, sortOrder },
+        }),
+      entityId: (group) => group.id,
+      fields: () => ({ name, sortOrder }),
+    }),
+  );
 
   revalidatePath("/budget");
 }
@@ -63,23 +66,20 @@ export async function createCategory(formData: FormData) {
   });
   const sortOrder = (last?.sortOrder ?? -1) + 1;
 
-  await prisma.$transaction(async (tx) => {
-    const category = await tx.category.create({
-      data: {
-        categoryGroupId,
-        name,
-        sortOrder,
-      },
-    });
-    await recordAuditEntry(tx, {
+  await prisma.$transaction((tx) =>
+    auditedCreate({
+      tx,
       budgetId,
       entityType: "CATEGORY",
-      entityId: category.id,
-      action: "created",
       actorId: user.id,
-      changes: diffFields({}, { categoryGroupId, name, sortOrder }),
-    });
-  });
+      apply: () =>
+        tx.category.create({
+          data: { categoryGroupId, name, sortOrder },
+        }),
+      entityId: (category) => category.id,
+      fields: () => ({ categoryGroupId, name, sortOrder }),
+    }),
+  );
 
   revalidatePath("/budget");
 }
@@ -223,17 +223,17 @@ export async function deleteCategoryGroup(formData: FormData) {
     select: { name: true, sortOrder: true },
   });
 
-  await prisma.$transaction(async (tx) => {
-    await tx.categoryGroup.delete({ where: { id: categoryGroupId } });
-    await recordAuditEntry(tx, {
+  await prisma.$transaction((tx) =>
+    auditedDelete({
+      tx,
       budgetId,
       entityType: "CATEGORY_GROUP",
       entityId: categoryGroupId,
-      action: "deleted",
       actorId: user.id,
-      changes: diffFields(before, {}),
-    });
-  });
+      before,
+      apply: () => tx.categoryGroup.delete({ where: { id: categoryGroupId } }),
+    }),
+  );
 
   revalidatePath("/budget");
 }
