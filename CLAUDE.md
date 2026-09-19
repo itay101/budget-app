@@ -43,3 +43,13 @@ helper extraction as another, the actual feature logic as another. Each
 commit should be reviewable on its own and have a clear, descriptive
 message explaining what that commit does and why, not just a mention in
 the overall PR description.
+
+Name commits with Conventional Commits (`<type>(<scope>): <description>`,
+e.g. `feat(budget): add transferAvailable`, `refactor(audit): migrate
+createCategory to auditedCreate`) — `scope` is optional, omit it when no
+single area fits. Common types: `feat`, `fix`, `refactor`, `test`,
+`chore`, `docs`.
+
+When a chain of commits adds tests for the same change, put the test
+commit last, after the code it exercises — not interleaved with or ahead
+of it.
