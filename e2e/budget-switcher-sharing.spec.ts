@@ -155,6 +155,20 @@ test.describe("budget switcher collaborator management", () => {
       },
     });
 
+    // A pending invite on an *unrelated*, undeleted budget — asserted
+    // untouched below, so a regression that revoked invites too broadly
+    // (e.g. dropping deleteBudget's own budgetId scoping) would fail this
+    // test rather than pass it.
+    const unrelatedEmail = "switcher-unrelated-pending-invite@example.com";
+    await prisma.invite.create({
+      data: {
+        email: unrelatedEmail,
+        budgetId: activeBudget.id,
+        invitedBy: E2E_TEST_USER_ID,
+        createdSupabaseUser: false,
+      },
+    });
+
     await page.goto("/budget");
     await page.getByRole("button", { name: new RegExp(activeBudget.name) }).click();
 
@@ -172,5 +186,12 @@ test.describe("budget switcher collaborator management", () => {
         where: { budgetId_email: { budgetId: budget.id, email: pendingEmail } },
       }),
     ).toBeNull();
+    expect(
+      await prisma.invite.findUnique({
+        where: {
+          budgetId_email: { budgetId: activeBudget.id, email: unrelatedEmail },
+        },
+      }),
+    ).not.toBeNull();
   });
 });
