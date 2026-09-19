@@ -10,7 +10,7 @@ import {
   requireBudgetAccess,
   requireTransactionAccess,
 } from "@/lib/authorization";
-import { diffFields, recordAuditEntry, recordAuditEntries } from "@/lib/audit";
+import { auditedUpdate, diffFields, recordAuditEntry, recordAuditEntries } from "@/lib/audit";
 import { numberToMilliunits } from "@/lib/money";
 import {
   ACCOUNT_TYPES,
@@ -611,20 +611,22 @@ export async function reconcileTransaction(formData: FormData) {
     select: { accountId: true, cleared: true },
   });
 
-  await prisma.$transaction(async (tx) => {
-    await tx.transaction.update({
-      where: { id: transactionId },
-      data: { cleared: "RECONCILED" },
-    });
-    await recordAuditEntry(tx, {
+  await prisma.$transaction((tx) =>
+    auditedUpdate({
+      tx,
       budgetId,
       entityType: "TRANSACTION",
       entityId: transactionId,
-      action: "updated",
       actorId: user.id,
-      changes: diffFields({ cleared: transaction.cleared }, { cleared: "RECONCILED" }),
-    });
-  });
+      before: { cleared: transaction.cleared },
+      after: { cleared: "RECONCILED" },
+      apply: () =>
+        tx.transaction.update({
+          where: { id: transactionId },
+          data: { cleared: "RECONCILED" },
+        }),
+    }),
+  );
 
   revalidateAccountPaths(transaction.accountId, { budget: false });
 }
@@ -648,20 +650,22 @@ export async function unreconcileTransaction(formData: FormData) {
     select: { accountId: true, cleared: true },
   });
 
-  await prisma.$transaction(async (tx) => {
-    await tx.transaction.update({
-      where: { id: transactionId },
-      data: { cleared: "CLEARED" },
-    });
-    await recordAuditEntry(tx, {
+  await prisma.$transaction((tx) =>
+    auditedUpdate({
+      tx,
       budgetId,
       entityType: "TRANSACTION",
       entityId: transactionId,
-      action: "updated",
       actorId: user.id,
-      changes: diffFields({ cleared: transaction.cleared }, { cleared: "CLEARED" }),
-    });
-  });
+      before: { cleared: transaction.cleared },
+      after: { cleared: "CLEARED" },
+      apply: () =>
+        tx.transaction.update({
+          where: { id: transactionId },
+          data: { cleared: "CLEARED" },
+        }),
+    }),
+  );
 
   revalidateAccountPaths(transaction.accountId, { budget: false });
 }
@@ -720,17 +724,18 @@ export async function updateAccount(formData: FormData) {
     select: { name: true, type: true, onBudget: true, closed: true },
   });
 
-  await prisma.$transaction(async (tx) => {
-    await tx.account.update({ where: { id: accountId }, data });
-    await recordAuditEntry(tx, {
+  await prisma.$transaction((tx) =>
+    auditedUpdate({
+      tx,
       budgetId,
       entityType: "ACCOUNT",
       entityId: accountId,
-      action: "updated",
       actorId: user.id,
-      changes: diffFields(before, data),
-    });
-  });
+      before,
+      after: data,
+      apply: () => tx.account.update({ where: { id: accountId }, data }),
+    }),
+  );
 
   revalidateAccountPaths(accountId);
 }
