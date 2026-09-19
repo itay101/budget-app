@@ -17,6 +17,10 @@ import {
 } from "@/lib/audit";
 import { numberToMilliunits } from "@/lib/money";
 
+/**
+ * Creates a new category group, appended after every existing group in
+ * this budget's sort order.
+ */
 export async function createCategoryGroup(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
 
@@ -51,6 +55,10 @@ export async function createCategoryGroup(formData: FormData) {
   revalidatePath("/budget");
 }
 
+/**
+ * Creates a new category in the given group, appended after every existing
+ * category in that group's sort order.
+ */
 export async function createCategory(formData: FormData) {
   const categoryGroupId = String(formData.get("categoryGroupId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
@@ -203,6 +211,10 @@ export async function setCategoryHidden(formData: FormData) {
   revalidatePath("/budget");
 }
 
+/**
+ * Deletes a category group. Only allowed once it's empty — deleting a
+ * nonempty group would otherwise silently orphan its categories.
+ */
 export async function deleteCategoryGroup(formData: FormData) {
   const categoryGroupId = String(formData.get("categoryGroupId") ?? "");
 

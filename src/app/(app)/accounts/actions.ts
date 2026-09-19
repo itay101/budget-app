@@ -46,6 +46,11 @@ function revalidateAccountPaths(
   if (budget) revalidatePath("/budget");
 }
 
+/**
+ * Creates a new account, optionally seeding it with a Starting Balance
+ * transaction (see the note below) so a nonzero opening balance isn't just
+ * a bare number with no transaction behind it.
+ */
 export async function createAccount(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const typeInput = String(formData.get("type") ?? "CHECKING");
