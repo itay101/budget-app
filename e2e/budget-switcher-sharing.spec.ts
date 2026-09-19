@@ -132,4 +132,66 @@ test.describe("budget switcher collaborator management", () => {
       }),
     ).toBeNull();
   });
+
+  // #99: softDeleteBudget itself deliberately leaves pending Invites alone
+  // (src/lib/budget.ts) and expects each caller to revoke them; this
+  // covers deleteBudget's side of that, the way the sibling test above
+  // already covers cancelInvite's.
+  test("deleting a budget revokes its pending invites too", async ({ page }) => {
+    const activeBudget = await prisma.budget.findFirstOrThrow({
+      where: { ownerId: E2E_TEST_USER_ID, deleted: false },
+      orderBy: { createdAt: "asc" },
+    });
+    const budget = await prisma.budget.create({
+      data: { name: "E2E Budget To Delete", currency: "NZD", ownerId: E2E_TEST_USER_ID },
+    });
+    const pendingEmail = "switcher-delete-pending-invite@example.com";
+    await prisma.invite.create({
+      data: {
+        email: pendingEmail,
+        budgetId: budget.id,
+        invitedBy: E2E_TEST_USER_ID,
+        createdSupabaseUser: false,
+      },
+    });
+
+    // A pending invite on an *unrelated*, undeleted budget — asserted
+    // untouched below, so a regression that revoked invites too broadly
+    // (e.g. dropping deleteBudget's own budgetId scoping) would fail this
+    // test rather than pass it.
+    const unrelatedEmail = "switcher-unrelated-pending-invite@example.com";
+    await prisma.invite.create({
+      data: {
+        email: unrelatedEmail,
+        budgetId: activeBudget.id,
+        invitedBy: E2E_TEST_USER_ID,
+        createdSupabaseUser: false,
+      },
+    });
+
+    await page.goto("/budget");
+    await page.getByRole("button", { name: new RegExp(activeBudget.name) }).click();
+
+    await rowContaining(page, budget.name).getByTitle("Delete budget").click();
+    const confirmInput = page.getByLabel(`Type "${budget.name}" to confirm deletion`);
+    await confirmInput.fill(budget.name);
+    await confirmInput
+      .locator("xpath=ancestor::li[1]")
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
+
+    await expect(page.getByText(budget.name)).toHaveCount(0);
+    expect(
+      await prisma.invite.findUnique({
+        where: { budgetId_email: { budgetId: budget.id, email: pendingEmail } },
+      }),
+    ).toBeNull();
+    expect(
+      await prisma.invite.findUnique({
+        where: {
+          budgetId_email: { budgetId: activeBudget.id, email: unrelatedEmail },
+        },
+      }),
+    ).not.toBeNull();
+  });
 });

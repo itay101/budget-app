@@ -8,6 +8,7 @@ import { CURRENT_BUDGET_COOKIE, softDeleteBudget } from "@/lib/budget";
 import { isCurrencyCode } from "@/lib/currencies";
 import { getCurrentUser } from "@/lib/auth";
 import { requireBudgetAccess, requireBudgetOwnership } from "@/lib/authorization";
+import { revokeInvite } from "@/lib/invites";
 import { diffFields, recordAuditEntry } from "@/lib/audit";
 
 /**
@@ -141,6 +142,10 @@ export async function switchBudget(formData: FormData) {
  * Owner-only (CONTEXT.md: deleting the Budget is one of the Owner's
  * exclusive rights) — a Collaborator gets the same "Budget not found" a
  * stranger would, per requireBudgetOwnership's doc comment.
+ *
+ * Revokes the budget's pending Invites before soft-deleting it, the same
+ * way account deactivation's auto-delete does (src/app/auth/actions.ts) —
+ * softDeleteBudget itself deliberately leaves that to its callers.
  */
 export async function deleteBudget(formData: FormData) {
   const budgetId = String(formData.get("budgetId") ?? "");
@@ -153,6 +158,11 @@ export async function deleteBudget(formData: FormData) {
   const { user, budget } = await requireBudgetOwnership(budgetId);
   if (confirmName !== budget.name) {
     throw new Error("Typed name doesn't match the budget's name");
+  }
+
+  const invites = await prisma.invite.findMany({ where: { budgetId } });
+  for (const invite of invites) {
+    await revokeInvite(invite, user.id);
   }
 
   await softDeleteBudget(budgetId, user.id);
