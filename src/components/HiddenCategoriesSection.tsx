@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { formatMilliunits, milliunitsToNumber } from "@/lib/money";
 import { MoneyInput } from "@/components/MoneyInput";
 import { MoveMoneyPopover } from "@/components/MoveMoneyPopover";
 import { Icon } from "@/components/Icon";
+import { useServerAction } from "@/components/useServerAction";
 
 type CategoryOption = { id: string; name: string; available: number };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
@@ -52,11 +53,16 @@ export function HiddenCategoriesSection({
   transferAvailable: (formData: FormData) => Promise<void>;
   categoryOptions: GroupOption[];
 }) {
-  const [pending, startTransition] = useTransition();
   const [renamingCategoryId, setRenamingCategoryId] = useState<string | null>(
     null,
   );
   const [categoryNameDraft, setCategoryNameDraft] = useState("");
+
+  const renameCategoryAction = useServerAction(renameCategory);
+  const unhideAction = useServerAction(setCategoryHidden);
+
+  const pending = renameCategoryAction.pending || unhideAction.pending;
+  const error = renameCategoryAction.error || unhideAction.error;
 
   function startCategoryRename(category: HiddenCategoryRow) {
     setRenamingCategoryId(category.id);
@@ -67,7 +73,7 @@ export function HiddenCategoriesSection({
     setRenamingCategoryId(null);
   }
 
-  function handleCategoryRenameSubmit(
+  async function handleCategoryRenameSubmit(
     e: React.FormEvent<HTMLFormElement>,
     category: HiddenCategoryRow,
   ) {
@@ -77,21 +83,17 @@ export function HiddenCategoriesSection({
       cancelCategoryRename();
       return;
     }
-    const formData = new FormData();
-    formData.set("categoryId", category.id);
-    formData.set("name", trimmed);
-    startTransition(async () => {
-      await renameCategory(formData);
+    try {
+      await renameCategoryAction.run({ categoryId: category.id, name: trimmed });
       setRenamingCategoryId(null);
-    });
+    } catch {
+      // error is surfaced via renameCategoryAction.error
+    }
   }
 
   function handleUnhide(categoryId: string) {
-    const formData = new FormData();
-    formData.set("categoryId", categoryId);
-    formData.set("hidden", "false");
-    startTransition(async () => {
-      await setCategoryHidden(formData);
+    unhideAction.run({ categoryId, hidden: "false" }).catch(() => {
+      // error is surfaced via unhideAction.error
     });
   }
 
@@ -106,6 +108,12 @@ export function HiddenCategoriesSection({
           <Icon name="lock" label="Hidden categories keep their spot in their real group — unhide one to bring it back" />
         </span>
       </div>
+
+      {error && (
+        <p className="bg-danger/10 px-200 py-1 text-small text-danger">
+          {error}
+        </p>
+      )}
 
       {categories.map((category) => (
         <div

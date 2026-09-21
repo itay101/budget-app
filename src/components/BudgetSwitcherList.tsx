@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "@/components/Icon";
 import { usePopover } from "@/components/usePopover";
+import { useServerAction } from "@/components/useServerAction";
 import { CollaboratorManager } from "@/components/CollaboratorManager";
 
 type Collaborator = { userId: string; email: string };
@@ -24,11 +25,13 @@ type CurrencyOption = { code: string; name: string };
  * currently showing — click to switch to another existing budget, or open
  * a new one. Same popover pattern as AddAccountPopover/MoveMoneyPopover.
  *
- * Owns switching/renaming/creating/deleting a budget. Collaborator/invite
- * management for an owned budget's expanded row is delegated to
- * `<CollaboratorManager>` (#96) rather than folded into this component's
- * state — it has its own `pending`, so acting on a budget's collaborators
- * never disables this list's rename/delete/switch controls.
+ * Owns switching/renaming/creating/deleting a budget, each via its own
+ * `useServerAction` (#95) so one action's pending/error state never
+ * blocks another. Collaborator/invite management for an owned budget's
+ * expanded row is delegated to `<CollaboratorManager>` (#96) rather than
+ * folded into this component's state — it has its own `useServerAction`
+ * instances, so acting on a budget's collaborators never disables this
+ * list's rename/delete/switch controls.
  *
  * The "new budget" currency <select> only ever lists currencies no budget
  * has claimed yet (`availableCurrencies`, computed server-side from the
@@ -83,15 +86,26 @@ export function BudgetSwitcherList({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmText, setConfirmText] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const switchAction = useServerAction(switchBudget);
+  const createAction = useServerAction(createBudget);
+  const renameAction = useServerAction(renameBudget);
+  const deleteAction = useServerAction(deleteBudget);
+  const leaveAction = useServerAction(leaveBudget);
+
+  const pending =
+    switchAction.pending ||
+    createAction.pending ||
+    renameAction.pending ||
+    deleteAction.pending ||
+    leaveAction.pending;
+  const actionError =
+    switchAction.error || createAction.error || deleteAction.error || leaveAction.error;
   const { open, setOpen, position, triggerRef, panelRef } = usePopover({
     width: 256, // matches the popover's w-64
     onDismiss: () => {
       setAdding(false);
       setDeletingId(null);
       setExpandedId(null);
-      setActionError(null);
     },
   });
   const formRef = useRef<HTMLFormElement>(null);
@@ -102,28 +116,33 @@ export function BudgetSwitcherList({
     setNameDraft(currentBudget.name);
   }, [currentBudget.id, currentBudget.name]);
 
-  function handleSwitch(budgetId: string) {
+  async function handleSwitch(budgetId: string) {
     if (budgetId === currentBudget.id) {
       setOpen(false);
       return;
     }
-    const formData = new FormData();
-    formData.set("budgetId", budgetId);
-    startTransition(async () => {
-      await switchBudget(formData);
+    try {
+      await switchAction.run({ budgetId });
       setOpen(false);
-    });
+    } catch {
+      // error is surfaced via switchAction.error
+    }
   }
 
-  function handleCreate(e: React.FormEvent<HTMLFormElement>) {
+  async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    startTransition(async () => {
-      await createBudget(formData);
+    try {
+      await createAction.run({
+        name: String(formData.get("name") ?? ""),
+        currency: String(formData.get("currency") ?? ""),
+      });
       formRef.current?.reset();
       setAdding(false);
       setOpen(false);
-    });
+    } catch {
+      // error is surfaced via createAction.error
+    }
   }
 
   function cancelRename() {
@@ -131,87 +150,81 @@ export function BudgetSwitcherList({
     setNameDraft(currentBudget.name);
   }
 
-  function handleRenameSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleRenameSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const trimmed = nameDraft.trim();
     if (!trimmed || trimmed === currentBudget.name) {
       cancelRename();
       return;
     }
-    const formData = new FormData();
-    formData.set("budgetId", currentBudget.id);
-    formData.set("name", trimmed);
-    startTransition(async () => {
-      await renameBudget(formData);
+    try {
+      await renameAction.run({ budgetId: currentBudget.id, name: trimmed });
       setRenaming(false);
-    });
+    } catch {
+      // error is surfaced via renameAction.error
+    }
   }
 
-  function handleDelete(budgetId: string) {
-    const formData = new FormData();
-    formData.set("budgetId", budgetId);
-    formData.set("confirmName", confirmText);
-    startTransition(async () => {
-      await deleteBudget(formData);
+  async function handleDelete(budgetId: string) {
+    try {
+      await deleteAction.run({ budgetId, confirmName: confirmText });
       setDeletingId(null);
       setConfirmText("");
       setOpen(false);
-    });
+    } catch {
+      // error is surfaced via deleteAction.error
+    }
   }
 
   function toggleExpanded(budgetId: string) {
     setExpandedId((cur) => (cur === budgetId ? null : budgetId));
   }
 
-  function handleLeave(budgetId: string) {
-    const formData = new FormData();
-    formData.set("budgetId", budgetId);
-    setActionError(null);
-    startTransition(async () => {
-      try {
-        await leaveBudget(formData);
-        setOpen(false);
-      } catch (err) {
-        setActionError(
-          err instanceof Error
-            ? err.message
-            : "Failed to leave the budget. Please try again.",
-        );
-      }
-    });
+  async function handleLeave(budgetId: string) {
+    try {
+      await leaveAction.run({ budgetId });
+      setOpen(false);
+    } catch {
+      // error is surfaced via leaveAction.error
+    }
   }
 
   return (
     <>
       {renaming ? (
-        <form onSubmit={handleRenameSubmit} className="flex items-center gap-1">
-          <input
-            value={nameDraft}
-            onChange={(e) => setNameDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") cancelRename();
-            }}
-            autoFocus
-            aria-label="Budget name"
-            className="min-w-0 flex-1 rounded border border-neutral-200 px-2 py-1 text-small focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-          />
-          <button
-            type="submit"
-            disabled={pending}
-            title="Save"
-            className="shrink-0 rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10"
-          >
-            <Icon name="check" label="Save" />
-          </button>
-          <button
-            type="button"
-            onClick={cancelRename}
-            title="Cancel"
-            className="shrink-0 rounded px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
-          >
-            <Icon name="close" label="Cancel" />
-          </button>
-        </form>
+        <div>
+          <form onSubmit={handleRenameSubmit} className="flex items-center gap-1">
+            <input
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") cancelRename();
+              }}
+              autoFocus
+              aria-label="Budget name"
+              className="min-w-0 flex-1 rounded border border-neutral-200 px-2 py-1 text-small focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+            />
+            <button
+              type="submit"
+              disabled={pending}
+              title="Save"
+              className="shrink-0 rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10"
+            >
+              <Icon name="check" label="Save" />
+            </button>
+            <button
+              type="button"
+              onClick={cancelRename}
+              title="Cancel"
+              className="shrink-0 rounded px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+            >
+              <Icon name="close" label="Cancel" />
+            </button>
+          </form>
+          {renameAction.error && (
+            <p className="mt-1 text-small text-danger">{renameAction.error}</p>
+          )}
+        </div>
       ) : (
         <div className="flex items-center gap-1">
           <button

@@ -1,8 +1,8 @@
 "use client";
 
-import { useTransition } from "react";
 import { formatMilliunits, numberToMilliunits } from "@/lib/money";
 import { useReconciliation } from "@/components/ReconciliationContext";
+import { useServerAction } from "@/components/useServerAction";
 
 /**
  * "Reconcile" entry point for the single-account page (#30). Proposes the
@@ -15,19 +15,16 @@ import { useReconciliation } from "@/components/ReconciliationContext";
  *   `TransactionsTable` takes over from here, via `ReconciliationContext`.
  */
 export function ReconcileButton({ balance }: { balance: number }) {
-  const [pending, startTransition] = useTransition();
   const reconciliation = useReconciliation();
+  const { run, pending, error } = useServerAction(
+    reconciliation?.reconcileAccount ?? (async () => {}),
+  );
 
   // Only ever rendered inside a ReconciliationProvider (accounts/[id]/page.tsx).
   if (!reconciliation) return null;
 
-  const {
-    accountId,
-    currency,
-    reconcileAccount,
-    statementAmount,
-    startReconciling,
-  } = reconciliation;
+  const { accountId, currency, statementAmount, startReconciling } =
+    reconciliation;
 
   function handleClick() {
     const proposed = formatMilliunits(balance, currency);
@@ -36,10 +33,8 @@ export function ReconcileButton({ balance }: { balance: number }) {
     );
 
     if (confirmed) {
-      const formData = new FormData();
-      formData.set("accountId", accountId);
-      startTransition(async () => {
-        await reconcileAccount(formData);
+      run({ accountId }).catch(() => {
+        // error is surfaced via `error`
       });
       return;
     }
@@ -63,13 +58,16 @@ export function ReconcileButton({ balance }: { balance: number }) {
   if (statementAmount !== null) return null;
 
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      disabled={pending}
-      className="rounded border border-neutral-200 px-2 py-1 text-small font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-50"
-    >
-      {pending ? "Reconciling…" : "Reconcile"}
-    </button>
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={pending}
+        className="rounded border border-neutral-200 px-2 py-1 text-small font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-50"
+      >
+        {pending ? "Reconciling…" : "Reconcile"}
+      </button>
+      {error && <p className="text-small text-danger">{error}</p>}
+    </div>
   );
 }
