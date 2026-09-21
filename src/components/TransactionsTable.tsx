@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "next/navigation";
 import { formatMilliunits, milliunitsToNumber } from "@/lib/money";
@@ -22,6 +22,7 @@ import { usePopover } from "@/components/usePopover";
 import { useTransactionFilters } from "@/components/useTransactionFilters";
 import { useReconciliation } from "@/components/ReconciliationContext";
 import { ImportTransactionsModal } from "@/components/ImportTransactionsModal";
+import { useServerAction } from "@/components/useServerAction";
 import type { AccountType } from "@/lib/accountTypes";
 import { STARTING_BALANCE_PAYEE } from "@/lib/payees";
 
@@ -221,7 +222,11 @@ export function TransactionsTable({
   // selection can't outlive rows that scrolled out of the current filter or
   // were just deleted.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkDeletePending, startBulkDeleteTransition] = useTransition();
+  const {
+    run: runBulkDelete,
+    pending: bulkDeletePending,
+    error: bulkDeleteError,
+  } = useServerAction(deleteTransactions);
 
   useEffect(() => {
     setSelectedIds((prev) => {
@@ -246,7 +251,7 @@ export function TransactionsTable({
     setSelectedIds(allSelected ? new Set() : new Set(rows.map((t) => t.id)));
   }
 
-  function handleBulkDelete() {
+  async function handleBulkDelete() {
     const count = selectedIds.size;
     if (count === 0) return;
     if (
@@ -256,12 +261,14 @@ export function TransactionsTable({
     ) {
       return;
     }
-    const formData = new FormData();
-    formData.set("transactionIds", JSON.stringify([...selectedIds]));
-    startBulkDeleteTransition(async () => {
-      await deleteTransactions(formData);
+    try {
+      await runBulkDelete({
+        transactionIds: JSON.stringify([...selectedIds]),
+      });
       setSelectedIds(new Set());
-    });
+    } catch {
+      // error is surfaced via bulkDeleteError
+    }
   }
 
   const searchParams = useSearchParams();
@@ -405,6 +412,9 @@ export function TransactionsTable({
               {bulkDeletePending ? "Deleting…" : `Delete ${selectedIds.size}`}
             </button>
           </div>
+          {bulkDeleteError && (
+            <p className="w-full text-small text-danger">{bulkDeleteError}</p>
+          )}
         </div>
       )}
 
@@ -530,22 +540,23 @@ function ReconciliationBar({
   currency: string;
 }) {
   const reconciliation = useReconciliation();
-  const [pending, startTransition] = useTransition();
+  const { run, pending, error } = useServerAction(
+    reconciliation?.reconcileAccount ?? (async () => {}),
+  );
 
   if (!reconciliation || reconciliation.statementAmount === null) return null;
 
-  const { accountId, reconcileAccount, statementAmount, cancelReconciling } =
-    reconciliation;
+  const { accountId, statementAmount, cancelReconciling } = reconciliation;
   const gap = statementAmount - balance;
   const matched = gap === 0;
 
-  function handleReconcile() {
-    const formData = new FormData();
-    formData.set("accountId", accountId);
-    startTransition(async () => {
-      await reconcileAccount(formData);
+  async function handleReconcile() {
+    try {
+      await run({ accountId });
       cancelReconciling();
-    });
+    } catch {
+      // error is surfaced via `error` below
+    }
   }
 
   function handleCancel() {
@@ -602,6 +613,7 @@ function ReconciliationBar({
           Cancel
         </button>
       </div>
+      {error && <p className="w-full text-small text-danger">{error}</p>}
     </div>
   );
 }
@@ -637,7 +649,20 @@ function TransactionRow({
   gridCols: string;
   currency: string;
 }) {
-  const [pending, startTransition] = useTransition();
+  const updateAction = useServerAction(updateTransaction);
+  const deleteAction = useServerAction(deleteTransaction);
+  const reconcileAction = useServerAction(reconcileTransaction);
+  const unreconcileAction = useServerAction(unreconcileTransaction);
+  const pending =
+    updateAction.pending ||
+    deleteAction.pending ||
+    reconcileAction.pending ||
+    unreconcileAction.pending;
+  const error =
+    updateAction.error ||
+    deleteAction.error ||
+    reconcileAction.error ||
+    unreconcileAction.error;
 
   // On mobile, a transaction shows as a compact YNAB-style summary row
   // until tapped; `expanded` reveals the full editor below it. Desktop
@@ -685,7 +710,7 @@ function TransactionRow({
     setDraft(committed);
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (
       transaction.cleared === "RECONCILED" &&
       !window.confirm("This transaction is reconciled. Save changes anyway?")
@@ -693,45 +718,46 @@ function TransactionRow({
       return;
     }
 
-    const formData = new FormData();
-    formData.set("transactionId", transaction.id);
-    formData.set("date", draft.date);
-    formData.set("payeeName", draft.payeeName);
-    formData.set("categoryId", draft.categoryId);
-    formData.set("memo", draft.memo);
-    formData.set("amount", String(draftAmountInput(draft)));
-
-    startTransition(async () => {
-      await updateTransaction(formData);
+    try {
+      await updateAction.run({
+        transactionId: transaction.id,
+        date: draft.date,
+        payeeName: draft.payeeName,
+        categoryId: draft.categoryId,
+        memo: draft.memo,
+        amount: String(draftAmountInput(draft)),
+      });
       setCommitted(draft);
       setExpanded(false);
-    });
+    } catch {
+      // error is surfaced via updateAction.error
+    }
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     setMenuOpen(false);
     if (!window.confirm("Delete this transaction? This can't be undone.")) {
       return;
     }
-    const formData = new FormData();
-    formData.set("transactionId", transaction.id);
-    startTransition(async () => {
-      await deleteTransaction(formData);
-    });
+    try {
+      await deleteAction.run({ transactionId: transaction.id });
+    } catch {
+      // error is surfaced via deleteAction.error
+    }
   }
 
-  function handleReconcile() {
+  async function handleReconcile() {
     if (!window.confirm("Mark this transaction as reconciled?")) {
       return;
     }
-    const formData = new FormData();
-    formData.set("transactionId", transaction.id);
-    startTransition(async () => {
-      await reconcileTransaction(formData);
-    });
+    try {
+      await reconcileAction.run({ transactionId: transaction.id });
+    } catch {
+      // error is surfaced via reconcileAction.error
+    }
   }
 
-  function handleUnreconcile() {
+  async function handleUnreconcile() {
     if (
       !window.confirm(
         "Un-reconcile this transaction? It will no longer count as reconciled.",
@@ -739,11 +765,11 @@ function TransactionRow({
     ) {
       return;
     }
-    const formData = new FormData();
-    formData.set("transactionId", transaction.id);
-    startTransition(async () => {
-      await unreconcileTransaction(formData);
-    });
+    try {
+      await unreconcileAction.run({ transactionId: transaction.id });
+    } catch {
+      // error is surfaced via unreconcileAction.error
+    }
   }
 
   const categoryName = categoryNameFor(categoryGroups, committed.categoryId);
@@ -758,6 +784,11 @@ function TransactionRow({
         (isDirty ? "bg-brand-700/5" : "")
       }
     >
+      {error && (
+        <p className="bg-danger/10 px-200 py-1 text-small text-danger">
+          {error}
+        </p>
+      )}
       {/* Mobile-only: a compact summary row (payee, category pill, amount)
           you tap to open the editor below - the desktop table never shows
           this, it always renders the editor as a normal row instead. The
@@ -1068,7 +1099,7 @@ function NewTransactionRow({
   currency: string;
   onClose: () => void;
 }) {
-  const [pending, startTransition] = useTransition();
+  const { run, pending, error } = useServerAction(createTransaction);
   const [draft, setDraft] = useState<Draft>(blankDraft);
 
   function patch(fields: Partial<Draft>) {
@@ -1079,35 +1110,42 @@ function NewTransactionRow({
     setDraft((d) => applyPayeeChange(d, name, payeeLastCategory));
   }
 
-  function formDataFromDraft() {
-    const formData = new FormData();
-    formData.set("accountId", accountId);
-    formData.set("date", draft.date);
-    formData.set("payeeName", draft.payeeName);
-    formData.set("categoryId", draft.categoryId);
-    formData.set("memo", draft.memo);
-    formData.set("amount", String(draftAmountInput(draft)));
-    return formData;
+  function fieldsFromDraft() {
+    return {
+      accountId,
+      date: draft.date,
+      payeeName: draft.payeeName,
+      categoryId: draft.categoryId,
+      memo: draft.memo,
+      amount: String(draftAmountInput(draft)),
+    };
   }
 
-  function handleSave() {
-    const formData = formDataFromDraft();
-    startTransition(async () => {
-      await createTransaction(formData);
+  async function handleSave() {
+    try {
+      await run(fieldsFromDraft());
       onClose();
-    });
+    } catch {
+      // error is surfaced via `error` below
+    }
   }
 
-  function handleSaveAndAddAnother() {
-    const formData = formDataFromDraft();
-    startTransition(async () => {
-      await createTransaction(formData);
+  async function handleSaveAndAddAnother() {
+    try {
+      await run(fieldsFromDraft());
       setDraft(blankDraft());
-    });
+    } catch {
+      // error is surfaced via `error` below
+    }
   }
 
   return (
     <div className="border-b border-neutral-100 bg-brand-700/5 text-body">
+      {error && (
+        <p className="bg-danger/10 px-200 py-1 text-small text-danger">
+          {error}
+        </p>
+      )}
       <div
         className={`grid grid-cols-2 gap-x-3 gap-y-2 px-200 py-3 md:grid md:items-center md:gap-2 md:py-1 ${gridCols}`}
       >
