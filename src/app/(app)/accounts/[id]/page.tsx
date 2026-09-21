@@ -4,10 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentBudget } from "@/lib/budget";
 import { formatMilliunits } from "@/lib/money";
 import { getTransactionEditOptions } from "@/lib/transactionOptions";
-import {
-  parseTransactionFilters,
-  transactionFiltersWhere,
-} from "@/lib/transactionFilters";
+import { parseTransactionFilters } from "@/lib/transactionFilters";
+import { loadTransactionsView } from "@/lib/transactionsView";
 import { TransactionsTable } from "@/components/TransactionsTable";
 import { ReconcileButton } from "@/components/ReconcileButton";
 import { ReconciliationProvider } from "@/components/ReconciliationContext";
@@ -50,16 +48,14 @@ export default async function AccountPage({
   const filters = parseTransactionFilters(resolvedSearchParams);
 
   const [
-    transactions,
-    totalCount,
+    { transactions, totalCount },
     { categoryGroups, payeeNames, payeeLastCategory },
   ] = await Promise.all([
-    prisma.transaction.findMany({
-      where: { accountId: account.id, ...transactionFiltersWhere(filters) },
-      orderBy: { date: "desc" },
-      include: { payee: true, category: true },
+    loadTransactionsView({
+      budgetId: budget.id,
+      accountId: account.id,
+      filters,
     }),
-    prisma.transaction.count({ where: { accountId: account.id } }),
     getTransactionEditOptions(budget.id),
   ]);
 
