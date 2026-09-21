@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { formatMilliunits, milliunitsToNumber } from "@/lib/money";
 import { MoneyInput } from "@/components/MoneyInput";
 import { MoveMoneyPopover } from "@/components/MoveMoneyPopover";
 import { AddCategoryPopover } from "@/components/AddCategoryPopover";
 import { Icon } from "@/components/Icon";
+import { useServerAction } from "@/components/useServerAction";
 
 type CategoryOption = { id: string; name: string; available: number };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
@@ -77,7 +78,6 @@ export function CategoryGroupSection({
   transferAvailable: (formData: FormData) => Promise<void>;
   categoryOptions: GroupOption[];
 }) {
-  const [pending, startTransition] = useTransition();
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [groupDragOver, setGroupDragOver] = useState(false);
 
@@ -89,13 +89,30 @@ export function CategoryGroupSection({
   );
   const [categoryNameDraft, setCategoryNameDraft] = useState("");
 
+  const moveAction = useServerAction(moveCategory);
+  const deleteGroupAction = useServerAction(deleteCategoryGroup);
+  const renameGroupAction = useServerAction(renameCategoryGroup);
+  const hideCategoryAction = useServerAction(setCategoryHidden);
+  const renameCategoryAction = useServerAction(renameCategory);
+
+  const pending =
+    moveAction.pending ||
+    deleteGroupAction.pending ||
+    renameGroupAction.pending ||
+    hideCategoryAction.pending ||
+    renameCategoryAction.pending;
+  const error =
+    moveAction.error ||
+    deleteGroupAction.error ||
+    renameGroupAction.error ||
+    hideCategoryAction.error ||
+    renameCategoryAction.error;
+
   function move(categoryId: string, beforeCategoryId: string | null) {
-    const formData = new FormData();
-    formData.set("categoryId", categoryId);
-    formData.set("targetGroupId", groupId);
-    if (beforeCategoryId) formData.set("beforeCategoryId", beforeCategoryId);
-    startTransition(async () => {
-      await moveCategory(formData);
+    moveAction.run({
+      categoryId,
+      targetGroupId: groupId,
+      beforeCategoryId: beforeCategoryId ?? undefined,
     });
   }
 
@@ -105,11 +122,7 @@ export function CategoryGroupSection({
     ) {
       return;
     }
-    const formData = new FormData();
-    formData.set("categoryGroupId", groupId);
-    startTransition(async () => {
-      await deleteCategoryGroup(formData);
-    });
+    deleteGroupAction.run({ categoryGroupId: groupId });
   }
 
   function cancelGroupRename() {
@@ -117,30 +130,28 @@ export function CategoryGroupSection({
     setGroupNameDraft(groupName);
   }
 
-  function handleGroupRenameSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleGroupRenameSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const trimmed = groupNameDraft.trim();
     if (!trimmed || trimmed === groupName) {
       cancelGroupRename();
       return;
     }
-    const formData = new FormData();
-    formData.set("categoryGroupId", groupId);
-    formData.set("name", trimmed);
-    startTransition(async () => {
-      await renameCategoryGroup(formData);
+    try {
+      await renameGroupAction.run({ categoryGroupId: groupId, name: trimmed });
       setGroupRenaming(false);
-    });
+    } catch {
+      // error is surfaced via renameGroupAction.error
+    }
   }
 
-  function handleHideCategory(categoryId: string) {
-    const formData = new FormData();
-    formData.set("categoryId", categoryId);
-    formData.set("hidden", "true");
-    startTransition(async () => {
-      await setCategoryHidden(formData);
+  async function handleHideCategory(categoryId: string) {
+    try {
+      await hideCategoryAction.run({ categoryId, hidden: "true" });
       setRenamingCategoryId(null);
-    });
+    } catch {
+      // error is surfaced via hideCategoryAction.error
+    }
   }
 
   function startCategoryRename(category: CategoryRow) {
@@ -152,7 +163,7 @@ export function CategoryGroupSection({
     setRenamingCategoryId(null);
   }
 
-  function handleCategoryRenameSubmit(
+  async function handleCategoryRenameSubmit(
     e: React.FormEvent<HTMLFormElement>,
     category: CategoryRow,
   ) {
@@ -162,13 +173,12 @@ export function CategoryGroupSection({
       cancelCategoryRename();
       return;
     }
-    const formData = new FormData();
-    formData.set("categoryId", category.id);
-    formData.set("name", trimmed);
-    startTransition(async () => {
-      await renameCategory(formData);
+    try {
+      await renameCategoryAction.run({ categoryId: category.id, name: trimmed });
       setRenamingCategoryId(null);
-    });
+    } catch {
+      // error is surfaced via renameCategoryAction.error
+    }
   }
 
   return (
@@ -188,6 +198,11 @@ export function CategoryGroupSection({
       }}
       className={groupDragOver ? "bg-brand-700/5" : undefined}
     >
+      {error && (
+        <p className="bg-danger/10 px-200 py-1 text-small text-danger">
+          {error}
+        </p>
+      )}
       <div className="flex items-center gap-2 bg-neutral-100 px-200 py-1.5 text-small font-semibold uppercase tracking-wide text-neutral-600">
         {groupRenaming ? (
           <form
