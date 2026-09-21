@@ -87,6 +87,78 @@ test.describe("budget switcher collaborator management", () => {
     ).toBeNull();
   });
 
+  // #109: transferOwnership had no UI entry point; this covers the new
+  // "Transfer ownership" control CollaboratorManager grew alongside
+  // remove-collaborator above — same confirm-then-submit shape, but a
+  // lighter inline Confirm/Cancel rather than type-to-confirm, since a
+  // transfer (unlike delete) is reversible and doesn't drop the outgoing
+  // owner's own access (ADR 0004).
+  //
+  // Uses its own freshly created budget rather than the seeded
+  // ownerId: E2E_TEST_USER_ID one the other tests in this file (and
+  // other spec files) rely on still being owned by that user — actually
+  // transferring it away here would break them.
+  test("an owner can transfer ownership to an existing collaborator", async ({ page }) => {
+    const budget = await prisma.budget.create({
+      data: { name: "E2E Budget To Transfer", currency: "ZAR", ownerId: E2E_TEST_USER_ID },
+    });
+
+    await prisma.user.upsert({
+      where: { id: COLLABORATOR_ID },
+      create: { id: COLLABORATOR_ID, email: COLLABORATOR_EMAIL },
+      update: {},
+    });
+    await prisma.budgetMembership.upsert({
+      where: { budgetId_userId: { budgetId: budget.id, userId: COLLABORATOR_ID } },
+      create: { budgetId: budget.id, userId: COLLABORATOR_ID },
+      update: {},
+    });
+
+    const myBudget = await prisma.budget.findFirstOrThrow({
+      where: { ownerId: E2E_TEST_USER_ID, deleted: false },
+      orderBy: { createdAt: "asc" },
+    });
+
+    await page.goto("/budget");
+    await page.getByRole("button", { name: new RegExp(myBudget.name) }).click();
+    await rowContaining(page, budget.name).getByTitle("Manage collaborators").click();
+    await expect(page.getByText(COLLABORATOR_EMAIL)).toBeVisible();
+
+    await rowContaining(page, COLLABORATOR_EMAIL)
+      .getByTitle("Transfer ownership")
+      .click();
+    await expect(
+      page.getByText(new RegExp(`Make ${COLLABORATOR_EMAIL} the owner`)),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Make owner" }).click();
+
+    // transferOwnership runs inside a startTransition — wait for the
+    // budget to move out of "Your budgets" and into "Shared with you"
+    // (revalidatePath) rather than racing the server action itself.
+    await expect(page.getByText("Shared with you", { exact: true })).toBeVisible();
+    const movedRow = page.locator("li").filter({ hasText: budget.name });
+    await expect(movedRow).toContainText(COLLABORATOR_EMAIL);
+
+    const updated = await prisma.budget.findUniqueOrThrow({ where: { id: budget.id } });
+    expect(updated.ownerId).toBe(COLLABORATOR_ID);
+    // The outgoing owner keeps access, per ADR 0004 — converted into a
+    // Collaborator rather than dropped from the budget.
+    expect(
+      await prisma.budgetMembership.findUnique({
+        where: {
+          budgetId_userId: { budgetId: budget.id, userId: E2E_TEST_USER_ID },
+        },
+      }),
+    ).not.toBeNull();
+    // The incoming owner's now-redundant BudgetMembership row is gone —
+    // ownership lives on Budget.ownerId alone (ADR 0001).
+    expect(
+      await prisma.budgetMembership.findUnique({
+        where: { budgetId_userId: { budgetId: budget.id, userId: COLLABORATOR_ID } },
+      }),
+    ).toBeNull();
+  });
+
   test("a budget shared with the signed-in user shows under 'Shared with you' and can be left", async ({
     page,
   }) => {

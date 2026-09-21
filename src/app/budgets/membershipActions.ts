@@ -140,7 +140,7 @@ export async function transferOwnership(formData: FormData): Promise<void> {
     auditedUpdate({
       tx,
       budgetId,
-      entityType: "BUDGET_MEMBERSHIP",
+      entityType: "BUDGET",
       entityId: budgetId,
       actorId: currentOwner.id,
       action: "ownership transferred",

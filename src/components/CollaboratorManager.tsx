@@ -8,6 +8,20 @@ type Collaborator = { userId: string; email: string };
 type PendingInvite = { id: string; email: string };
 
 /**
+ * The server actions CollaboratorManager needs — factored out so
+ * BudgetSwitcherList (which receives these from Sidebar and forwards
+ * them straight through, unused itself) can declare the same shape once
+ * instead of repeating each action's signature in its own props type.
+ */
+export type CollaboratorActions = {
+  sendInvite: (formData: FormData) => Promise<{ error?: string }>;
+  cancelInvite: (formData: FormData) => Promise<void>;
+  resendInvite: (formData: FormData) => Promise<{ error?: string }>;
+  removeCollaborator: (formData: FormData) => Promise<void>;
+  transferOwnership: (formData: FormData) => Promise<void>;
+};
+
+/**
  * Runs a `useServerAction().run` whose action reports failure inline (an
  * `{ error }` return, e.g. sendInvite/resendInvite) rather than only by
  * throwing — pushes the try/catch and "was there an inline error" branch
@@ -27,6 +41,34 @@ async function runInlineErrorAction(
     setError(formatError(err));
     return false;
   }
+}
+
+/**
+ * Runs a `useServerAction().run` whose action reports failure only by
+ * throwing (no inline `{ error }` — cancelInvite/removeCollaborator/
+ * transferOwnership), clearing `setError` first so a stale error from a
+ * previous, different action can't linger over this one's outcome (each
+ * `useServerAction` only clears its own `.error` on success, so reading
+ * three of them by fixed priority — the bug this replaced — could keep
+ * showing a resolved cancelInvite failure after a later remove/transfer
+ * succeeded, or hide that action's own error).
+ */
+async function runTrackingError(
+  run: (fields: Record<string, string | undefined>) => Promise<unknown>,
+  fields: Record<string, string | undefined>,
+  setError: (error: string | null) => void,
+): Promise<void> {
+  setError(null);
+  try {
+    await run(fields);
+  } catch (err) {
+    setError(formatError(err));
+  }
+}
+
+/** True if any of the given `useServerAction` results is still in flight. */
+function anyPending(...actions: { pending: boolean }[]): boolean {
+  return actions.some((a) => a.pending);
 }
 
 /**
@@ -73,11 +115,88 @@ function PendingInviteRow({
 }
 
 /**
- * Invite-by-email, cancel-invite, and remove-collaborator UI for a single
- * owned budget — rendered inside BudgetSwitcherList's expanded row (#96).
- * Owns its own `useServerAction` instances (#95) so acting on one
- * budget's collaborators never disables another budget's rename/delete
- * controls, or another expanded row's own invite form.
+ * A single collaborator's own row — owns its "transfer ownership"
+ * confirmation step in-place (rather than a shared confirm state in
+ * CollaboratorManager) so confirming for one collaborator never affects
+ * another row, the same per-row-state approach PendingInviteRow already
+ * takes for resend/cancel.
+ */
+function CollaboratorRow({
+  collaborator,
+  disabled,
+  onRemove,
+  onTransferOwnership,
+}: {
+  collaborator: Collaborator;
+  disabled: boolean;
+  onRemove: (userId: string) => void;
+  onTransferOwnership: (userId: string) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+
+  if (confirming) {
+    return (
+      <div className="space-y-1.5 rounded border border-brand-700/30 bg-brand-700/5 p-1.5">
+        <p className="text-small text-neutral-800">
+          Make <span className="font-semibold">{collaborator.email}</span>{" "}
+          the owner? They&apos;ll be able to manage collaborators and delete
+          this budget — you&apos;ll keep your own access as a collaborator.
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setConfirming(false)}
+            className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => onTransferOwnership(collaborator.userId)}
+            className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+          >
+            Make owner
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="min-w-0 flex-1 truncate text-small text-neutral-800">
+        {collaborator.email}
+      </span>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setConfirming(true)}
+        title="Transfer ownership"
+        className="shrink-0 rounded p-0.5 text-neutral-400 hover:bg-brand-700/10 hover:text-brand-700"
+      >
+        <Icon name="swap_horiz" className="text-[16px]" label="Transfer ownership" />
+      </button>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onRemove(collaborator.userId)}
+        title="Remove collaborator"
+        className="shrink-0 rounded p-0.5 text-neutral-400 hover:bg-danger/10 hover:text-danger"
+      >
+        <Icon name="close" className="text-[16px]" label="Remove collaborator" />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Invite-by-email, cancel-invite, remove-collaborator, and
+ * transfer-ownership UI for a single owned budget — rendered inside
+ * BudgetSwitcherList's expanded row (#96, #109). Owns its own
+ * `useServerAction` instances (#95) so acting on one budget's
+ * collaborators never disables another budget's rename/delete controls,
+ * or another expanded row's own invite form.
  */
 export function CollaboratorManager({
   budgetId,
@@ -87,28 +206,28 @@ export function CollaboratorManager({
   cancelInvite,
   resendInvite,
   removeCollaborator,
-}: {
+  transferOwnership,
+}: CollaboratorActions & {
   budgetId: string;
   collaborators: Collaborator[];
   pendingInvites: PendingInvite[];
-  sendInvite: (formData: FormData) => Promise<{ error?: string }>;
-  cancelInvite: (formData: FormData) => Promise<void>;
-  resendInvite: (formData: FormData) => Promise<{ error?: string }>;
-  removeCollaborator: (formData: FormData) => Promise<void>;
 }) {
   const [inviteDraft, setInviteDraft] = useState("");
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const inviteAction = useServerAction(sendInvite);
   const cancelInviteAction = useServerAction(cancelInvite);
   const resendInviteAction = useServerAction(resendInvite);
   const removeCollaboratorAction = useServerAction(removeCollaborator);
+  const transferOwnershipAction = useServerAction(transferOwnership);
 
-  const pending =
-    inviteAction.pending ||
-    cancelInviteAction.pending ||
-    resendInviteAction.pending ||
-    removeCollaboratorAction.pending;
-  const actionError = cancelInviteAction.error || removeCollaboratorAction.error;
+  const pending = anyPending(
+    inviteAction,
+    cancelInviteAction,
+    resendInviteAction,
+    removeCollaboratorAction,
+    transferOwnershipAction,
+  );
 
   async function handleInvite(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -121,11 +240,7 @@ export function CollaboratorManager({
   }
 
   async function handleCancelInvite(inviteId: string) {
-    try {
-      await cancelInviteAction.run({ inviteId });
-    } catch {
-      // error is surfaced via cancelInviteAction.error
-    }
+    await runTrackingError(cancelInviteAction.run, { inviteId }, setActionError);
   }
 
   async function handleResendInvite(inviteId: string) {
@@ -133,11 +248,11 @@ export function CollaboratorManager({
   }
 
   async function handleRemoveCollaborator(userId: string) {
-    try {
-      await removeCollaboratorAction.run({ budgetId, userId });
-    } catch {
-      // error is surfaced via removeCollaboratorAction.error
-    }
+    await runTrackingError(removeCollaboratorAction.run, { budgetId, userId }, setActionError);
+  }
+
+  async function handleTransferOwnership(userId: string) {
+    await runTrackingError(transferOwnershipAction.run, { budgetId, userId }, setActionError);
   }
 
   return (
@@ -148,20 +263,13 @@ export function CollaboratorManager({
         </p>
       )}
       {collaborators.map((c) => (
-        <div key={c.userId} className="flex items-center gap-1.5">
-          <span className="min-w-0 flex-1 truncate text-small text-neutral-800">
-            {c.email}
-          </span>
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => handleRemoveCollaborator(c.userId)}
-            title="Remove collaborator"
-            className="shrink-0 rounded p-0.5 text-neutral-400 hover:bg-danger/10 hover:text-danger"
-          >
-            <Icon name="close" className="text-[16px]" label="Remove collaborator" />
-          </button>
-        </div>
+        <CollaboratorRow
+          key={c.userId}
+          collaborator={c}
+          disabled={pending}
+          onRemove={handleRemoveCollaborator}
+          onTransferOwnership={handleTransferOwnership}
+        />
       ))}
       {pendingInvites.map((invite) => (
         <PendingInviteRow

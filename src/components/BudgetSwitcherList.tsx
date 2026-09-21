@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { Icon } from "@/components/Icon";
 import { usePopover } from "@/components/usePopover";
 import { useServerAction } from "@/components/useServerAction";
-import { CollaboratorManager } from "@/components/CollaboratorManager";
+import { CollaboratorManager, type CollaboratorActions } from "@/components/CollaboratorManager";
 
 type Collaborator = { userId: string; email: string };
 type PendingInvite = { id: string; email: string };
@@ -27,11 +27,12 @@ type CurrencyOption = { code: string; name: string };
  *
  * Owns switching/renaming/creating/deleting a budget, each via its own
  * `useServerAction` (#95) so one action's pending/error state never
- * blocks another. Collaborator/invite management for an owned budget's
- * expanded row is delegated to `<CollaboratorManager>` (#96) rather than
- * folded into this component's state — it has its own `useServerAction`
- * instances, so acting on a budget's collaborators never disables this
- * list's rename/delete/switch controls.
+ * blocks another. Collaborator/invite/ownership-transfer management for
+ * an owned budget's expanded row is delegated to `<CollaboratorManager>`
+ * (#96, #109) rather than folded into this component's state — it has
+ * its own `useServerAction` instances, so acting on a budget's
+ * collaborators never disables this list's rename/delete/switch
+ * controls.
  *
  * The "new budget" currency <select> only ever lists currencies no budget
  * has claimed yet (`availableCurrencies`, computed server-side from the
@@ -66,8 +67,9 @@ export function BudgetSwitcherList({
   cancelInvite,
   resendInvite,
   removeCollaborator,
+  transferOwnership,
   leaveBudget,
-}: {
+}: CollaboratorActions & {
   currentBudget: { id: string; name: string; currency: string };
   currencySymbol: string;
   budgets: BudgetOption[];
@@ -76,10 +78,6 @@ export function BudgetSwitcherList({
   createBudget: (formData: FormData) => Promise<void>;
   renameBudget: (formData: FormData) => Promise<void>;
   deleteBudget: (formData: FormData) => Promise<void>;
-  sendInvite: (formData: FormData) => Promise<{ error?: string }>;
-  cancelInvite: (formData: FormData) => Promise<void>;
-  resendInvite: (formData: FormData) => Promise<{ error?: string }>;
-  removeCollaborator: (formData: FormData) => Promise<void>;
   leaveBudget: (formData: FormData) => Promise<void>;
 }) {
   const [adding, setAdding] = useState(false);
@@ -455,6 +453,7 @@ export function BudgetSwitcherList({
                           cancelInvite={cancelInvite}
                           resendInvite={resendInvite}
                           removeCollaborator={removeCollaborator}
+                          transferOwnership={transferOwnership}
                         />
                       )}
                     </li>
