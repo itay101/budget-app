@@ -2,7 +2,7 @@ import { useState, useTransition } from "react";
 
 const DEFAULT_ERROR_MESSAGE = "Something went wrong. Please try again.";
 
-function formatError(err: unknown): string {
+export function formatError(err: unknown): string {
   return err instanceof Error ? err.message : DEFAULT_ERROR_MESSAGE;
 }
 
@@ -36,7 +36,12 @@ export function useServerAction<T>(
   pending: boolean;
   error: string | null;
 } {
-  const [pending, startTransition] = useTransition();
+  // React 18's startTransition doesn't track an async callback past its
+  // first `await` - the transition (and its `isPending`) is done as soon as
+  // the callback synchronously returns, well before `action` resolves. So
+  // `pending` here is our own in-flight counter, not useTransition's.
+  const [, startTransition] = useTransition();
+  const [pendingCount, setPendingCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   function run(fields: Record<string, string | undefined>): Promise<T | undefined> {
@@ -46,6 +51,7 @@ export function useServerAction<T>(
       formData.set(key, value);
     }
 
+    setPendingCount((count) => count + 1);
     return new Promise<T | undefined>((resolve, reject) => {
       startTransition(async () => {
         try {
@@ -55,10 +61,12 @@ export function useServerAction<T>(
         } catch (err) {
           setError(formatError(err));
           reject(err);
+        } finally {
+          setPendingCount((count) => count - 1);
         }
       });
     });
   }
 
-  return { run, pending, error };
+  return { run, pending: pendingCount > 0, error };
 }
