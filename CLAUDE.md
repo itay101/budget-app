@@ -53,3 +53,7 @@ single area fits. Common types: `feat`, `fix`, `refactor`, `test`,
 When a chain of commits adds tests for the same change, put the test
 commit last, after the code it exercises — not interleaved with or ahead
 of it.
+
+<!-- fallow:agent-install v1 claude-import:start -->
+@AGENTS.md
+<!-- fallow:agent-install v1 claude-import:end -->
