@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { safeRedirectPath } from "@/lib/safeRedirect";
 
 /**
  * Sends a magic-link sign-in email. There's no signup form anywhere in
@@ -28,7 +29,7 @@ export async function sendSignInLink(
   const origin = (await headers()).get("origin");
   const callbackUrl = new URL("/auth/callback", origin ?? undefined);
   if (next) {
-    callbackUrl.searchParams.set("next", next);
+    callbackUrl.searchParams.set("next", safeRedirectPath(next));
   }
 
   const { error } = await supabase.auth.signInWithOtp({
@@ -69,7 +70,7 @@ export async function signInWithGoogle(
   const origin = (await headers()).get("origin");
   const callbackUrl = new URL("/auth/callback", origin ?? undefined);
   if (next) {
-    callbackUrl.searchParams.set("next", next);
+    callbackUrl.searchParams.set("next", safeRedirectPath(next));
   }
 
   const { data, error } = await supabase.auth.signInWithOAuth({
