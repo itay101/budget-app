@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "@/components/Icon";
 import { usePopover } from "@/components/usePopover";
+import { useServerAction } from "@/components/useServerAction";
 
 type Collaborator = { userId: string; email: string };
 type PendingInvite = { id: string; email: string };
@@ -17,12 +18,6 @@ type BudgetOption = {
   pendingInvites: PendingInvite[];
 };
 type CurrencyOption = { code: string; name: string };
-
-function actionErrorMessage(err: unknown, action: string): string {
-  return err instanceof Error
-    ? err.message
-    : `Failed to ${action}. Please try again.`;
-}
 
 /**
  * Sidebar control for which budget (= which currency) the app is
@@ -87,8 +82,31 @@ export function BudgetSwitcherPopover({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [inviteDraft, setInviteDraft] = useState("");
   const [inviteError, setInviteError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const switchAction = useServerAction(switchBudget);
+  const createAction = useServerAction(createBudget);
+  const renameAction = useServerAction(renameBudget);
+  const deleteAction = useServerAction(deleteBudget);
+  const inviteAction = useServerAction(sendInvite);
+  const cancelInviteAction = useServerAction(cancelInvite);
+  const removeCollaboratorAction = useServerAction(removeCollaborator);
+  const leaveAction = useServerAction(leaveBudget);
+
+  const pending =
+    switchAction.pending ||
+    createAction.pending ||
+    renameAction.pending ||
+    deleteAction.pending ||
+    inviteAction.pending ||
+    cancelInviteAction.pending ||
+    removeCollaboratorAction.pending ||
+    leaveAction.pending;
+  const actionError =
+    switchAction.error ||
+    createAction.error ||
+    deleteAction.error ||
+    cancelInviteAction.error ||
+    removeCollaboratorAction.error ||
+    leaveAction.error;
   const { open, setOpen, position, triggerRef, panelRef } = usePopover({
     width: 256, // matches the popover's w-64
     onDismiss: () => {
@@ -97,7 +115,6 @@ export function BudgetSwitcherPopover({
       setExpandedId(null);
       setInviteDraft("");
       setInviteError(null);
-      setActionError(null);
     },
   });
   const formRef = useRef<HTMLFormElement>(null);
@@ -108,28 +125,33 @@ export function BudgetSwitcherPopover({
     setNameDraft(currentBudget.name);
   }, [currentBudget.id, currentBudget.name]);
 
-  function handleSwitch(budgetId: string) {
+  async function handleSwitch(budgetId: string) {
     if (budgetId === currentBudget.id) {
       setOpen(false);
       return;
     }
-    const formData = new FormData();
-    formData.set("budgetId", budgetId);
-    startTransition(async () => {
-      await switchBudget(formData);
+    try {
+      await switchAction.run({ budgetId });
       setOpen(false);
-    });
+    } catch {
+      // error is surfaced via switchAction.error
+    }
   }
 
-  function handleCreate(e: React.FormEvent<HTMLFormElement>) {
+  async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    startTransition(async () => {
-      await createBudget(formData);
+    try {
+      await createAction.run({
+        name: String(formData.get("name") ?? ""),
+        currency: String(formData.get("currency") ?? ""),
+      });
       formRef.current?.reset();
       setAdding(false);
       setOpen(false);
-    });
+    } catch {
+      // error is surfaced via createAction.error
+    }
   }
 
   function cancelRename() {
@@ -137,32 +159,30 @@ export function BudgetSwitcherPopover({
     setNameDraft(currentBudget.name);
   }
 
-  function handleRenameSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleRenameSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const trimmed = nameDraft.trim();
     if (!trimmed || trimmed === currentBudget.name) {
       cancelRename();
       return;
     }
-    const formData = new FormData();
-    formData.set("budgetId", currentBudget.id);
-    formData.set("name", trimmed);
-    startTransition(async () => {
-      await renameBudget(formData);
+    try {
+      await renameAction.run({ budgetId: currentBudget.id, name: trimmed });
       setRenaming(false);
-    });
+    } catch {
+      // error is surfaced via renameAction.error
+    }
   }
 
-  function handleDelete(budgetId: string) {
-    const formData = new FormData();
-    formData.set("budgetId", budgetId);
-    formData.set("confirmName", confirmText);
-    startTransition(async () => {
-      await deleteBudget(formData);
+  async function handleDelete(budgetId: string) {
+    try {
+      await deleteAction.run({ budgetId, confirmName: confirmText });
       setDeletingId(null);
       setConfirmText("");
       setOpen(false);
-    });
+    } catch {
+      // error is surfaced via deleteAction.error
+    }
   }
 
   function toggleExpanded(budgetId: string) {
@@ -171,65 +191,44 @@ export function BudgetSwitcherPopover({
     setInviteError(null);
   }
 
-  function handleInvite(e: React.FormEvent<HTMLFormElement>, budgetId: string) {
+  async function handleInvite(e: React.FormEvent<HTMLFormElement>, budgetId: string) {
     e.preventDefault();
     setInviteError(null);
-    const formData = new FormData();
-    formData.set("budgetId", budgetId);
-    formData.set("email", inviteDraft);
-    startTransition(async () => {
-      try {
-        const result = await sendInvite(formData);
-        if (result.error) {
-          setInviteError(result.error);
-          return;
-        }
-        setInviteDraft("");
-      } catch (err) {
-        setInviteError(actionErrorMessage(err, "send the invite"));
+    try {
+      const result = await inviteAction.run({ budgetId, email: inviteDraft });
+      if (result?.error) {
+        setInviteError(result.error);
+        return;
       }
-    });
+      setInviteDraft("");
+    } catch {
+      setInviteError(inviteAction.error);
+    }
   }
 
-  function handleCancelInvite(inviteId: string) {
-    const formData = new FormData();
-    formData.set("inviteId", inviteId);
-    setActionError(null);
-    startTransition(async () => {
-      try {
-        await cancelInvite(formData);
-      } catch (err) {
-        setActionError(actionErrorMessage(err, "cancel the invite"));
-      }
-    });
+  async function handleCancelInvite(inviteId: string) {
+    try {
+      await cancelInviteAction.run({ inviteId });
+    } catch {
+      // error is surfaced via cancelInviteAction.error
+    }
   }
 
-  function handleRemoveCollaborator(budgetId: string, userId: string) {
-    const formData = new FormData();
-    formData.set("budgetId", budgetId);
-    formData.set("userId", userId);
-    setActionError(null);
-    startTransition(async () => {
-      try {
-        await removeCollaborator(formData);
-      } catch (err) {
-        setActionError(actionErrorMessage(err, "remove the collaborator"));
-      }
-    });
+  async function handleRemoveCollaborator(budgetId: string, userId: string) {
+    try {
+      await removeCollaboratorAction.run({ budgetId, userId });
+    } catch {
+      // error is surfaced via removeCollaboratorAction.error
+    }
   }
 
-  function handleLeave(budgetId: string) {
-    const formData = new FormData();
-    formData.set("budgetId", budgetId);
-    setActionError(null);
-    startTransition(async () => {
-      try {
-        await leaveBudget(formData);
-        setOpen(false);
-      } catch (err) {
-        setActionError(actionErrorMessage(err, "leave the budget"));
-      }
-    });
+  async function handleLeave(budgetId: string) {
+    try {
+      await leaveAction.run({ budgetId });
+      setOpen(false);
+    } catch {
+      // error is surfaced via leaveAction.error
+    }
   }
 
   return (
