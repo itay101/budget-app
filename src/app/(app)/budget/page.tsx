@@ -1,5 +1,4 @@
-import { prisma } from "@/lib/prisma";
-import { availableFor, getCurrentBudget, rowFor } from "@/lib/budget";
+import { getBudgetMonthRows, getCurrentBudget } from "@/lib/budget";
 import { AddCategoryGroupPopover } from "@/components/AddCategoryGroupPopover";
 import { CategoryGroupSection } from "@/components/CategoryGroupSection";
 import { HiddenCategoriesSection } from "@/components/HiddenCategoriesSection";
@@ -21,94 +20,13 @@ function startOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
-function startOfNextMonth(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth() + 1, 1);
-}
-
 export default async function BudgetPage() {
   const budget = await getCurrentBudget();
   const month = startOfMonth(new Date());
-  const nextMonth = startOfNextMonth(month);
 
-  const groups = await prisma.categoryGroup.findMany({
-    where: { budgetId: budget.id },
-    orderBy: { sortOrder: "asc" },
-    include: {
-      categories: {
-        orderBy: { sortOrder: "asc" },
-        include: {
-          months: { where: { month } },
-          transactions: {
-            where: { date: { gte: month, lt: nextMonth } },
-            select: { amount: true },
-          },
-        },
-      },
-    },
-  });
-
-  const categoryIds = groups.flatMap((g) => g.categories.map((c) => c.id));
-
-  // Available rolls forward month to month, YNAB-style — see availableFor
-  // in src/lib/budget.ts for the math itself; here we just gather the two
-  // running-total queries it needs.
-  const [budgetedTotals, activityTotals] = await Promise.all([
-    prisma.categoryMonth.groupBy({
-      by: ["categoryId"],
-      where: { categoryId: { in: categoryIds }, month: { lt: nextMonth } },
-      _sum: { budgeted: true },
-    }),
-    prisma.transaction.groupBy({
-      by: ["categoryId"],
-      where: { categoryId: { in: categoryIds }, date: { lt: nextMonth } },
-      _sum: { amount: true },
-    }),
-  ]);
-
-  const budgetedThroughMonth = new Map(
-    budgetedTotals.map((row) => [row.categoryId, row._sum.budgeted ?? 0]),
-  );
-  const activityThroughMonth = new Map(
-    activityTotals.map((row) => [row.categoryId!, row._sum.amount ?? 0]),
-  );
-
-  function categoryRow(category: (typeof groups)[number]["categories"][number]) {
-    return rowFor(
-      {
-        id: category.id,
-        name: category.name,
-        budgeted: category.months[0]?.budgeted ?? 0,
-        activity: category.transactions.reduce((sum, t) => sum + t.amount, 0),
-      },
-      budgetedThroughMonth,
-      activityThroughMonth,
-    );
-  }
-
-  // Slimmed-down category list (just id/name/available) for the "move
-  // money to…" popover on each Available cell. Includes hidden categories
-  // too — they still have money in them, and still need somewhere to move
-  // it to/from.
-  const categoryOptions = groups.map((group) => ({
-    id: group.id,
-    name: group.name,
-    categories: group.categories.map((c) => ({
-      id: c.id,
-      name: c.name,
-      available: availableFor(c.id, budgetedThroughMonth, activityThroughMonth),
-    })),
-  }));
-
-  // Hiding is presentational only — a hidden category keeps its real
-  // categoryGroupId/sortOrder (see the `hidden` field's doc comment in
-  // schema.prisma) — so it's filtered out of its real group's rendered
-  // rows here and collected into one synthetic "Hidden" section instead,
-  // appended after every real group. That section only renders at all
-  // when it's non-empty.
-  const hiddenCategories = groups.flatMap((group) =>
-    group.categories
-      .filter((c) => c.hidden)
-      .map((category) => ({ ...categoryRow(category), groupName: group.name })),
+  const { groups, categoryOptions, hiddenCategories } = await getBudgetMonthRows(
+    budget.id,
+    month,
   );
 
   return (
@@ -138,7 +56,7 @@ export default async function BudgetPage() {
             groupName={group.name}
             month={month.toISOString()}
             currency={budget.currency}
-            isEmpty={group.categories.length === 0}
+            isEmpty={group.isEmpty}
             createCategory={createCategory}
             renameCategoryGroup={renameCategoryGroup}
             renameCategory={renameCategory}
@@ -148,9 +66,7 @@ export default async function BudgetPage() {
             setCategoryHidden={setCategoryHidden}
             transferAvailable={transferAvailable}
             categoryOptions={categoryOptions}
-            categories={group.categories
-              .filter((c) => !c.hidden)
-              .map(categoryRow)}
+            categories={group.categories}
           />
         ))}
 
