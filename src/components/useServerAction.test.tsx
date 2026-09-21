@@ -105,4 +105,31 @@ describe("useServerAction", () => {
 
     expect(result.current.error).toBe("Something went wrong. Please try again.");
   });
+
+  it("keeps pending true until the action settles (React 18's startTransition doesn't track an async callback past its first await)", async () => {
+    let resolveAction: (value: string) => void;
+    const action = jest.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveAction = resolve;
+        }),
+    );
+    const { result } = renderHook(() => useServerAction(action));
+
+    expect(result.current.pending).toBe(false);
+
+    let runPromise!: Promise<string | undefined>;
+    act(() => {
+      runPromise = result.current.run({ id: "1" });
+    });
+
+    expect(result.current.pending).toBe(true);
+
+    await act(async () => {
+      resolveAction("done");
+      await runPromise;
+    });
+
+    expect(result.current.pending).toBe(false);
+  });
 });
