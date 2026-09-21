@@ -8,6 +8,71 @@ type Collaborator = { userId: string; email: string };
 type PendingInvite = { id: string; email: string };
 
 /**
+ * Runs a `useServerAction().run` whose action reports failure inline (an
+ * `{ error }` return, e.g. sendInvite/resendInvite) rather than only by
+ * throwing — pushes the try/catch and "was there an inline error" branch
+ * out of CollaboratorManager's own handlers and into one shared helper.
+ */
+async function runInlineErrorAction(
+  run: (fields: Record<string, string | undefined>) => Promise<{ error?: string } | undefined>,
+  fields: Record<string, string | undefined>,
+  setError: (error: string | null) => void,
+): Promise<boolean> {
+  try {
+    const result = await run(fields);
+    const error = result?.error ?? null;
+    setError(error);
+    return error === null;
+  } catch (err) {
+    setError(formatError(err));
+    return false;
+  }
+}
+
+/**
+ * A single pending invite's row — its own resend/cancel handlers, so
+ * CollaboratorManager itself doesn't grow a branch per row action.
+ */
+function PendingInviteRow({
+  invite,
+  disabled,
+  onResend,
+  onCancel,
+}: {
+  invite: PendingInvite;
+  disabled: boolean;
+  onResend: (inviteId: string) => void;
+  onCancel: (inviteId: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="min-w-0 flex-1 truncate text-small text-neutral-600">
+        {invite.email}
+      </span>
+      <span className="shrink-0 text-[10px] text-neutral-600">pending</span>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onResend(invite.id)}
+        title="Resend invite"
+        className="shrink-0 rounded p-0.5 text-neutral-400 hover:bg-brand-700/10 hover:text-brand-700"
+      >
+        <Icon name="send" className="text-[16px]" label="Resend invite" />
+      </button>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onCancel(invite.id)}
+        title="Cancel invite"
+        className="shrink-0 rounded p-0.5 text-neutral-400 hover:bg-danger/10 hover:text-danger"
+      >
+        <Icon name="close" className="text-[16px]" label="Cancel invite" />
+      </button>
+    </div>
+  );
+}
+
+/**
  * Invite-by-email, cancel-invite, and remove-collaborator UI for a single
  * owned budget — rendered inside BudgetSwitcherList's expanded row (#96).
  * Owns its own `useServerAction` instances (#95) so acting on one
@@ -20,6 +85,7 @@ export function CollaboratorManager({
   pendingInvites,
   sendInvite,
   cancelInvite,
+  resendInvite,
   removeCollaborator,
 }: {
   budgetId: string;
@@ -27,31 +93,31 @@ export function CollaboratorManager({
   pendingInvites: PendingInvite[];
   sendInvite: (formData: FormData) => Promise<{ error?: string }>;
   cancelInvite: (formData: FormData) => Promise<void>;
+  resendInvite: (formData: FormData) => Promise<{ error?: string }>;
   removeCollaborator: (formData: FormData) => Promise<void>;
 }) {
   const [inviteDraft, setInviteDraft] = useState("");
   const [inviteError, setInviteError] = useState<string | null>(null);
   const inviteAction = useServerAction(sendInvite);
   const cancelInviteAction = useServerAction(cancelInvite);
+  const resendInviteAction = useServerAction(resendInvite);
   const removeCollaboratorAction = useServerAction(removeCollaborator);
 
   const pending =
-    inviteAction.pending || cancelInviteAction.pending || removeCollaboratorAction.pending;
+    inviteAction.pending ||
+    cancelInviteAction.pending ||
+    resendInviteAction.pending ||
+    removeCollaboratorAction.pending;
   const actionError = cancelInviteAction.error || removeCollaboratorAction.error;
 
   async function handleInvite(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setInviteError(null);
-    try {
-      const result = await inviteAction.run({ budgetId, email: inviteDraft });
-      if (result?.error) {
-        setInviteError(result.error);
-        return;
-      }
-      setInviteDraft("");
-    } catch (err) {
-      setInviteError(formatError(err));
-    }
+    const sent = await runInlineErrorAction(
+      inviteAction.run,
+      { budgetId, email: inviteDraft },
+      setInviteError,
+    );
+    if (sent) setInviteDraft("");
   }
 
   async function handleCancelInvite(inviteId: string) {
@@ -60,6 +126,10 @@ export function CollaboratorManager({
     } catch {
       // error is surfaced via cancelInviteAction.error
     }
+  }
+
+  async function handleResendInvite(inviteId: string) {
+    await runInlineErrorAction(resendInviteAction.run, { inviteId }, setInviteError);
   }
 
   async function handleRemoveCollaborator(userId: string) {
@@ -94,21 +164,13 @@ export function CollaboratorManager({
         </div>
       ))}
       {pendingInvites.map((invite) => (
-        <div key={invite.id} className="flex items-center gap-1.5">
-          <span className="min-w-0 flex-1 truncate text-small text-neutral-600">
-            {invite.email}
-          </span>
-          <span className="shrink-0 text-[10px] text-neutral-600">pending</span>
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => handleCancelInvite(invite.id)}
-            title="Cancel invite"
-            className="shrink-0 rounded p-0.5 text-neutral-400 hover:bg-danger/10 hover:text-danger"
-          >
-            <Icon name="close" className="text-[16px]" label="Cancel invite" />
-          </button>
-        </div>
+        <PendingInviteRow
+          key={invite.id}
+          invite={invite}
+          disabled={pending}
+          onResend={handleResendInvite}
+          onCancel={handleCancelInvite}
+        />
       ))}
       {collaborators.length === 0 && pendingInvites.length === 0 && (
         <p className="text-small text-neutral-600">No collaborators yet.</p>
