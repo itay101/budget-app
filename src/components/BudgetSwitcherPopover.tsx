@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "@/components/Icon";
 import { usePopover } from "@/components/usePopover";
-import { useServerAction } from "@/components/useServerAction";
+import { formatError, useServerAction } from "@/components/useServerAction";
 
 type Collaborator = { userId: string; email: string };
 type PendingInvite = { id: string; email: string };
@@ -104,6 +104,7 @@ export function BudgetSwitcherPopover({
     switchAction.error ||
     createAction.error ||
     deleteAction.error ||
+    inviteAction.error ||
     cancelInviteAction.error ||
     removeCollaboratorAction.error ||
     leaveAction.error;
@@ -201,8 +202,8 @@ export function BudgetSwitcherPopover({
         return;
       }
       setInviteDraft("");
-    } catch {
-      setInviteError(inviteAction.error);
+    } catch (err) {
+      setInviteError(formatError(err));
     }
   }
 
@@ -234,34 +235,39 @@ export function BudgetSwitcherPopover({
   return (
     <>
       {renaming ? (
-        <form onSubmit={handleRenameSubmit} className="flex items-center gap-1">
-          <input
-            value={nameDraft}
-            onChange={(e) => setNameDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") cancelRename();
-            }}
-            autoFocus
-            aria-label="Budget name"
-            className="min-w-0 flex-1 rounded border border-neutral-200 px-2 py-1 text-small focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-          />
-          <button
-            type="submit"
-            disabled={pending}
-            title="Save"
-            className="shrink-0 rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10"
-          >
-            <Icon name="check" label="Save" />
-          </button>
-          <button
-            type="button"
-            onClick={cancelRename}
-            title="Cancel"
-            className="shrink-0 rounded px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
-          >
-            <Icon name="close" label="Cancel" />
-          </button>
-        </form>
+        <div>
+          <form onSubmit={handleRenameSubmit} className="flex items-center gap-1">
+            <input
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") cancelRename();
+              }}
+              autoFocus
+              aria-label="Budget name"
+              className="min-w-0 flex-1 rounded border border-neutral-200 px-2 py-1 text-small focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+            />
+            <button
+              type="submit"
+              disabled={pending}
+              title="Save"
+              className="shrink-0 rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10"
+            >
+              <Icon name="check" label="Save" />
+            </button>
+            <button
+              type="button"
+              onClick={cancelRename}
+              title="Cancel"
+              className="shrink-0 rounded px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+            >
+              <Icon name="close" label="Cancel" />
+            </button>
+          </form>
+          {renameAction.error && (
+            <p className="mt-1 text-small text-danger">{renameAction.error}</p>
+          )}
+        </div>
       ) : (
         <div className="flex items-center gap-1">
           <button
