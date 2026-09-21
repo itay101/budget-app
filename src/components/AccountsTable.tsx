@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { formatMilliunits } from "@/lib/money";
 import { ACCOUNT_TYPE_OPTIONS } from "@/lib/accountTypes";
+import { useServerAction } from "@/components/useServerAction";
 
 type AccountRowData = {
   id: string;
@@ -67,23 +68,23 @@ function AccountRow({
   currency: string;
   updateAccount: (formData: FormData) => Promise<void>;
 }) {
-  const [, startTransition] = useTransition();
   const [name, setName] = useState(account.name);
   const [type, setType] = useState(account.type);
+  const { run, error } = useServerAction(updateAccount);
 
   function commit(field: string, value: string) {
-    const formData = new FormData();
-    formData.set("accountId", account.id);
-    formData.set(field, value);
-    startTransition(async () => {
-      await updateAccount(formData);
-    });
+    run({ accountId: account.id, [field]: value });
   }
 
   return (
     <div
       className={`grid grid-cols-2 items-start gap-x-3 gap-y-2 border-b border-neutral-100 px-200 py-3 text-body last:border-b-0 md:items-center md:gap-2 md:py-1 ${GRID_COLS} ${account.closed ? "opacity-60" : ""}`}
     >
+      {error && (
+        <p className="col-span-2 rounded bg-danger/10 px-2 py-1 text-small text-danger md:col-span-full">
+          {error}
+        </p>
+      )}
       <input
         type="text"
         value={name}
