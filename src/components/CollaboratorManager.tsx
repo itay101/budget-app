@@ -30,6 +30,34 @@ async function runInlineErrorAction(
 }
 
 /**
+ * Runs a `useServerAction().run` whose action reports failure only by
+ * throwing (no inline `{ error }` — cancelInvite/removeCollaborator) —
+ * the caller just needs the click handled without an unhandled
+ * rejection; the actual message is already surfaced via that action's
+ * own `.error`, same as runInlineErrorAction's catch branch.
+ */
+async function runIgnoringError(
+  run: (fields: Record<string, string | undefined>) => Promise<unknown>,
+  fields: Record<string, string | undefined>,
+): Promise<void> {
+  try {
+    await run(fields);
+  } catch {
+    // error is surfaced via the action's own `.error`
+  }
+}
+
+/** True if any of the given `useServerAction` results is still in flight. */
+function anyPending(...actions: { pending: boolean }[]): boolean {
+  return actions.some((a) => a.pending);
+}
+
+/** The first non-null error among the given `useServerAction` results, if any. */
+function firstError(...errors: (string | null)[]): string | null {
+  return errors.find((e) => e !== null) ?? null;
+}
+
+/**
  * A single pending invite's row — its own resend/cancel handlers, so
  * CollaboratorManager itself doesn't grow a branch per row action.
  */
@@ -103,12 +131,13 @@ export function CollaboratorManager({
   const resendInviteAction = useServerAction(resendInvite);
   const removeCollaboratorAction = useServerAction(removeCollaborator);
 
-  const pending =
-    inviteAction.pending ||
-    cancelInviteAction.pending ||
-    resendInviteAction.pending ||
-    removeCollaboratorAction.pending;
-  const actionError = cancelInviteAction.error || removeCollaboratorAction.error;
+  const pending = anyPending(
+    inviteAction,
+    cancelInviteAction,
+    resendInviteAction,
+    removeCollaboratorAction,
+  );
+  const actionError = firstError(cancelInviteAction.error, removeCollaboratorAction.error);
 
   async function handleInvite(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -121,11 +150,7 @@ export function CollaboratorManager({
   }
 
   async function handleCancelInvite(inviteId: string) {
-    try {
-      await cancelInviteAction.run({ inviteId });
-    } catch {
-      // error is surfaced via cancelInviteAction.error
-    }
+    await runIgnoringError(cancelInviteAction.run, { inviteId });
   }
 
   async function handleResendInvite(inviteId: string) {
@@ -133,11 +158,7 @@ export function CollaboratorManager({
   }
 
   async function handleRemoveCollaborator(userId: string) {
-    try {
-      await removeCollaboratorAction.run({ budgetId, userId });
-    } catch {
-      // error is surfaced via removeCollaboratorAction.error
-    }
+    await runIgnoringError(removeCollaboratorAction.run, { budgetId, userId });
   }
 
   return (
