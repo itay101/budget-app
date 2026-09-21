@@ -46,29 +46,29 @@ async function runInlineErrorAction(
 /**
  * Runs a `useServerAction().run` whose action reports failure only by
  * throwing (no inline `{ error }` — cancelInvite/removeCollaborator/
- * transferOwnership) — the caller just needs the click handled without
- * an unhandled rejection; the actual message is already surfaced via
- * that action's own `.error`, same as runInlineErrorAction's catch branch.
+ * transferOwnership), clearing `setError` first so a stale error from a
+ * previous, different action can't linger over this one's outcome (each
+ * `useServerAction` only clears its own `.error` on success, so reading
+ * three of them by fixed priority — the bug this replaced — could keep
+ * showing a resolved cancelInvite failure after a later remove/transfer
+ * succeeded, or hide that action's own error).
  */
-async function runIgnoringError(
+async function runTrackingError(
   run: (fields: Record<string, string | undefined>) => Promise<unknown>,
   fields: Record<string, string | undefined>,
+  setError: (error: string | null) => void,
 ): Promise<void> {
+  setError(null);
   try {
     await run(fields);
-  } catch {
-    // error is surfaced via the action's own `.error`
+  } catch (err) {
+    setError(formatError(err));
   }
 }
 
 /** True if any of the given `useServerAction` results is still in flight. */
 function anyPending(...actions: { pending: boolean }[]): boolean {
   return actions.some((a) => a.pending);
-}
-
-/** The first non-null error among the given `useServerAction` results, if any. */
-function firstError(...errors: (string | null)[]): string | null {
-  return errors.find((e) => e !== null) ?? null;
 }
 
 /**
@@ -214,6 +214,7 @@ export function CollaboratorManager({
 }) {
   const [inviteDraft, setInviteDraft] = useState("");
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const inviteAction = useServerAction(sendInvite);
   const cancelInviteAction = useServerAction(cancelInvite);
   const resendInviteAction = useServerAction(resendInvite);
@@ -227,11 +228,6 @@ export function CollaboratorManager({
     removeCollaboratorAction,
     transferOwnershipAction,
   );
-  const actionError = firstError(
-    cancelInviteAction.error,
-    removeCollaboratorAction.error,
-    transferOwnershipAction.error,
-  );
 
   async function handleInvite(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -244,7 +240,7 @@ export function CollaboratorManager({
   }
 
   async function handleCancelInvite(inviteId: string) {
-    await runIgnoringError(cancelInviteAction.run, { inviteId });
+    await runTrackingError(cancelInviteAction.run, { inviteId }, setActionError);
   }
 
   async function handleResendInvite(inviteId: string) {
@@ -252,11 +248,11 @@ export function CollaboratorManager({
   }
 
   async function handleRemoveCollaborator(userId: string) {
-    await runIgnoringError(removeCollaboratorAction.run, { budgetId, userId });
+    await runTrackingError(removeCollaboratorAction.run, { budgetId, userId }, setActionError);
   }
 
   async function handleTransferOwnership(userId: string) {
-    await runIgnoringError(transferOwnershipAction.run, { budgetId, userId });
+    await runTrackingError(transferOwnershipAction.run, { budgetId, userId }, setActionError);
   }
 
   return (
