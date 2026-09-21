@@ -13,7 +13,7 @@ import {
 import { cancelInvite, sendInvite } from "@/app/budgets/inviteActions";
 import { leaveBudget, removeCollaborator } from "@/app/budgets/membershipActions";
 import { AddAccountPopover } from "@/components/AddAccountPopover";
-import { BudgetSwitcherPopover } from "@/components/BudgetSwitcherPopover";
+import { BudgetSwitcherList } from "@/components/BudgetSwitcherList";
 import { signOut } from "@/app/auth/actions";
 import { SidebarNav } from "./SidebarNav";
 
@@ -40,7 +40,7 @@ export async function Sidebar() {
       <div className="mb-300 text-h3 text-neutral-800">Budget App</div>
 
       <div className="mb-300">
-        <BudgetSwitcherPopover
+        <BudgetSwitcherList
           currentBudget={budget}
           currencySymbol={getCurrencySymbol(budget.currency)}
           budgets={budgets}

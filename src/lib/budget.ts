@@ -55,7 +55,8 @@ export type BudgetSummary = {
   ownerEmail: string;
   /** Only populated for budgets this user owns — see BudgetSwitcherPopover's
    * inline collaborator management (#76); a Collaborator doesn't get the
-   * rest of a Budget's membership list handed to them. */
+   * rest of a Budget's membership list handed to them (BudgetSwitcherList's
+   * expanded row renders them via CollaboratorManager, #96). */
   collaborators: { userId: string; email: string }[];
   pendingInvites: { id: string; email: string }[];
 };

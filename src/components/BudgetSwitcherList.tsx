@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "@/components/Icon";
 import { usePopover } from "@/components/usePopover";
-import { formatError, useServerAction } from "@/components/useServerAction";
+import { useServerAction } from "@/components/useServerAction";
+import { CollaboratorManager } from "@/components/CollaboratorManager";
 
 type Collaborator = { userId: string; email: string };
 type PendingInvite = { id: string; email: string };
@@ -24,6 +25,14 @@ type CurrencyOption = { code: string; name: string };
  * currently showing — click to switch to another existing budget, or open
  * a new one. Same popover pattern as AddAccountPopover/MoveMoneyPopover.
  *
+ * Owns switching/renaming/creating/deleting a budget, each via its own
+ * `useServerAction` (#95) so one action's pending/error state never
+ * blocks another. Collaborator/invite management for an owned budget's
+ * expanded row is delegated to `<CollaboratorManager>` (#96) rather than
+ * folded into this component's state — it has its own `useServerAction`
+ * instances, so acting on a budget's collaborators never disables this
+ * list's rename/delete/switch controls.
+ *
  * The "new budget" currency <select> only ever lists currencies no budget
  * has claimed yet (`availableCurrencies`, computed server-side from the
  * full budget list), so a duplicate currency can't even be submitted from
@@ -36,18 +45,15 @@ type CurrencyOption = { code: string; name: string };
  *
  * The budget list (Variant A from #59's prototype, per #76) is grouped
  * into "Your budgets" and "Shared with you". An owned row expands in
- * place into its collaborator list (with a per-collaborator remove and a
- * per-pending-invite cancel) plus an invite-by-email form, wired to #73/
- * #74's actions rather than reimplementing them — managing collaborators
- * never leaves the sidebar. Each owned row also keeps its delete (trash)
- * icon — deliberately hard to trigger by accident, requiring you to type
- * the budget's exact name to confirm (deleteBudget enforces the same
- * check server-side, since this popover isn't the only way to call it).
- * A shared row has neither affordance: it shows the Owner's email and a
- * visible "Leave" action instead, since only Owners can delete budgets
- * or manage collaborators (CONTEXT.md).
+ * place into its CollaboratorManager. Each owned row also keeps its
+ * delete (trash) icon — deliberately hard to trigger by accident,
+ * requiring you to type the budget's exact name to confirm (deleteBudget
+ * enforces the same check server-side, since this popover isn't the only
+ * way to call it). A shared row has neither affordance: it shows the
+ * Owner's email and a visible "Leave" action instead, since only Owners
+ * can delete budgets or manage collaborators (CONTEXT.md).
  */
-export function BudgetSwitcherPopover({
+export function BudgetSwitcherList({
   currentBudget,
   currencySymbol,
   budgets,
@@ -80,15 +86,10 @@ export function BudgetSwitcherPopover({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmText, setConfirmText] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [inviteDraft, setInviteDraft] = useState("");
-  const [inviteError, setInviteError] = useState<string | null>(null);
   const switchAction = useServerAction(switchBudget);
   const createAction = useServerAction(createBudget);
   const renameAction = useServerAction(renameBudget);
   const deleteAction = useServerAction(deleteBudget);
-  const inviteAction = useServerAction(sendInvite);
-  const cancelInviteAction = useServerAction(cancelInvite);
-  const removeCollaboratorAction = useServerAction(removeCollaborator);
   const leaveAction = useServerAction(leaveBudget);
 
   const pending =
@@ -96,26 +97,15 @@ export function BudgetSwitcherPopover({
     createAction.pending ||
     renameAction.pending ||
     deleteAction.pending ||
-    inviteAction.pending ||
-    cancelInviteAction.pending ||
-    removeCollaboratorAction.pending ||
     leaveAction.pending;
   const actionError =
-    switchAction.error ||
-    createAction.error ||
-    deleteAction.error ||
-    inviteAction.error ||
-    cancelInviteAction.error ||
-    removeCollaboratorAction.error ||
-    leaveAction.error;
+    switchAction.error || createAction.error || deleteAction.error || leaveAction.error;
   const { open, setOpen, position, triggerRef, panelRef } = usePopover({
     width: 256, // matches the popover's w-64
     onDismiss: () => {
       setAdding(false);
       setDeletingId(null);
       setExpandedId(null);
-      setInviteDraft("");
-      setInviteError(null);
     },
   });
   const formRef = useRef<HTMLFormElement>(null);
@@ -188,39 +178,6 @@ export function BudgetSwitcherPopover({
 
   function toggleExpanded(budgetId: string) {
     setExpandedId((cur) => (cur === budgetId ? null : budgetId));
-    setInviteDraft("");
-    setInviteError(null);
-  }
-
-  async function handleInvite(e: React.FormEvent<HTMLFormElement>, budgetId: string) {
-    e.preventDefault();
-    setInviteError(null);
-    try {
-      const result = await inviteAction.run({ budgetId, email: inviteDraft });
-      if (result?.error) {
-        setInviteError(result.error);
-        return;
-      }
-      setInviteDraft("");
-    } catch (err) {
-      setInviteError(formatError(err));
-    }
-  }
-
-  async function handleCancelInvite(inviteId: string) {
-    try {
-      await cancelInviteAction.run({ inviteId });
-    } catch {
-      // error is surfaced via cancelInviteAction.error
-    }
-  }
-
-  async function handleRemoveCollaborator(budgetId: string, userId: string) {
-    try {
-      await removeCollaboratorAction.run({ budgetId, userId });
-    } catch {
-      // error is surfaced via removeCollaboratorAction.error
-    }
   }
 
   async function handleLeave(budgetId: string) {
@@ -488,72 +445,14 @@ export function BudgetSwitcherPopover({
                       </div>
 
                       {expandedId === b.id && (
-                        <div className="ml-2 mt-1 space-y-1.5 rounded border border-neutral-200 bg-neutral-100 p-2">
-                          {b.collaborators.map((c) => (
-                            <div key={c.userId} className="flex items-center gap-1.5">
-                              <span className="min-w-0 flex-1 truncate text-small text-neutral-800">
-                                {c.email}
-                              </span>
-                              <button
-                                type="button"
-                                disabled={pending}
-                                onClick={() => handleRemoveCollaborator(b.id, c.userId)}
-                                title="Remove collaborator"
-                                className="shrink-0 rounded p-0.5 text-neutral-400 hover:bg-danger/10 hover:text-danger"
-                              >
-                                <Icon name="close" className="text-[16px]" label="Remove collaborator" />
-                              </button>
-                            </div>
-                          ))}
-                          {b.pendingInvites.map((invite) => (
-                            <div key={invite.id} className="flex items-center gap-1.5">
-                              <span className="min-w-0 flex-1 truncate text-small text-neutral-600">
-                                {invite.email}
-                              </span>
-                              <span className="shrink-0 text-[10px] text-neutral-600">
-                                pending
-                              </span>
-                              <button
-                                type="button"
-                                disabled={pending}
-                                onClick={() => handleCancelInvite(invite.id)}
-                                title="Cancel invite"
-                                className="shrink-0 rounded p-0.5 text-neutral-400 hover:bg-danger/10 hover:text-danger"
-                              >
-                                <Icon name="close" className="text-[16px]" label="Cancel invite" />
-                              </button>
-                            </div>
-                          ))}
-                          {b.collaborators.length === 0 && b.pendingInvites.length === 0 && (
-                            <p className="text-small text-neutral-600">
-                              No collaborators yet.
-                            </p>
-                          )}
-                          <form
-                            onSubmit={(e) => handleInvite(e, b.id)}
-                            className="flex items-center gap-1 pt-1"
-                          >
-                            <input
-                              value={inviteDraft}
-                              onChange={(e) => setInviteDraft(e.target.value)}
-                              type="email"
-                              required
-                              placeholder="Invite by email…"
-                              aria-label="Invite by email"
-                              className="min-w-0 flex-1 rounded border border-neutral-200 bg-neutral-0 px-2 py-1 text-small focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
-                            />
-                            <button
-                              type="submit"
-                              disabled={pending}
-                              className="shrink-0 rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
-                            >
-                              Invite
-                            </button>
-                          </form>
-                          {inviteError && (
-                            <p className="text-small text-danger">{inviteError}</p>
-                          )}
-                        </div>
+                        <CollaboratorManager
+                          budgetId={b.id}
+                          collaborators={b.collaborators}
+                          pendingInvites={b.pendingInvites}
+                          sendInvite={sendInvite}
+                          cancelInvite={cancelInvite}
+                          removeCollaborator={removeCollaborator}
+                        />
                       )}
                     </li>
                   ),
