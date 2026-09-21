@@ -48,7 +48,7 @@ type TransactionRowData = {
 // accounts/all/page.tsx can hand over their query results directly instead
 // of each independently re-deriving the same
 // {id, date, payeeName, categoryId, memo, amount, cleared} row shape (#48).
-type TransactionInput = {
+export type TransactionInput = {
   id: string;
   date: Date;
   payee: { name: string } | null;
