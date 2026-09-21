@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getCurrentBudget, listBudgets } from "@/lib/budget";
+import { getCurrentUser } from "@/lib/auth";
 import { formatMilliunits, getCurrencySymbol } from "@/lib/money";
 import { CURRENCY_OPTIONS } from "@/lib/currencies";
 import { createAccount } from "@/app/(app)/accounts/actions";
@@ -14,13 +15,15 @@ import { cancelInvite, sendInvite } from "@/app/budgets/inviteActions";
 import { leaveBudget, removeCollaborator } from "@/app/budgets/membershipActions";
 import { AddAccountPopover } from "@/components/AddAccountPopover";
 import { BudgetSwitcherList } from "@/components/BudgetSwitcherList";
-import { signOut } from "@/app/auth/actions";
+import { DeactivateAccountControl } from "@/components/DeactivateAccountControl";
+import { deactivateAccount, signOut } from "@/app/auth/actions";
 import { SidebarNav } from "./SidebarNav";
 
 export async function Sidebar() {
-  const [budget, budgets] = await Promise.all([
+  const [budget, budgets, user] = await Promise.all([
     getCurrentBudget(),
     listBudgets(),
+    getCurrentUser(),
   ]);
   const allAccounts = await prisma.account.findMany({
     where: { budgetId: budget.id },
@@ -136,14 +139,20 @@ export async function Sidebar() {
         )}
       </div>
 
-      <form action={signOut} className="mt-300 border-t border-neutral-200 pt-200">
-        <button
-          type="submit"
-          className="w-full rounded px-3 py-1.5 text-left text-small text-neutral-600 hover:bg-neutral-100"
-        >
-          Sign out
-        </button>
-      </form>
+      <div className="mt-300 space-y-1 border-t border-neutral-200 pt-200">
+        <form action={signOut}>
+          <button
+            type="submit"
+            className="w-full rounded px-3 py-1.5 text-left text-small text-neutral-600 hover:bg-neutral-100"
+          >
+            Sign out
+          </button>
+        </form>
+        <DeactivateAccountControl
+          email={user.email}
+          deactivateAccount={deactivateAccount}
+        />
+      </div>
     </nav>
   );
 }
