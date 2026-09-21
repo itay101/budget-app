@@ -13,7 +13,7 @@
  * to the placeholder.
  */
 export function safeRedirectPath(next: string | null | undefined): string {
-  if (!next || !/^\/(?!\/|\\)/.test(next) || next.includes("://")) {
+  if (!next || !/^\/(?!\/|\\)/.test(next)) {
     return "/";
   }
   try {

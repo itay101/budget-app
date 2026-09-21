@@ -11,6 +11,12 @@ describe("safeRedirectPath", () => {
     );
   });
 
+  it("accepts a same-origin path whose query string contains a URL", () => {
+    expect(
+      safeRedirectPath("/settings?return=https://docs.example"),
+    ).toBe("/settings?return=https://docs.example");
+  });
+
   it("defaults to / for null, undefined, and empty string", () => {
     expect(safeRedirectPath(null)).toBe("/");
     expect(safeRedirectPath(undefined)).toBe("/");
