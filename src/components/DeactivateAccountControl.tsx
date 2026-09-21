@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatError } from "@/components/useServerAction";
 
@@ -50,7 +50,12 @@ export function DeactivateAccountControl({
   const [confirming, setConfirming] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  // Not useTransition: its `pending` doesn't stay true across an `await`
+  // inside the transition callback in React 18 (isPending resolves as
+  // soon as the callback synchronously returns), which would let a
+  // second click fire a concurrent deactivation request while the first
+  // is still in flight — see the same note on useServerAction.
+  const [pending, setPending] = useState(false);
 
   function cancel() {
     setConfirming(false);
@@ -58,23 +63,25 @@ export function DeactivateAccountControl({
     setError(null);
   }
 
-  function handleDeactivate() {
+  async function handleDeactivate() {
+    if (pending) return;
     setError(null);
-    startTransition(async () => {
-      try {
-        const result = await deactivateAccount();
-        if (result?.error) {
-          setError(result.error);
-          return;
-        }
-      } catch (err) {
-        if (!isRedirectError(err)) {
-          setError(formatError(err));
-          return;
-        }
+    setPending(true);
+    try {
+      const result = await deactivateAccount();
+      if (result?.error) {
+        setError(result.error);
+        return;
       }
-      router.push("/sign-in");
-    });
+    } catch (err) {
+      if (!isRedirectError(err)) {
+        setError(formatError(err));
+        return;
+      }
+    } finally {
+      setPending(false);
+    }
+    router.push("/sign-in");
   }
 
   if (!confirming) {
