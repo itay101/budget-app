@@ -92,7 +92,9 @@ export function HiddenCategoriesSection({
   }
 
   function handleUnhide(categoryId: string) {
-    unhideAction.run({ categoryId, hidden: "false" });
+    unhideAction.run({ categoryId, hidden: "false" }).catch(() => {
+      // error is surfaced via unhideAction.error
+    });
   }
 
   return (

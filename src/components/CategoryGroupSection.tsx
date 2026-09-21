@@ -109,11 +109,15 @@ export function CategoryGroupSection({
     renameCategoryAction.error;
 
   function move(categoryId: string, beforeCategoryId: string | null) {
-    moveAction.run({
-      categoryId,
-      targetGroupId: groupId,
-      beforeCategoryId: beforeCategoryId ?? undefined,
-    });
+    moveAction
+      .run({
+        categoryId,
+        targetGroupId: groupId,
+        beforeCategoryId: beforeCategoryId ?? undefined,
+      })
+      .catch(() => {
+        // error is surfaced via moveAction.error
+      });
   }
 
   function handleDeleteGroup() {
@@ -122,7 +126,9 @@ export function CategoryGroupSection({
     ) {
       return;
     }
-    deleteGroupAction.run({ categoryGroupId: groupId });
+    deleteGroupAction.run({ categoryGroupId: groupId }).catch(() => {
+      // error is surfaced via deleteGroupAction.error
+    });
   }
 
   function cancelGroupRename() {

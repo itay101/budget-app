@@ -73,7 +73,9 @@ function AccountRow({
   const { run, error } = useServerAction(updateAccount);
 
   function commit(field: string, value: string) {
-    run({ accountId: account.id, [field]: value });
+    run({ accountId: account.id, [field]: value }).catch(() => {
+      // error is surfaced via `error`
+    });
   }
 
   return (

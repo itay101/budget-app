@@ -33,7 +33,9 @@ export function ReconcileButton({ balance }: { balance: number }) {
     );
 
     if (confirmed) {
-      run({ accountId });
+      run({ accountId }).catch(() => {
+        // error is surfaced via `error`
+      });
       return;
     }
 
