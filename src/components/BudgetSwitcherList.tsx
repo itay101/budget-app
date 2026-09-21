@@ -64,6 +64,7 @@ export function BudgetSwitcherList({
   deleteBudget,
   sendInvite,
   cancelInvite,
+  resendInvite,
   removeCollaborator,
   leaveBudget,
 }: {
@@ -77,6 +78,7 @@ export function BudgetSwitcherList({
   deleteBudget: (formData: FormData) => Promise<void>;
   sendInvite: (formData: FormData) => Promise<{ error?: string }>;
   cancelInvite: (formData: FormData) => Promise<void>;
+  resendInvite: (formData: FormData) => Promise<{ error?: string }>;
   removeCollaborator: (formData: FormData) => Promise<void>;
   leaveBudget: (formData: FormData) => Promise<void>;
 }) {
@@ -451,6 +453,7 @@ export function BudgetSwitcherList({
                           pendingInvites={b.pendingInvites}
                           sendInvite={sendInvite}
                           cancelInvite={cancelInvite}
+                          resendInvite={resendInvite}
                           removeCollaborator={removeCollaborator}
                         />
                       )}
