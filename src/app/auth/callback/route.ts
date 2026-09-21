@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { prisma } from "@/lib/prisma";
 import { acceptPendingInvites } from "@/lib/invites";
+import { safeRedirectPath } from "@/lib/safeRedirect";
 
 // Always run this on request — it exchanges a one-time code for a
 // session, never something to prerender or cache.
@@ -47,7 +48,7 @@ const JUST_CREATED_SLACK_MS = 5_000;
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/";
+  const next = safeRedirectPath(searchParams.get("next"));
 
   if (code) {
     const supabase = await createClient();
