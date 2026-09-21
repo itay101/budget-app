@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Icon } from "@/components/Icon";
 
 type Collaborator = { userId: string; email: string };
@@ -37,7 +37,12 @@ export function CollaboratorManager({
   const [inviteDraft, setInviteDraft] = useState("");
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [pending, setPending] = useState(false);
+
+  function runPending(action: () => Promise<void>) {
+    setPending(true);
+    void action().finally(() => setPending(false));
+  }
 
   function handleInvite(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -45,7 +50,7 @@ export function CollaboratorManager({
     const formData = new FormData();
     formData.set("budgetId", budgetId);
     formData.set("email", inviteDraft);
-    startTransition(async () => {
+    runPending(async () => {
       try {
         const result = await sendInvite(formData);
         if (result.error) {
@@ -63,7 +68,7 @@ export function CollaboratorManager({
     const formData = new FormData();
     formData.set("inviteId", inviteId);
     setActionError(null);
-    startTransition(async () => {
+    runPending(async () => {
       try {
         await cancelInvite(formData);
       } catch (err) {
@@ -77,7 +82,7 @@ export function CollaboratorManager({
     formData.set("budgetId", budgetId);
     formData.set("userId", userId);
     setActionError(null);
-    startTransition(async () => {
+    runPending(async () => {
       try {
         await removeCollaborator(formData);
       } catch (err) {
