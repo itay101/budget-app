@@ -27,7 +27,7 @@ export interface UsePopoverOptions {
   /**
    * Called - in addition to closing the popover - when it's dismissed via
    * an outside click or Escape, for callers that need to reset extra
-   * state alongside `open` (e.g. BudgetSwitcherPopover's in-progress
+   * state alongside `open` (e.g. BudgetSwitcherList's in-progress
    * add/rename/delete sub-forms). May be a fresh function each render;
    * only its latest value is ever used.
    */
