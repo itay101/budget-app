@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { isAuthorizedCronRequest } from "@/lib/cronAuth";
 
 // Always run this on request (never prerender/cache it at build time) —
 // each cron invocation needs to issue a fresh query against the database.
@@ -26,12 +27,8 @@ export const dynamic = "force-dynamic";
  * even before that var is configured).
  */
 export async function GET(request: Request) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!isAuthorizedCronRequest(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const devDatabaseUrl = process.env.DEV_DATABASE_URL;
