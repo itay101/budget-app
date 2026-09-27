@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { isAuthorizedCronRequest } from "@/lib/cronAuth";
+import { pingSupabaseApi } from "@/lib/supabaseKeepalive";
 
 // Always run this on request (never prerender/cache it at build time) —
 // each cron invocation needs to issue a fresh query against the database.
@@ -21,23 +22,54 @@ export const dynamic = "force-dynamic";
  * (`DEV_DATABASE_URL`, set only on production so this daily cron can
  * reach it) instead of the shared `prisma` client.
  *
- * Set `DEV_DATABASE_URL` to the dev project's connection string in
- * Vercel's production environment to enable this. If it isn't set, this
- * route is a no-op (so it's safe to leave the cron entry in vercel.json
- * even before that var is configured).
+ * A direct-DB query alone turned out not to be enough — Supabase kept
+ * warning about pausing the dev project even with it in place — so when
+ * `DEV_SUPABASE_URL` and `DEV_SUPABASE_ANON_KEY` are set this also sends
+ * a request through the dev project's HTTP API (see
+ * src/lib/supabaseKeepalive.ts), which Supabase does count as activity.
+ *
+ * Set those vars (and/or `DEV_DATABASE_URL`) in Vercel's production
+ * environment to enable each ping. With none of them set, this route is
+ * a no-op (so it's safe to leave the cron entry in vercel.json even
+ * before they're configured).
  */
 export async function GET(request: Request) {
   if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const devDatabaseUrl = process.env.DEV_DATABASE_URL;
-  if (!devDatabaseUrl) {
+  const api = await pingDevApi();
+  const database = await pingDevDatabase();
+
+  if (!api && !database) {
     return NextResponse.json({
       ok: true,
-      skipped: "DEV_DATABASE_URL is not set",
+      skipped:
+        "Neither DEV_SUPABASE_URL/DEV_SUPABASE_ANON_KEY nor DEV_DATABASE_URL is set",
     });
   }
+
+  return NextResponse.json({
+    ok: true,
+    pinged: { api, database },
+    pingedAt: new Date().toISOString(),
+  });
+}
+
+/** Returns whether the ping ran (i.e. its env vars are set). */
+async function pingDevApi(): Promise<boolean> {
+  const url = process.env.DEV_SUPABASE_URL;
+  const anonKey = process.env.DEV_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return false;
+
+  await pingSupabaseApi(url, anonKey);
+  return true;
+}
+
+/** Returns whether the ping ran (i.e. DEV_DATABASE_URL is set). */
+async function pingDevDatabase(): Promise<boolean> {
+  const devDatabaseUrl = process.env.DEV_DATABASE_URL;
+  if (!devDatabaseUrl) return false;
 
   // Deliberately not the shared `prisma` singleton from "@/lib/prisma" —
   // that one is pinned to `DATABASE_URL` (the production database). A
@@ -52,6 +84,5 @@ export async function GET(request: Request) {
   } finally {
     await devPrisma.$disconnect();
   }
-
-  return NextResponse.json({ ok: true, pingedAt: new Date().toISOString() });
+  return true;
 }
