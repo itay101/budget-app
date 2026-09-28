@@ -181,10 +181,19 @@ Cron never invokes preview deployments — so it keeps crossing the 7-day
 window and Supabase keeps emailing about pausing it. A second cron,
 `/api/cron/keepalive-dev`
 ([`src/app/api/cron/keepalive-dev/route.ts`](./src/app/api/cron/keepalive-dev/route.ts)),
-pings that project directly using its own connection string. Set
-`DEV_DATABASE_URL` on Vercel's **production** environment to the dev
-project's connection string to enable it (see
-[`.env.example`](./.env.example)); until it's set, the route is a no-op.
+pings that project directly. A direct `SELECT 1` alone turned out not to
+be enough (Supabase kept sending pause warnings with it in place), so the
+route also sends a request through the dev project's HTTP API
+(`/auth/v1/health`), which Supabase does count as activity. On Vercel's
+**production** environment, set:
+
+- `DEV_SUPABASE_URL` and `DEV_SUPABASE_ANON_KEY`: the dev project's URL
+  and anon/publishable key (the API ping; this is the one that matters)
+- `DEV_DATABASE_URL`: the dev project's connection string (the direct-DB
+  ping)
+
+See [`.env.example`](./.env.example). Each ping runs only when its vars
+are set; with none set, the route is a no-op.
 
 Optionally set a `CRON_SECRET` env var on Vercel so the endpoints only
 accept Vercel's own cron requests (see [`.env.example`](./.env.example)).
