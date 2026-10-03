@@ -1,16 +1,19 @@
 "use client";
 
-import { useRef, useTransition } from "react";
+import { useRef } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "@/components/Icon";
 import { usePopover } from "@/components/usePopover";
+import { useServerAction } from "@/components/useServerAction";
 
 /**
  * The shared shell behind the app's "+ Add …" popovers (AddAccountPopover,
  * AddCategoryGroupPopover, AddCategoryPopover): an "+ <triggerLabel>"
  * button that opens a w-64 panel holding a titled create form with
- * Cancel / submit buttons. On submit it calls `onSubmit` inside a
- * transition, then resets the form and closes the popover.
+ * Cancel / submit buttons. On submit it runs `onSubmit` via
+ * useServerAction (so the submit button shows "Adding…" for as long as
+ * the action is actually in flight), then resets the form and closes the
+ * popover; if the action throws, the popover stays open with the error.
  *
  * Callers supply only what differs - the trigger's label and classes, the
  * panel title, the submit label, the action, and the form's fields as
@@ -31,7 +34,7 @@ export function AddFormPopover({
   onSubmit: (formData: FormData) => Promise<void>;
   children: React.ReactNode;
 }) {
-  const [pending, startTransition] = useTransition();
+  const { run, pending, error } = useServerAction(onSubmit);
   const { open, setOpen, position, triggerRef, panelRef } = usePopover({
     width: 256, // matches the popover's w-64
   });
@@ -39,12 +42,19 @@ export function AddFormPopover({
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    startTransition(async () => {
-      await onSubmit(formData);
-      formRef.current?.reset();
-      setOpen(false);
-    });
+    const fields: Record<string, string> = {};
+    for (const [key, value] of new FormData(e.currentTarget)) {
+      if (typeof value === "string") fields[key] = value;
+    }
+    run(fields).then(
+      () => {
+        formRef.current?.reset();
+        setOpen(false);
+      },
+      () => {
+        // error is surfaced via `error`
+      },
+    );
   }
 
   return (
@@ -71,6 +81,7 @@ export function AddFormPopover({
             </p>
             <form ref={formRef} onSubmit={handleSubmit} className="space-y-2">
               {children}
+              {error && <p className="text-small text-danger">{error}</p>}
               <div className="flex justify-end gap-2 pt-1">
                 <button
                   type="button"
