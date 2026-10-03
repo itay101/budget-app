@@ -52,3 +52,11 @@ A record that a User made a specific change to a Budget's data — scoped
 to a Budget, covering every Budget-scoped mutation (not just
 transactions). Data model, actor, and retention rules: [ADR 0002](docs/adr/0002-audit-entry-is-a-single-polymorphic-table-with-field-diffs.md).
 _Avoid_: Audit log (that's the collection; AuditEntry is one row in it).
+
+**Transfer**:
+A movement of money from one Account in a Budget to another, recorded as
+two linked transactions, one in each Account, with opposite amounts. A
+Transfer between two on-budget Accounts carries no category. When one side
+is off-budget, the on-budget side is categorized like ordinary spending or
+income. Storage and editing rules: [ADR 0007](docs/adr/0007-transfers-are-paired-self-linked-transactions-and-on-budget-locks-once-used.md).
+_Avoid_: Move (that's moving money between categories, not accounts), transfer payee
