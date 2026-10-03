@@ -102,4 +102,52 @@ describe("AddFormPopover", () => {
     expect(resetSpy).toHaveBeenCalled();
     expect(panelForm()).toBeNull();
   });
+
+  it("disables the submit button and shows 'Adding…' until the action settles", async () => {
+    let resolveAction!: () => void;
+    const onSubmit = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveAction = resolve;
+        }),
+    );
+    render(onSubmit);
+
+    act(() => trigger().click());
+    await act(async () => {
+      panelForm()!.requestSubmit();
+    });
+
+    const submit = panelForm()!.querySelector<HTMLButtonElement>(
+      'button[type="submit"]',
+    )!;
+    expect(submit.disabled).toBe(true);
+    expect(submit.textContent).toBe("Adding…");
+
+    await act(async () => {
+      resolveAction();
+    });
+
+    expect(panelForm()).toBeNull();
+  });
+
+  it("stays open with the error message when the action throws", async () => {
+    const onSubmit = jest.fn(async () => {
+      throw new Error("Name already taken");
+    });
+    render(onSubmit);
+
+    act(() => trigger().click());
+    await act(async () => {
+      panelForm()!.requestSubmit();
+    });
+
+    expect(panelForm()).not.toBeNull();
+    expect(panelForm()!.textContent).toContain("Name already taken");
+    const submit = panelForm()!.querySelector<HTMLButtonElement>(
+      'button[type="submit"]',
+    )!;
+    expect(submit.disabled).toBe(false);
+    expect(submit.textContent).toBe("Create thing");
+  });
 });
