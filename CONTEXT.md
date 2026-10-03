@@ -88,3 +88,15 @@ month. At the next month the category starts again from zero, and the
 shortfall comes out of that month's Ready to Assign. Credit overspending
 never touches Ready to Assign. Rules: [ADR 0009](docs/adr/0009-category-available-resets-at-month-rollover-derived-from-full-history.md).
 _Avoid_: debt (that's what's owed on a credit or loan Account), deficit
+
+**Credit Overspending**:
+Card spending in a Budget Month that its category didn't have the money to
+cover, after the month's cash spending was covered first. It becomes debt
+on the card instead of coming out of Ready to Assign. Rules: [ADR 0010](docs/adr/0010-credit-cards-get-a-payment-category-funded-cash-first-per-month.md).
+_Avoid_: card overspending, yellow overspending
+
+**Payment Category**:
+The category holding the money set aside to pay one on-budget Credit Card or
+Line of Credit Account, one per Account. It fills automatically as covered
+card spending moves in, and Transfers to the card spend from it. Rules: [ADR 0010](docs/adr/0010-credit-cards-get-a-payment-category-funded-cash-first-per-month.md).
+_Avoid_: credit card category, debt category
