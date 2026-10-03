@@ -1,0 +1,686 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ready to Assign Math</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<!--
+  PROTOTYPE, throwaway. Answers "Prototype the Ready to Assign and Overspending math"
+  (itay101/budget-app#135). Open this file in a browser; nothing to install.
+  The <script id="budget-math"> block is the pure, liftable part (ADR 0008/0009/0010).
+  Everything else is a throwaway shell.
+-->
+<style>
+  /* Layout: one reading column; state panels on top, walkthroughs and free play below. */
+  :root {
+    --bg: #f5f7f8; --surface: #ffffff; --fg: #1b2328; --muted: #5d6b73; --line: #d9e0e4;
+    --accent: #1f6f78; --accent-soft: #e2f0f1;
+    --cash: #b42318; --cash-soft: #fde8e6; --credit: #a15c00; --credit-soft: #fdf0dc;
+    --ok: #20734a; --ok-soft: #e3f3ea; --changed: #fff3b0;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #12181b; --surface: #1a2226; --fg: #e3e9ec; --muted: #94a3ab; --line: #2c373d;
+    --accent: #5fb7bf; --accent-soft: #1d3436;
+    --cash: #ff8a7d; --cash-soft: #3a1f1c; --credit: #f2b45c; --credit-soft: #3a2c16;
+    --ok: #6fd19c; --ok-soft: #173126; --changed: #4a4214; color-scheme: dark; } }
+  :root[data-theme="dark"] {
+    --bg: #12181b; --surface: #1a2226; --fg: #e3e9ec; --muted: #94a3ab; --line: #2c373d;
+    --accent: #5fb7bf; --accent-soft: #1d3436;
+    --cash: #ff8a7d; --cash-soft: #3a1f1c; --credit: #f2b45c; --credit-soft: #3a2c16;
+    --ok: #6fd19c; --ok-soft: #173126; --changed: #4a4214; color-scheme: dark; }
+
+  body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--sans); margin: 0; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding-inline: 16px; padding-block: 24px 64px; display: grid; gap: 20px; }
+  h1 { font-size: 1.6rem; margin: 0; text-wrap: balance; }
+  h2 { font-size: 1.05rem; margin: 0; }
+  h3 { font-size: .8rem; margin: 0; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+  p { margin: 0; max-width: 72ch; }
+  .muted { color: var(--muted); }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
+  .grid2 { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 20px; align-items: start; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+  .intro { display: grid; gap: 8px; }
+  .tag { display: inline-block; font: 600 .7rem/1 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+
+  .monthbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .monthbar .m { font-weight: 600; min-width: 8ch; text-align: center; }
+  button, select, input { font: inherit; }
+  button { border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+  button:disabled { opacity: .45; cursor: default; border-color: var(--line); }
+  select, input { border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 6px; padding: 5px 8px; min-width: 0; }
+
+  .rta { display: grid; gap: 4px; padding: 14px; border-radius: 8px; background: var(--ok-soft); }
+  .rta.neg { background: var(--cash-soft); }
+  .rta .big { font: 600 2rem/1.1 var(--mono); color: var(--ok); }
+  .rta.neg .big { color: var(--cash); }
+  .lines { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; font-size: .9rem; }
+  .lines .tot { border-top: 1px solid var(--line); padding-top: 4px; font-weight: 600; }
+
+  .tbl { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: right; vertical-align: top; }
+  th { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+  th:first-child, td:first-child { text-align: left; }
+  tr.group td { background: var(--bg); font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .sub { display: block; font-size: .78rem; color: var(--muted); font-family: var(--sans); white-space: normal; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-family: var(--mono); background: var(--ok-soft); color: var(--ok); }
+  .pill.zero { background: transparent; color: var(--muted); }
+  .pill.cash { background: var(--cash-soft); color: var(--cash); }
+  .pill.credit { background: var(--credit-soft); color: var(--credit); }
+  .chip { display: inline-block; font-size: .68rem; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; margin-left: 6px; color: var(--muted); vertical-align: 1px; }
+  .chip.cash { border-color: var(--cash); color: var(--cash); }
+  .chip.credit { border-color: var(--credit); color: var(--credit); }
+  .changed { background: var(--changed) !important; transition: background 1.2s; }
+  @media (prefers-reduced-motion: reduce) { .changed { transition: none; } }
+
+  .check { font-size: .85rem; padding: 8px 10px; border-radius: 6px; background: var(--ok-soft); }
+  .check.bad { background: var(--cash-soft); }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tabs button { font-size: .85rem; padding: 4px 10px; }
+  .tabs button[aria-selected="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .steps { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .steps li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; align-items: start; }
+  .steps li .expect { grid-column: 2; font-size: .85rem; color: var(--muted); }
+  .steps li.done .expect { color: var(--fg); }
+  .steps li.done button { border-color: var(--ok); color: var(--ok); }
+  .last { font-size: .85rem; color: var(--accent); min-height: 1.3em; }
+  .form { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+  .form label { display: grid; gap: 2px; font-size: .75rem; color: var(--muted); }
+  .form input[type="number"] { width: 9ch; }
+  .err { color: var(--cash); font-size: .85rem; min-height: 1.2em; }
+  details summary { cursor: pointer; font-weight: 600; }
+  .ledger input { width: 9ch; }
+</style>
+
+<script id="budget-math">
+/* ======================================================================
+   BudgetMath: the pure, liftable part. No DOM in here.
+   Amounts are integer milliunits (negative = outflow), months are "YYYY-MM".
+   ====================================================================== */
+const BudgetMath = (() => {
+  const RTA = "rta";     // the system "Inflow: Ready to Assign" category (ADR 0008)
+  const UNCAT = "uncat"; // the read-only Uncategorized row (categoryId null)
+
+  const addMonths = (m, n) => {
+    const [y, mo] = m.split("-").map(Number);
+    const t = y * 12 + (mo - 1) + n;
+    return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, "0")}`;
+  };
+  const inc = (map, key, v) => map.set(key, (map.get(key) || 0) + v);
+
+  /* Step 1: the read path's "queries". Everything compute() uses is a grouped sum,
+     so each map below corresponds to one aggregate query:
+       activity      ~ SELECT categoryId, accountId, date_trunc('month', date), SUM(amount)
+                         FROM Transaction (on-budget, not on<->on transfers, not RTA) GROUP BY 1,2,3
+       income        ~ SUM(amount) of Inflow: Ready to Assign rows, GROUP BY month
+       cardTransfers ~ SUM(amount) of the card side of on<->on transfers, GROUP BY card, month
+       assigned      ~ CategoryMonth.groupBy(categoryId, month) */
+  function aggregate(budget) {
+    const acct = new Map(budget.accounts.map((a) => [a.id, a]));
+    const g = { activity: new Map(), income: new Map(), cardTransfers: new Map(), assigned: new Map() };
+    for (const t of budget.transactions) {
+      const a = acct.get(t.accountId);
+      if (!a || !a.onBudget) continue; // off-budget accounts never count
+      const other = t.transferAccountId ? acct.get(t.transferAccountId) : null;
+      if (other && other.onBudget) { // on<->on transfer: no category
+        if (a.kind === "card") inc(g.cardTransfers, `${a.id}|${t.month}`, t.amount);
+        continue;
+      }
+      if (t.categoryId === RTA) { inc(g.income, t.month, t.amount); continue; }
+      if (t.startingBalance && t.categoryId == null) continue; // negative card Starting Balance stays outside the budget
+      inc(g.activity, `${t.categoryId ?? UNCAT}|${a.id}|${t.month}`, t.amount);
+    }
+    for (const x of budget.assignments) inc(g.assigned, `${x.categoryId}|${x.month}`, x.amount);
+    return g;
+  }
+
+  /* Split `total` across parts in proportion to their weights, largest remainder first. */
+  function splitLargestRemainder(total, parts) {
+    const W = parts.reduce((s, [, w]) => s + w, 0);
+    if (!W || !total) return parts.map(([id]) => [id, 0]);
+    const raw = parts.map(([id, w]) => ({ id, exact: (total * w) / W }));
+    raw.forEach((r) => { r.v = Math.floor(r.exact); r.rem = r.exact - r.v; });
+    let left = total - raw.reduce((s, r) => s + r.v, 0);
+    [...raw].sort((a, b) => b.rem - a.rem).forEach((r) => { if (left > 0) { r.v++; left--; } });
+    return raw.map((r) => [r.id, r.v]);
+  }
+
+  function monthSpan(budget, viewMonth) {
+    const ms = [viewMonth, ...budget.transactions.map((t) => t.month), ...budget.assignments.map((x) => x.month)];
+    const first = ms.reduce((a, b) => (a < b ? a : b));
+    const last = ms.reduce((a, b) => (a > b ? a : b));
+    const out = [];
+    for (let m = first; m <= last; m = addMonths(m, 1)) out.push(m);
+    return out;
+  }
+
+  /* Step 2: walk every month in order (ADR 0009) and derive each category's numbers. */
+  function compute(budget, viewMonth) {
+    const g = aggregate(budget);
+    const months = monthSpan(budget, viewMonth);
+    const cashAccts = budget.accounts.filter((a) => a.onBudget && a.kind === "cash");
+    const cards = budget.accounts.filter((a) => a.onBudget && a.kind === "card");
+    const paymentFor = new Map(budget.categories.filter((c) => c.paymentFor).map((c) => [c.paymentFor, c]));
+    const ordinary = [...budget.categories.filter((c) => !c.paymentFor), { id: UNCAT, name: "Uncategorized", system: true }];
+
+    let totalAssigned = 0;
+    const assignedByMonth = new Map();
+    for (const [k, v] of g.assigned) { inc(assignedByMonth, k.split("|")[1], v); totalAssigned += v; }
+
+    const prev = new Map();
+    const byMonth = {};
+    let cumIncome = 0, cumAssigned = 0, cumCashOS = 0, lastCashOS = 0, cashBal = 0, cardIncome = 0;
+
+    for (const M of months) {
+      const rows = [];
+      const fundedByCard = new Map(cards.map((k) => [k.id, 0]));
+      const refundByCard = new Map(cards.map((k) => [k.id, 0]));
+
+      for (const c of ordinary) {
+        const carry = Math.max(0, prev.get(c.id) ?? 0); // overspending resets at the rollover
+        const assigned = g.assigned.get(`${c.id}|${M}`) ?? 0;
+        let cashAct = 0;
+        for (const a of cashAccts) cashAct += g.activity.get(`${c.id}|${a.id}|${M}`) ?? 0;
+        const spend = []; let refunds = 0;
+        for (const k of cards) {
+          const net = g.activity.get(`${c.id}|${k.id}|${M}`) ?? 0; // netted per card per month
+          if (net < 0) spend.push([k.id, -net]);
+          else if (net > 0) { refunds += net; inc(refundByCard, k.id, net); }
+        }
+        const cardSpend = spend.reduce((s, [, v]) => s + v, 0);
+        const cashLeft = carry + assigned + cashAct + refunds;      // cash is covered first
+        const funded = Math.min(Math.max(cashLeft, 0), cardSpend);  // what's left covers card spending
+        const split = splitLargestRemainder(funded, spend);
+        split.forEach(([k, v]) => inc(fundedByCard, k, v));
+        const available = cashLeft - cardSpend;
+        rows.push({
+          id: c.id, name: c.name, hidden: !!c.hidden, system: !!c.system,
+          carry, assigned, activity: cashAct + refunds - cardSpend, available,
+          cardSpend, funded, split, refunds,
+          cashOverspend: Math.max(0, -cashLeft), creditOverspend: cardSpend - funded,
+        });
+        prev.set(c.id, available);
+      }
+
+      for (const k of cards) {
+        const p = paymentFor.get(k.id);
+        if (!p) continue;
+        const carry = Math.max(0, prev.get(p.id) ?? 0);
+        const assigned = g.assigned.get(`${p.id}|${M}`) ?? 0;
+        const transfers = g.cardTransfers.get(`${k.id}|${M}`) ?? 0; // + payment into card, - cash advance out
+        const fundedIn = fundedByCard.get(k.id), refundsOut = refundByCard.get(k.id);
+        const activity = fundedIn - refundsOut - transfers;
+        const available = carry + assigned + activity;
+        rows.push({
+          id: p.id, name: p.name, payment: true, cardId: k.id, hidden: !!p.hidden,
+          carry, assigned, activity, available, fundedIn, refundsOut, transfers,
+          cashOverspend: Math.max(0, -available), creditOverspend: 0,
+        });
+        prev.set(p.id, available);
+      }
+
+      const income = g.income.get(M) ?? 0;
+      const assignedThis = assignedByMonth.get(M) ?? 0;
+      const leftOver = cumIncome - (cumCashOS - lastCashOS) - cumAssigned;
+      const assignedFuture = totalAssigned - cumAssigned - assignedThis;
+      const rta = leftOver + income - lastCashOS - assignedThis - assignedFuture;
+      const breakdown = { leftOver, income, overspentLastMonth: lastCashOS, assignedThis, assignedFuture, rta };
+
+      const cashOS = rows.reduce((s, r) => s + r.cashOverspend, 0);
+      const creditOS = rows.reduce((s, r) => s + r.creditOverspend, 0);
+      cumIncome += income; cumAssigned += assignedThis; cumCashOS += cashOS; lastCashOS = cashOS;
+
+      // Money check: Ready to Assign + every Available should equal cash in on-budget cash accounts,
+      // adjusted for income that landed on a card, this month's credit overspending and future assignments.
+      for (const t of budget.transactions) {
+        if (t.month !== M) continue;
+        const a = budget.accounts.find((x) => x.id === t.accountId);
+        if (!a || !a.onBudget) continue;
+        if (a.kind === "cash") cashBal += t.amount;
+        else if (t.categoryId === RTA) cardIncome += t.amount;
+      }
+      const envelopes = rows.reduce((s, r) => s + r.available, 0);
+      const check = { lhs: rta + envelopes, rhs: cashBal + cardIncome - creditOS - assignedFuture, cashBal, cardIncome, creditOS, envelopes };
+
+      byMonth[M] = { month: M, rows, breakdown, cashOS, creditOS, check };
+    }
+    return { months, byMonth };
+  }
+
+  /* Balances as of the end of a month (all accounts, budget or not). */
+  function balances(budget, month) {
+    return budget.accounts.map((a) => ({
+      ...a,
+      balance: budget.transactions.filter((t) => t.accountId === a.id && t.month <= month).reduce((s, t) => s + t.amount, 0),
+    }));
+  }
+
+  /* ---- Actions: pure (budget, ...) -> budget, or { error } ---- */
+  let seq = 0;
+  const nextId = (p) => `${p}${++seq}`;
+
+  function addTransaction(b, { id, accountId, categoryId = null, amount, month, startingBalance = false }) {
+    const cat = b.categories.find((c) => c.id === categoryId);
+    if (cat && cat.paymentFor) return { error: "A Payment Category can't be used on a transaction." };
+    return { ...b, transactions: [...b.transactions, { id: id || nextId("t"), accountId, categoryId, amount, month, startingBalance }] };
+  }
+  function addTransfer(b, { from, to, amount, month, categoryId = null }) {
+    if (from === to) return { error: "Pick two different accounts." };
+    const A = b.accounts.find((a) => a.id === from), B = b.accounts.find((a) => a.id === to);
+    const onOn = A.onBudget && B.onBudget;
+    const id1 = nextId("t"), id2 = nextId("t");
+    return { ...b, transactions: [...b.transactions,
+      { id: id1, accountId: from, transferAccountId: to, pairId: id2, amount: -amount, month, categoryId: onOn || !A.onBudget ? null : categoryId },
+      { id: id2, accountId: to, transferAccountId: from, pairId: id1, amount, month, categoryId: onOn || !B.onBudget ? null : categoryId },
+    ] };
+  }
+  function setAssigned(b, categoryId, month, amount) {
+    if (categoryId === UNCAT || categoryId === RTA) return { error: "That row can't be assigned to." };
+    const rest = b.assignments.filter((x) => !(x.categoryId === categoryId && x.month === month));
+    return { ...b, assignments: amount ? [...rest, { categoryId, month, amount }] : rest };
+  }
+  function editTransactionAmount(b, id, amount) {
+    const t = b.transactions.find((x) => x.id === id);
+    return { ...b, transactions: b.transactions.map((x) =>
+      x.id === id ? { ...x, amount } : t.pairId && x.id === t.pairId ? { ...x, amount: -amount } : x) };
+  }
+  function removeTransaction(b, id) {
+    const t = b.transactions.find((x) => x.id === id);
+    return { ...b, transactions: b.transactions.filter((x) => x.id !== id && x.id !== t.pairId) };
+  }
+  function setHidden(b, categoryId, hidden) {
+    return { ...b, categories: b.categories.map((c) => (c.id === categoryId ? { ...c, hidden } : c)) };
+  }
+  function deleteCategory(b, categoryId, replacementId) {
+    const cat = b.categories.find((c) => c.id === categoryId);
+    if (!cat || cat.paymentFor) return { error: "Payment Categories follow their account and can't be deleted here." };
+    const used = b.transactions.some((t) => t.categoryId === categoryId);
+    if (used && !replacementId) return { error: `${cat.name} has transactions. Pick a category to merge it into.` };
+    const categories = b.categories.filter((c) => c.id !== categoryId);
+    if (!used) return { ...b, categories, assignments: b.assignments.filter((x) => x.categoryId !== categoryId) };
+    const merged = new Map();
+    for (const x of b.assignments) {
+      const cid = x.categoryId === categoryId ? replacementId : x.categoryId;
+      inc(merged, `${cid}|${x.month}`, x.amount);
+    }
+    return {
+      ...b, categories,
+      transactions: b.transactions.map((t) => (t.categoryId === categoryId ? { ...t, categoryId: replacementId } : t)),
+      assignments: [...merged].map(([k, amount]) => { const [cid, month] = k.split("|"); return { categoryId: cid, month, amount }; }),
+    };
+  }
+
+  return { RTA, UNCAT, addMonths, aggregate, compute, balances, splitLargestRemainder,
+    addTransaction, addTransfer, setAssigned, editTransactionAmount, removeTransaction, setHidden, deleteCategory };
+})();
+</script>
+
+<div class="wrap">
+  <header class="intro">
+    <span class="tag">Prototype · throwaway</span>
+    <h1>Ready to Assign and Overspending math</h1>
+    <p>Do the rules we decided produce the numbers we expect? This page computes, for every month, each category's Available and the Ready to Assign breakdown, using only per-month totals. It follows ADR 0008 (Inflow: Ready to Assign), ADR 0009 (overspending resets at the rollover) and ADR 0010 (credit cards, cash first). Pick a walkthrough and press its steps in order. Each step says what you should see. Changed numbers flash yellow.</p>
+  </header>
+
+  <section class="panel" aria-labelledby="wt-h">
+    <h2 id="wt-h">Walkthroughs</h2>
+    <div class="tabs" id="tabs" role="tablist"></div>
+    <p id="wt-desc"></p>
+    <ol class="steps" id="steps"></ol>
+  </section>
+
+  <div class="monthbar">
+    <button id="prev" aria-label="Previous month">←</button>
+    <span class="m" id="month"></span>
+    <button id="next" aria-label="Next month">→</button>
+    <span class="last" id="last"></span>
+  </div>
+
+  <div class="grid2">
+    <div style="display:grid;gap:20px;min-width:0">
+      <section class="panel" aria-labelledby="rta-h">
+        <h3 id="rta-h">Ready to Assign</h3>
+        <div id="rta"></div>
+        <div id="check"></div>
+      </section>
+      <section class="panel" aria-labelledby="acct-h">
+        <h3 id="acct-h">Accounts at month end</h3>
+        <div class="lines" id="accounts"></div>
+      </section>
+    </div>
+    <section class="panel" aria-labelledby="cat-h" style="min-width:0">
+      <h3 id="cat-h">Categories this month</h3>
+      <div class="tbl"><table id="cats"></table></div>
+      <p class="muted" style="font-size:.8rem"><span class="pill cash">red</span> cash overspending, comes out of next month's Ready to Assign. <span class="pill credit">amber</span> credit overspending, stays as card debt.</p>
+    </section>
+  </div>
+
+  <section class="panel" aria-labelledby="strip-h">
+    <h3 id="strip-h">Every month</h3>
+    <div class="tbl"><table id="strip"></table></div>
+  </section>
+
+  <section class="panel" aria-labelledby="fp-h">
+    <h2 id="fp-h">Free play</h2>
+    <p class="muted">Amounts in dollars. Use a minus sign for spending. Everything acts on the month shown above unless you pick another.</p>
+    <form class="form" id="f-txn">
+      <label>Account<select id="t-acct"></select></label>
+      <label>Category<select id="t-cat"></select></label>
+      <label>Amount<input id="t-amt" type="number" step="0.01" value="-50"></label>
+      <label>Month<input id="t-month" type="month"></label>
+      <button class="primary">Add transaction</button>
+    </form>
+    <form class="form" id="f-assign">
+      <label>Category<select id="a-cat"></select></label>
+      <label>Assigned<input id="a-amt" type="number" step="0.01" value="100"></label>
+      <label>Month<input id="a-month" type="month"></label>
+      <button class="primary">Set Assigned</button>
+    </form>
+    <form class="form" id="f-xfer">
+      <label>From<select id="x-from"></select></label>
+      <label>To<select id="x-to"></select></label>
+      <label>Amount<input id="x-amt" type="number" step="0.01" value="100"></label>
+      <label>Category (on↔off only)<select id="x-cat"></select></label>
+      <label>Month<input id="x-month" type="month"></label>
+      <button class="primary">Transfer</button>
+    </form>
+    <form class="form" id="f-cat">
+      <label>Category<select id="c-cat"></select></label>
+      <button type="button" id="c-hide">Hide / unhide</button>
+      <label>Merge into<select id="c-into"></select></label>
+      <button type="button" id="c-del">Delete category</button>
+      <button type="button" id="reset">Start over (empty budget)</button>
+    </form>
+    <div class="err" id="err" role="status"></div>
+    <details>
+      <summary>Ledger (edit or remove any transaction, including past months)</summary>
+      <div class="tbl"><table class="ledger" id="ledger"></table></div>
+    </details>
+  </section>
+</div>
+
+<script>
+/* ===================== Throwaway page shell ===================== */
+const M = BudgetMath;
+const $ = (id) => document.getElementById(id);
+const usd = (x) => Math.round(x * 1000);
+function fmt(m) {
+  const neg = m < 0, a = Math.abs(m);
+  const digits = a % 10 === 0 ? 2 : 3; // show sub-cent milliunits so rounding problems are visible
+  const s = (a / 1000).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return (neg ? "−$" : "$") + s;
+}
+const monthName = (m) => new Date(`${m}-01T00:00:00Z`).toLocaleString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+
+function freshBudget() {
+  return {
+    accounts: [
+      { id: "checking", name: "Checking", kind: "cash", onBudget: true },
+      { id: "visa", name: "Visa", kind: "card", onBudget: true },
+      { id: "amex", name: "Amex", kind: "card", onBudget: true },
+      { id: "brokerage", name: "Brokerage (tracking)", kind: "cash", onBudget: false },
+    ],
+    categories: [
+      { id: "rent", name: "Rent" }, { id: "groceries", name: "Groceries" }, { id: "dining", name: "Dining Out" },
+      { id: "gifts", name: "Gifts" }, { id: "vacation", name: "Vacation" },
+      { id: "pay-visa", name: "Visa", paymentFor: "visa" }, { id: "pay-amex", name: "Amex", paymentFor: "amex" },
+    ],
+    transactions: [], assignments: [],
+  };
+}
+const JAN = "2026-01", FEB = "2026-02", MAR = "2026-03";
+let state = { budget: freshBudget(), view: JAN, last: "" };
+
+/* Helpers that steps use. Each returns a new state. */
+const act = (fn, label, view) => (s) => {
+  const r = fn(s.budget);
+  if (r.error) throw new Error(r.error);
+  return { budget: r, view: view || s.view, last: label };
+};
+const txn = (accountId, categoryId, dollars, month, extra = {}) =>
+  act((b) => M.addTransaction(b, { accountId, categoryId, amount: usd(dollars), month, ...extra }), "", month);
+const assign = (categoryId, dollars, month, view) => act((b) => M.setAssigned(b, categoryId, month, usd(dollars)), "", view || month);
+const xfer = (from, to, dollars, month, categoryId) => act((b) => M.addTransfer(b, { from, to, amount: usd(dollars), month, categoryId }), "", month);
+const view = (month) => (s) => ({ ...s, view: month });
+const paycheck = (d, m) => txn("checking", M.RTA, d, m);
+
+const SCENARIOS = [
+  { name: "Income, then assign", desc: "The happy path. Money comes in, gets assigned and spent, and the remainder rolls into the next month.", steps: [
+    ["Get paid $3,000 in Jan", paycheck(3000, JAN), "Ready to Assign $3,000: all of it is this month's income."],
+    ["Assign Rent $1,200 and Groceries $400", (s) => assign("groceries", 400, JAN)(assign("rent", 1200, JAN)(s)), "Ready to Assign $1,400. Assigned this month −$1,600."],
+    ["Spend $150 on groceries from Checking", txn("checking", "groceries", -150, JAN), "Groceries Available $250. Ready to Assign doesn't move."],
+    ["Go to Feb", view(FEB), "Groceries carries $250 in. Ready to Assign $1,400, all of it \"left over from last month\"."],
+  ] },
+  { name: "Overspending over months", desc: "Cash overspending shows red for one month, then resets to $0 and comes out of the next month's Ready to Assign, exactly once.", steps: [
+    ["Get paid $1,000 and assign Groceries $100 (Jan)", (s) => assign("groceries", 100, JAN)(paycheck(1000, JAN)(s)), "Ready to Assign $900."],
+    ["Spend $160 on groceries (Jan)", txn("checking", "groceries", -160, JAN), "Groceries −$60, red. Jan Ready to Assign still $900."],
+    ["Go to Feb", view(FEB), "Groceries back to $0. Ready to Assign $840: \"overspent last month\" −$60."],
+    ["Spend $30 on Dining Out in Feb (nothing assigned)", txn("checking", "dining", -30, FEB), "Dining Out −$30, red. Feb Ready to Assign still $840."],
+    ["Go to Mar", view(MAR), "Ready to Assign $810. Jan's $60 isn't charged a second time."],
+  ] },
+  { name: "Assign in a future month", desc: "Money assigned to a later month leaves the current month's Ready to Assign straight away.", steps: [
+    ["Get paid $1,000 (Jan)", paycheck(1000, JAN), "Ready to Assign $1,000."],
+    ["Assign Rent $500 in Feb, stay on Jan", assign("rent", 500, FEB, JAN), "Jan Ready to Assign $500: \"assigned in future months\" −$500. Rent's Jan row is unchanged."],
+    ["Go to Feb", view(FEB), "Rent Available $500. Ready to Assign $500: left over $1,000, assigned this month −$500."],
+  ] },
+  { name: "Negative Ready to Assign", desc: "Assigning more than you have leaves Ready to Assign negative. It carries forward as is, and the next income covers it first.", steps: [
+    ["Get paid $500 and assign Rent $800 (Jan)", (s) => assign("rent", 800, JAN)(paycheck(500, JAN)(s)), "Ready to Assign −$300, red."],
+    ["Go to Feb", view(FEB), "Still −$300, as \"left over from last month\"."],
+    ["Get paid $1,000 in Feb", paycheck(1000, FEB), "Ready to Assign $700."],
+  ] },
+  { name: "Edit a past month", desc: "A back-dated change is recomputed from full history. Its overspending lands in the following month's Ready to Assign, with no warning.", steps: [
+    ["Jan: get paid $1,000, assign Groceries $100, spend $100", (s) => txn("checking", "groceries", -100, JAN)(assign("groceries", 100, JAN)(paycheck(1000, JAN)(s))), "Groceries $0."],
+    ["Go to Feb", view(FEB), "Ready to Assign $900."],
+    ["Back-date a $50 grocery purchase into Jan, stay on Feb", (s) => ({ ...txn("checking", "groceries", -50, JAN, { id: "late" })(s), view: FEB }), "Feb Ready to Assign $850. Look at Jan in the month table: Groceries overspent $50."],
+    ["Edit that purchase to $20", act((b) => M.editTransactionAmount(b, "late", usd(-20)), "", FEB), "Feb Ready to Assign $880."],
+  ] },
+  { name: "Hidden and deleted", desc: "Hiding keeps the money. Deleting an unused category gives its money back to Ready to Assign. Deleting a used one merges it into a replacement.", steps: [
+    ["Get paid $1,000. Assign Gifts $200, Vacation $300, Dining Out $100", (s) => [assign("gifts", 200, JAN), assign("vacation", 300, JAN), assign("dining", 100, JAN)].reduce((x, f) => f(x), paycheck(1000, JAN)(s)), "Ready to Assign $400."],
+    ["Spend $40 on Dining Out", txn("checking", "dining", -40, JAN), "Dining Out $60."],
+    ["Hide Gifts", act((b) => M.setHidden(b, "gifts", true), ""), "Gifts is marked hidden and still has $200. Ready to Assign $400."],
+    ["Delete Vacation (no transactions)", act((b) => M.deleteCategory(b, "vacation"), ""), "Vacation is gone. Ready to Assign $700."],
+    ["Delete Dining Out, merging into Groceries", act((b) => M.deleteCategory(b, "dining", "groceries"), ""), "Groceries: Assigned $100, Activity −$40, Available $60. Ready to Assign $700."],
+  ] },
+  { name: "Covered card purchase", desc: "A card purchase the category can cover moves that money into the card's Payment Category.", steps: [
+    ["Get paid $1,000 and assign Groceries $200", (s) => assign("groceries", 200, JAN)(paycheck(1000, JAN)(s)), "Ready to Assign $800."],
+    ["Spend $120 on groceries with Visa", txn("visa", "groceries", -120, JAN), "Groceries $80. Visa Payment $120. Ready to Assign $800."],
+    ["Pay Visa $120 from Checking", xfer("checking", "visa", 120, JAN), "Visa Payment $0. Visa balance $0. Checking $880."],
+  ] },
+  { name: "Partly covered card purchase", desc: "Card spending the category can't cover is credit overspending. It stays as card debt and never comes out of Ready to Assign.", steps: [
+    ["Get paid $1,000 and assign Groceries $100", (s) => assign("groceries", 100, JAN)(paycheck(1000, JAN)(s)), "Ready to Assign $900."],
+    ["Spend $150 on groceries with Visa", txn("visa", "groceries", -150, JAN), "Groceries −$50, amber. Visa Payment $100. Visa owes $150."],
+    ["Go to Feb", view(FEB), "Groceries $0. Ready to Assign $900, no deduction. Visa Payment $100 against $150 owed."],
+  ] },
+  { name: "Mixed cash and card", desc: "Cash spending is covered first; what's left covers card spending.", steps: [
+    ["Get paid $1,000 and assign Groceries $100", (s) => assign("groceries", 100, JAN)(paycheck(1000, JAN)(s)), "Ready to Assign $900."],
+    ["Spend $80 cash and $50 on Visa", (s) => txn("visa", "groceries", -50, JAN)(txn("checking", "groceries", -80, JAN)(s)), "Groceries −$30, amber only: $20 covered the card, $30 is credit overspending. Visa Payment $20."],
+    ["Spend another $50 cash", txn("checking", "groceries", -50, JAN), "Cash now overspends by $30 and the card gets nothing: Groceries −$80, with $30 cash (red) and $50 credit (amber). Visa Payment $0."],
+    ["Go to Feb", view(FEB), "Ready to Assign $870: only the $30 of cash overspending comes out."],
+  ] },
+  { name: "Two cards split", desc: "When two cards share a shortfall, the covered amount is split in proportion to each card's spending, largest remainder first.", steps: [
+    ["Get paid $1,000 and assign Groceries $100", (s) => assign("groceries", 100, JAN)(paycheck(1000, JAN)(s)), "Ready to Assign $900."],
+    ["Spend $100 on Visa and $50 on Amex", (s) => txn("amex", "groceries", -50, JAN)(txn("visa", "groceries", -100, JAN)(s)), "Visa Payment $66.667 and Amex Payment $33.333 (two-thirds and one-third of $100). Groceries −$50, amber. Note the sub-cent amounts."],
+  ] },
+  { name: "Card refund", desc: "A month where a card's net activity in a category is an inflow moves that amount back out of the Payment Category.", steps: [
+    ["Jan: get paid $1,000, assign Groceries $100, spend $100 on Visa", (s) => txn("visa", "groceries", -100, JAN)(assign("groceries", 100, JAN)(paycheck(1000, JAN)(s))), "Visa Payment $100."],
+    ["Get a $30 refund on Visa in the same month", txn("visa", "groceries", 30, JAN), "Netted: Visa spending is $70, so Visa Payment $70 and Groceries $30."],
+    ["Pay Visa $70 from Checking", xfer("checking", "visa", 70, JAN), "Visa Payment $0. Visa balance $0."],
+    ["Feb: another $40 refund on Visa", txn("visa", "groceries", 40, FEB), "Groceries $70. Visa Payment −$40, red: the refund leaves a category that's already been paid out. Visa is $40 in credit."],
+    ["Go to Mar", view(MAR), "Ready to Assign drops $40 for that red Payment Category, while Groceries keeps the $40."],
+  ] },
+  { name: "Overpaying the card", desc: "Paying more than the Payment Category's Available makes it negative, which is ordinary cash overspending.", steps: [
+    ["Get paid $1,000, assign Groceries $100, spend $100 on Visa", (s) => txn("visa", "groceries", -100, JAN)(assign("groceries", 100, JAN)(paycheck(1000, JAN)(s))), "Visa Payment $100."],
+    ["Pay Visa $150 from Checking", xfer("checking", "visa", 150, JAN), "Visa Payment −$50, red. Visa is $50 in credit."],
+    ["Go to Feb", view(FEB), "Ready to Assign $850: the $50 came out as cash overspending."],
+  ] },
+  { name: "Cash advance", desc: "Moving money off the card into Checking counts as Payment Category Activity, so the cash arrives already set aside to repay the card.", steps: [
+    ["Get paid $1,000 (Jan)", paycheck(1000, JAN), "Ready to Assign $1,000."],
+    ["Transfer $200 from Visa to Checking", xfer("visa", "checking", 200, JAN), "Visa Payment $200. Checking $1,200, Visa owes $200. Ready to Assign stays $1,000."],
+  ] },
+  { name: "Card with a debt", desc: "A negative card Starting Balance has no category and stays outside the budget, so the Payment Category starts at $0 while the card owes money.", steps: [
+    ["Add Visa with a −$500 Starting Balance (Jan)", txn("visa", null, -500, JAN, { startingBalance: true }), "Visa owes $500. Visa Payment $0. Uncategorized and Ready to Assign are unaffected."],
+    ["Get paid $1,000 and assign Visa Payment $500", (s) => assign("pay-visa", 500, JAN)(paycheck(1000, JAN)(s)), "Visa Payment $500. Ready to Assign $500."],
+    ["Pay Visa $500 from Checking", xfer("checking", "visa", 500, JAN), "Visa Payment $0. Visa balance $0. Checking $500."],
+  ] },
+];
+
+/* ---------- rendering ---------- */
+let prevText = new Map();
+function render() {
+  const { budget, view: vm } = state;
+  const res = M.compute(budget, vm);
+  const mo = res.byMonth[vm];
+  $("month").textContent = monthName(vm);
+  $("last").textContent = state.last || "";
+
+  const b = mo.breakdown;
+  const line = (label, v, k) => `<span>${label}</span><span class="num" data-k="${k}">${fmt(v)}</span>`;
+  $("rta").innerHTML = `<div class="rta ${b.rta < 0 ? "neg" : ""}"><div class="big" data-k="rta">${fmt(b.rta)}</div></div>
+    <div class="lines">
+      ${line("Left over from last month", b.leftOver, "lo")}
+      ${line("Income this month", b.income, "in")}
+      ${line("Overspent last month (cash)", -b.overspentLastMonth, "ol")}
+      ${line("Assigned this month", -b.assignedThis, "at")}
+      ${line("Assigned in future months", -b.assignedFuture, "af")}
+      <span class="tot">Ready to Assign</span><span class="tot num">${fmt(b.rta)}</span>
+    </div>`;
+  const c = mo.check, ok = c.lhs === c.rhs;
+  $("check").innerHTML = `<div class="check ${ok ? "" : "bad"}"><strong>${ok ? "✓ Money adds up." : "✗ Money doesn't add up."}</strong>
+    Ready to Assign + every Available = <span class="num">${fmt(c.lhs)}</span>. Cash in on-budget cash accounts ${fmt(c.cashBal)}${c.cardIncome ? `, plus card income ${fmt(c.cardIncome)}` : ""}${c.creditOS ? `, minus this month's credit overspending ${fmt(c.creditOS)}` : ""}${b.assignedFuture ? `, minus future assignments ${fmt(b.assignedFuture)}` : ""} = <span class="num">${fmt(c.rhs)}</span>.</div>`;
+
+  $("accounts").innerHTML = M.balances(budget, vm).map((a) =>
+    `<span>${a.name}${a.onBudget ? "" : " <span class=\"chip\">off-budget</span>"}</span><span class="num" data-k="bal-${a.id}">${fmt(a.balance)}</span>`).join("");
+
+  const nameOf = (id) => budget.accounts.find((a) => a.id === id)?.name ?? id;
+  const pill = (r) => {
+    const cls = r.cashOverspend && r.creditOverspend ? "cash" : r.cashOverspend ? "cash" : r.creditOverspend ? "credit" : r.available === 0 ? "zero" : "";
+    return `<span class="pill ${cls}" data-k="av-${r.id}">${fmt(r.available)}</span>`;
+  };
+  const rowHtml = (r) => {
+    let sub = "";
+    if (r.payment) {
+      const bits = [];
+      if (r.fundedIn) bits.push(`covered purchases +${fmt(r.fundedIn)}`);
+      if (r.refundsOut) bits.push(`refunds −${fmt(r.refundsOut)}`);
+      if (r.transfers > 0) bits.push(`payments −${fmt(r.transfers)}`);
+      if (r.transfers < 0) bits.push(`cash advances +${fmt(-r.transfers)}`);
+      sub = bits.join(" · ");
+    } else if (r.cardSpend || r.refunds) {
+      const bits = [];
+      if (r.cardSpend) bits.push(`card spending ${fmt(r.cardSpend)}, covered ${fmt(r.funded)}${r.split.length > 1 ? ` (${r.split.map(([k, v]) => `${nameOf(k)} ${fmt(v)}`).join(", ")})` : ""}`);
+      if (r.refunds) bits.push(`card refunds +${fmt(r.refunds)}`);
+      sub = bits.join(" · ");
+    }
+    const chips = [r.hidden ? `<span class="chip">hidden</span>` : "",
+      r.cashOverspend ? `<span class="chip cash">cash overspent ${fmt(r.cashOverspend)}</span>` : "",
+      r.creditOverspend ? `<span class="chip credit">credit overspent ${fmt(r.creditOverspend)}</span>` : ""].join("");
+    return `<tr><td>${r.name}${chips}${sub ? `<span class="sub">${sub}</span>` : ""}</td>
+      <td class="num" data-k="as-${r.id}">${fmt(r.assigned)}</td><td class="num" data-k="ac-${r.id}">${fmt(r.activity)}</td><td>${pill(r)}</td></tr>`;
+  };
+  const ord = mo.rows.filter((r) => !r.payment), pay = mo.rows.filter((r) => r.payment);
+  $("cats").innerHTML = `<thead><tr><th>Category</th><th>Assigned</th><th>Activity</th><th>Available</th></tr></thead><tbody>
+    <tr class="group"><td colspan="4">Categories</td></tr>${ord.map(rowHtml).join("")}
+    <tr class="group"><td colspan="4">Credit Card Payments</td></tr>${pay.map(rowHtml).join("")}</tbody>`;
+
+  $("strip").innerHTML = `<thead><tr><th>Month</th>${res.months.map((m) => `<th${m === vm ? ' style="color:var(--accent)"' : ""}>${monthName(m)}</th>`).join("")}</tr></thead><tbody>
+    <tr><td>Ready to Assign</td>${res.months.map((m) => `<td class="num" data-k="s-rta-${m}">${fmt(res.byMonth[m].breakdown.rta)}</td>`).join("")}</tr>
+    <tr><td>Cash overspending</td>${res.months.map((m) => `<td class="num" data-k="s-co-${m}">${fmt(res.byMonth[m].cashOS)}</td>`).join("")}</tr>
+    <tr><td>Credit overspending</td>${res.months.map((m) => `<td class="num" data-k="s-cr-${m}">${fmt(res.byMonth[m].creditOS)}</td>`).join("")}</tr>
+    ${ord.concat(pay).map((r) => `<tr><td>${r.name}${r.payment ? " Payment" : ""}</td>${res.months.map((m) => {
+      const x = res.byMonth[m].rows.find((y) => y.id === r.id);
+      return `<td class="num" data-k="s-${r.id}-${m}">${x ? fmt(x.available) : ""}</td>`; }).join("")}</tr>`).join("")}</tbody>`;
+
+  const catName = (id) => id === M.RTA ? "Inflow: Ready to Assign" : id == null ? "—" : budget.categories.find((x) => x.id === id)?.name ?? id;
+  $("ledger").innerHTML = `<thead><tr><th>Month</th><th>Account</th><th>Category</th><th>Amount</th><th></th></tr></thead><tbody>${
+    [...budget.transactions].sort((a, z) => a.month.localeCompare(z.month)).map((t) => `<tr>
+      <td>${monthName(t.month)}</td><td>${nameOf(t.accountId)}${t.transferAccountId ? ` → ${nameOf(t.transferAccountId)}` : ""}${t.startingBalance ? " (starting balance)" : ""}</td>
+      <td>${catName(t.categoryId)}</td>
+      <td><input type="number" step="0.01" value="${t.amount / 1000}" data-edit="${t.id}" aria-label="Amount"></td>
+      <td><button type="button" data-rm="${t.id}">Remove</button></td></tr>`).join("") || `<tr><td colspan="5" class="muted">No transactions yet.</td></tr>`}</tbody>`;
+
+  // flash what changed since the last render
+  const now = new Map();
+  document.querySelectorAll("[data-k]").forEach((el) => {
+    now.set(el.dataset.k, el.textContent);
+    if (prevText.size && prevText.get(el.dataset.k) !== el.textContent) el.classList.add("changed");
+  });
+  prevText = now;
+  setTimeout(() => document.querySelectorAll(".changed").forEach((el) => el.classList.remove("changed")), 1400);
+  fillForms();
+}
+
+function opts(list, sel) { return list.map(([v, l]) => `<option value="${v}"${v === sel ? " selected" : ""}>${l}</option>`).join(""); }
+function fillForms() {
+  const b = state.budget;
+  const accts = b.accounts.map((a) => [a.id, a.name]);
+  const cats = b.categories.filter((c) => !c.paymentFor).map((c) => [c.id, c.name]);
+  const keep = (id, html) => { const v = $(id).value; $(id).innerHTML = html; if (v && [...$(id).options].some((o) => o.value === v)) $(id).value = v; };
+  keep("t-acct", opts(accts));
+  keep("t-cat", opts([[M.RTA, "Inflow: Ready to Assign"], ["", "(uncategorized)"], ...cats]));
+  keep("a-cat", opts([...cats, ...b.categories.filter((c) => c.paymentFor).map((c) => [c.id, `${c.name} Payment`])]));
+  keep("x-from", opts(accts)); keep("x-to", opts(accts));
+  keep("x-cat", opts([["", "(none)"], [M.RTA, "Inflow: Ready to Assign"], ...cats]));
+  keep("c-cat", opts(cats)); keep("c-into", opts([["", "(no merge)"], ...cats]));
+  for (const id of ["t-month", "a-month", "x-month"]) $(id).value = state.view;
+}
+
+function run(fn) {
+  try { state = fn(state); $("err").textContent = ""; render(); }
+  catch (e) { $("err").textContent = e.message; }
+}
+
+/* ---------- walkthroughs ---------- */
+let current = 0, stepAt = 0;
+function startScenario(i) {
+  current = i; stepAt = 0;
+  state = { budget: freshBudget(), view: JAN, last: `Started "${SCENARIOS[i].name}" on an empty budget.` };
+  prevText = new Map();
+  try { localStorage.setItem("rta-proto-tab", String(i)); } catch (e) {}
+  renderScenario(); render();
+}
+function renderScenario() {
+  $("tabs").innerHTML = SCENARIOS.map((s, i) => `<button type="button" role="tab" aria-selected="${i === current}" data-tab="${i}">${s.name}</button>`).join("");
+  const s = SCENARIOS[current];
+  $("wt-desc").textContent = s.desc;
+  $("steps").innerHTML = s.steps.map(([label, , expect], i) =>
+    `<li class="${i < stepAt ? "done" : ""}"><button type="button" data-step="${i}" ${i === stepAt ? 'class="primary"' : ""} ${i !== stepAt ? "disabled" : ""}>${i < stepAt ? "✓ " : ""}${label}</button><span class="expect">Expect: ${expect}</span></li>`).join("")
+    + `<li><button type="button" data-restart>Restart this walkthrough</button></li>`;
+}
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("button");
+  if (!t) return;
+  if (t.dataset.tab) startScenario(Number(t.dataset.tab));
+  else if (t.dataset.step) {
+    const [label, fn] = SCENARIOS[current].steps[Number(t.dataset.step)];
+    run((s) => ({ ...fn(s), last: label }));
+    stepAt++; renderScenario();
+  } else if ("restart" in t.dataset) startScenario(current);
+  else if (t.dataset.rm) run((s) => ({ ...s, budget: M.removeTransaction(s.budget, t.dataset.rm), last: "Removed a transaction." }));
+});
+document.addEventListener("change", (e) => {
+  const id = e.target.dataset && e.target.dataset.edit;
+  if (id) run((s) => ({ ...s, budget: M.editTransactionAmount(s.budget, id, usd(Number(e.target.value))), last: "Edited a transaction." }));
+});
+
+/* ---------- free play ---------- */
+$("prev").onclick = () => run((s) => ({ ...s, view: M.addMonths(s.view, -1), last: "" }));
+$("next").onclick = () => run((s) => ({ ...s, view: M.addMonths(s.view, 1), last: "" }));
+$("f-txn").onsubmit = (e) => { e.preventDefault();
+  run(act((b) => M.addTransaction(b, { accountId: $("t-acct").value, categoryId: $("t-cat").value || null, amount: usd(Number($("t-amt").value)), month: $("t-month").value }), "Added a transaction.")); };
+$("f-assign").onsubmit = (e) => { e.preventDefault();
+  run(act((b) => M.setAssigned(b, $("a-cat").value, $("a-month").value, usd(Number($("a-amt").value))), "Set Assigned.")); };
+$("f-xfer").onsubmit = (e) => { e.preventDefault();
+  run(act((b) => M.addTransfer(b, { from: $("x-from").value, to: $("x-to").value, amount: usd(Number($("x-amt").value)), month: $("x-month").value, categoryId: $("x-cat").value || null }), "Transferred.")); };
+$("c-hide").onclick = () => { const id = $("c-cat").value; const c = state.budget.categories.find((x) => x.id === id);
+  run(act((b) => M.setHidden(b, id, !c.hidden), c.hidden ? "Unhid a category." : "Hid a category.")); };
+$("c-del").onclick = () => run(act((b) => M.deleteCategory(b, $("c-cat").value, $("c-into").value || null), "Deleted a category."));
+$("reset").onclick = () => { state = { budget: freshBudget(), view: JAN, last: "Empty budget." }; prevText = new Map(); stepAt = 0; renderScenario(); render(); };
+
+let startTab = 0;
+try { startTab = Number(localStorage.getItem("rta-proto-tab")) || 0; } catch (e) {}
+startScenario(Math.min(startTab, SCENARIOS.length - 1));
+</script>
