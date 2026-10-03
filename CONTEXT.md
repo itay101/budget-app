@@ -52,3 +52,10 @@ A record that a User made a specific change to a Budget's data — scoped
 to a Budget, covering every Budget-scoped mutation (not just
 transactions). Data model, actor, and retention rules: [ADR 0002](docs/adr/0002-audit-entry-is-a-single-polymorphic-table-with-field-diffs.md).
 _Avoid_: Audit log (that's the collection; AuditEntry is one row in it).
+
+**Budget Month**:
+The calendar month (in UTC) that the budget view shows assignments and
+activity for. Every assignment belongs to exactly one Budget Month, and
+every Budget Month can be edited, past and future alike. Edits to an
+earlier month carry forward into later months.
+_Avoid_: Period, cycle (budgeting is strictly monthly).
