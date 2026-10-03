@@ -52,3 +52,16 @@ A record that a User made a specific change to a Budget's data — scoped
 to a Budget, covering every Budget-scoped mutation (not just
 transactions). Data model, actor, and retention rules: [ADR 0002](docs/adr/0002-audit-entry-is-a-single-polymorphic-table-with-field-diffs.md).
 _Avoid_: Audit log (that's the collection; AuditEntry is one row in it).
+
+**Ready to Assign**:
+The on-budget money in a given month that hasn't yet been assigned to any
+category: money waiting for a job. It can be negative when more has been
+assigned than is available.
+_Avoid_: To Be Budgeted, unassigned, unbudgeted.
+
+**Overspending**:
+A category's negative Available at the end of a month. It doesn't follow
+the category into the next month: the category starts that month at 0 and
+the shortfall is covered elsewhere (for cash spending, by the next month's
+Ready to Assign).
+_Avoid_: Debt (reserved for real credit-card / loan debt), deficit.
