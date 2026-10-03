@@ -59,3 +59,11 @@ activity for. Every assignment belongs to exactly one Budget Month, and
 every Budget Month can be edited, past and future alike. Edits to an
 earlier month carry forward into later months.
 _Avoid_: Period, cycle (budgeting is strictly monthly).
+
+**Transfer**:
+A movement of money from one Account in a Budget to another, recorded as
+two linked transactions, one in each Account, with opposite amounts. A
+Transfer between two on-budget Accounts carries no category. When one side
+is off-budget, the on-budget side is categorized like ordinary spending or
+income. Storage and editing rules: [ADR 0007](docs/adr/0007-transfers-are-paired-self-linked-transactions-and-on-budget-locks-once-used.md).
+_Avoid_: Move (that's moving money between categories, not accounts), transfer payee
