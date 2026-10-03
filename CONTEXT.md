@@ -100,3 +100,31 @@ The category holding the money set aside to pay one on-budget Credit Card or
 Line of Credit Account, one per Account. It fills automatically as covered
 card spending moves in, and Transfers to the card spend from it. Rules: [ADR 0010](docs/adr/0010-credit-cards-get-a-payment-category-funded-cash-first-per-month.md).
 _Avoid_: credit card category, debt category
+
+**Target**:
+What a category should hold or receive, set by the user: Set aside an amount
+each week, month or year, Refill up to an amount, or Have a balance of an
+amount (by a date or with no date). A target starts at a Budget Month and
+applies from then on until it's changed or removed, so earlier months keep
+the target they had. Any category except Inflow: Ready to Assign can have
+one. Rules: [ADR 0011](docs/adr/0011-category-targets-are-effective-from-month-rows.md).
+_Avoid_: goal (YNAB's old word, still used in its API), budget (that's the whole plan)
+
+**Underfunded**:
+How much more a category needs assigned in a Budget Month to stay on track
+for its Target. Spending in that month doesn't change it. The Budget's
+Underfunded is the sum over all categories, plus overspending still to cover.
+_Avoid_: shortfall, needed (fine informally, but Underfunded is the term)
+
+**Snooze**:
+Silencing a category's Target for one Budget Month, so its Underfunded counts
+as zero that month. It wakes up automatically the next month and still counts
+toward Cost to Be Me.
+_Avoid_: pause, skip
+
+**Cost to Be Me**:
+The total that fully funding every Target would take in a Budget Month,
+before anything already assigned is taken off. Undated Have a balance of
+targets are left out. It's compared against Expected Income, a number the
+user types in.
+_Avoid_: total targets, monthly need
