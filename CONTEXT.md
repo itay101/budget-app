@@ -68,6 +68,15 @@ is off-budget, the on-budget side is categorized like ordinary spending or
 income. Storage and editing rules: [ADR 0007](docs/adr/0007-transfers-are-paired-self-linked-transactions-and-on-budget-locks-once-used.md).
 _Avoid_: Move (that's moving money between categories, not accounts), transfer payee
 
+**Move Money**:
+Shifting assigned money within one Budget Month from one category to
+another, or between a category and Ready to Assign. It changes only what is
+assigned, never any transaction. Moving money to Ready to Assign un-assigns
+it, and it can leave the category's assigned amount below zero. Moving
+money from Ready to Assign assigns it, even when that leaves Ready to
+Assign negative.
+_Avoid_: Transfer (that's money between Accounts), reallocate
+
 **Ready to Assign**:
 Money in a Budget that has come in as income but isn't assigned to any
 category yet. Income means an on-budget transaction categorized
