@@ -80,3 +80,11 @@ An on-budget transaction that isn't a Transfer and has no category yet. It
 counts as neither income nor spending in any real category until the user
 categorizes it. The budget page totals these in their own Uncategorized row.
 _Avoid_: implying uncategorized inflows are Ready to Assign income, because they aren't.
+
+**Overspending**:
+A negative Available in a category, the Uncategorized row included, at the
+end of a Budget Month. Cash overspending stays red for the rest of that
+month. At the next month the category starts again from zero, and the
+shortfall comes out of that month's Ready to Assign. Credit overspending
+never touches Ready to Assign. Rules: [ADR 0009](docs/adr/0009-category-available-resets-at-month-rollover-derived-from-full-history.md).
+_Avoid_: debt (that's what's owed on a credit or loan Account), deficit
