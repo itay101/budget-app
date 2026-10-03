@@ -138,15 +138,19 @@ const BudgetMath = (() => {
     return g;
   }
 
-  /* Split `total` across parts in proportion to their weights, largest remainder first. */
-  function splitLargestRemainder(total, parts) {
+  /* Split `total` across parts in proportion to their weights, in whole minor units
+     (cents for USD: 10 milliunits), largest remainder first. Decided on #135. */
+  function splitLargestRemainder(total, parts, unit = 10) {
     const W = parts.reduce((s, [, w]) => s + w, 0);
     if (!W || !total) return parts.map(([id]) => [id, 0]);
-    const raw = parts.map(([id, w]) => ({ id, exact: (total * w) / W }));
+    const units = Math.floor(total / unit), residue = total - units * unit;
+    const raw = parts.map(([id, w]) => ({ id, exact: (units * w) / W }));
     raw.forEach((r) => { r.v = Math.floor(r.exact); r.rem = r.exact - r.v; });
-    let left = total - raw.reduce((s, r) => s + r.v, 0);
-    [...raw].sort((a, b) => b.rem - a.rem).forEach((r) => { if (left > 0) { r.v++; left--; } });
-    return raw.map((r) => [r.id, r.v]);
+    let left = units - raw.reduce((s, r) => s + r.v, 0);
+    const order = [...raw].sort((a, b) => b.rem - a.rem);
+    order.forEach((r) => { if (left > 0) { r.v++; left--; } });
+    order[0].residue = residue; // sub-cent input amounts only
+    return raw.map((r) => [r.id, r.v * unit + (r.residue || 0)]);
   }
 
   function monthSpan(budget, viewMonth) {
@@ -503,7 +507,7 @@ const SCENARIOS = [
   ] },
   { name: "Two cards split", desc: "When two cards share a shortfall, the covered amount is split in proportion to each card's spending, largest remainder first.", steps: [
     ["Get paid $1,000 and assign Groceries $100", (s) => assign("groceries", 100, JAN)(paycheck(1000, JAN)(s)), "Ready to Assign $900."],
-    ["Spend $100 on Visa and $50 on Amex", (s) => txn("amex", "groceries", -50, JAN)(txn("visa", "groceries", -100, JAN)(s)), "Visa Payment $66.667 and Amex Payment $33.333 (two-thirds and one-third of $100). Groceries −$50, amber. Note the sub-cent amounts."],
+    ["Spend $100 on Visa and $50 on Amex", (s) => txn("amex", "groceries", -50, JAN)(txn("visa", "groceries", -100, JAN)(s)), "Visa Payment $66.67 and Amex Payment $33.33 (two-thirds and one-third of $100, in whole cents). Groceries −$50, amber."],
   ] },
   { name: "Card refund", desc: "A month where a card's net activity in a category is an inflow moves that amount back out of the Payment Category.", steps: [
     ["Jan: get paid $1,000, assign Groceries $100, spend $100 on Visa", (s) => txn("visa", "groceries", -100, JAN)(assign("groceries", 100, JAN)(paycheck(1000, JAN)(s))), "Visa Payment $100."],
