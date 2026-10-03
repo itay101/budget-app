@@ -70,6 +70,16 @@ account is rejected at `/auth/callback` (see that route's doc comment).
   panel), then paste that client's ID/secret into that same Supabase
   panel and enable the provider. Nothing needs to change in this app's own
   env vars — see `.env.example`.
+- **Allow this deployment's callback URL** (magic link *and* Google): in
+  Supabase's Authentication -> URL Configuration, set **Site URL** to the
+  production domain (e.g. `https://your-app.vercel.app`) and add every
+  domain that should be able to sign in to **Redirect URLs** — e.g.
+  `https://your-app.vercel.app/**`, `https://*-<team>.vercel.app/**` for
+  previews, and `http://localhost:3000/**` for local dev. The app passes
+  `<current origin>/auth/callback` as `redirectTo`, but Supabase silently
+  ignores any `redirectTo` that isn't on that allow-list and falls back to
+  the Site URL instead — which defaults to `http://localhost:3000`, so a
+  missing entry shows up as production sign-in landing on localhost.
 
 ## Getting started
 
