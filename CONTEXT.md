@@ -67,3 +67,16 @@ Transfer between two on-budget Accounts carries no category. When one side
 is off-budget, the on-budget side is categorized like ordinary spending or
 income. Storage and editing rules: [ADR 0007](docs/adr/0007-transfers-are-paired-self-linked-transactions-and-on-budget-locks-once-used.md).
 _Avoid_: Move (that's moving money between categories, not accounts), transfer payee
+
+**Ready to Assign**:
+Money in a Budget that has come in as income but isn't assigned to any
+category yet. Income means an on-budget transaction categorized
+**Inflow: Ready to Assign**, a system category that exists in every Budget
+and can't be assigned to. Rules: [ADR 0008](docs/adr/0008-ready-to-assign-income-is-a-system-category.md).
+_Avoid_: To Be Budgeted, unassigned, income category
+
+**Uncategorized**:
+An on-budget transaction that isn't a Transfer and has no category yet. It
+counts as neither income nor spending in any real category until the user
+categorizes it. The budget page totals these in their own Uncategorized row.
+_Avoid_: implying uncategorized inflows are Ready to Assign income, because they aren't.
