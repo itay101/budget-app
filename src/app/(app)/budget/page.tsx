@@ -2,6 +2,8 @@ import { getBudgetMonthRows, getCurrentBudget } from "@/lib/budget";
 import { AddCategoryGroupPopover } from "@/components/AddCategoryGroupPopover";
 import { CategoryGroupSection } from "@/components/CategoryGroupSection";
 import { HiddenCategoriesSection } from "@/components/HiddenCategoriesSection";
+import { PrototypeHeader } from "./_prototype/PrototypeHeader";
+import { budgetPageView } from "./_prototype/params";
 import {
   createCategory,
   createCategoryGroup,
@@ -20,9 +22,18 @@ function startOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
-export default async function BudgetPage() {
+export default async function BudgetPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const budget = await getCurrentBudget();
-  const month = startOfMonth(new Date());
+  // PROTOTYPE ONLY (issue #136): `?variant=A|B|C` swaps in a header variant.
+  const { month, prototype } = budgetPageView(
+    await searchParams,
+    budget.currency,
+    startOfMonth(new Date()),
+  );
 
   const { groups, categoryOptions, hiddenCategories } = await getBudgetMonthRows(
     budget.id,
@@ -31,12 +42,16 @@ export default async function BudgetPage() {
 
   return (
     <div className="space-y-300">
-      <div>
-        <h1 className="text-h2 text-neutral-800 sm:text-h1">Budget</h1>
-        <p className="text-body text-neutral-600">
-          {month.toLocaleString("en-US", { month: "long", year: "numeric" })}
-        </p>
-      </div>
+      {prototype ? (
+        <PrototypeHeader {...prototype} groups={categoryOptions} />
+      ) : (
+        <div>
+          <h1 className="text-h2 text-neutral-800 sm:text-h1">Budget</h1>
+          <p className="text-body text-neutral-600">
+            {month.toLocaleString("en-US", { month: "long", year: "numeric" })}
+          </p>
+        </div>
+      )}
 
       <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-0">
         <div className="flex items-center justify-between gap-2 border-b border-neutral-200 bg-neutral-100 px-200 py-2 text-small font-medium uppercase tracking-wide text-neutral-600 sm:grid sm:grid-cols-[1fr_120px_120px_120px]">
