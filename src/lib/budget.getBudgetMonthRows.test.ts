@@ -121,6 +121,7 @@ describe("getBudgetMonthRows", () => {
             activity: -2000,
             carriedIn: 8000,
             available: 11000, // 8000 carried in + 5000 - 2000
+            hidden: false,
             target: null,
             history: [],
             need: null,

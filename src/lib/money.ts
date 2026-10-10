@@ -23,6 +23,16 @@ export function formatMilliunits(
 }
 
 /**
+ * formatMilliunits wrapped in a left-to-right isolate (U+2066 … U+2069),
+ * for amounts inside text that may run right to left (a Hebrew category
+ * name, #148): the minus sign stays on the left, and "₪250 of ₪400" keeps
+ * its order.
+ */
+export function formatMilliunitsLtr(milliunits: number, currency: string = "USD"): string {
+  return `\u2066${formatMilliunits(milliunits, currency)}\u2069`;
+}
+
+/**
  * Just the symbol for a currency code (e.g. "USD" → "$", "ILS" → "₪") —
  * for compact display like a budget header ("My main budget (₪)") where
  * spelling out the full formatted amount would be noise. Derived from

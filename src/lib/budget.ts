@@ -11,6 +11,7 @@ import {
   type TargetRow,
   type TargetStatus,
 } from "@/lib/targets";
+import type { TargetHistoryEntry } from "@/lib/targetDisplay";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { accessibleBudgetWhere } from "@/lib/authorization";
@@ -262,12 +263,6 @@ export interface CategoryTargetState {
   status: TargetStatus;
 }
 
-export interface TargetHistoryEntry {
-  /** The Budget Month the row applies from, `YYYY-MM`. */
-  startMonth: string;
-  target: Target | null;
-}
-
 function historyFor(rows: TargetRow[]): TargetHistoryEntry[] {
   return [...rows]
     .sort((a, b) => b.startMonth.getTime() - a.startMonth.getTime())
@@ -285,6 +280,9 @@ function pickTarget({ kind, cadence, amount, weekday, dueDay, dueDate }: Target)
 
 export type BudgetCategoryRow = CategoryRow &
   CategoryTargetState & {
+    /** Hidden categories show in their own section, or marked under a
+     * quick filter other than All (#171). */
+    hidden: boolean;
     /** Cash overspending to cover this month: how far Available is below
      * 0, else 0. The plan's total is `totals.overspending`. */
     overspending: number;
@@ -429,6 +427,7 @@ export async function getBudgetMonthRows(
     const snoozed = category.targetSnoozes.length > 0;
     return {
       ...row,
+      hidden: category.hidden,
       ...targetStateFor(row, category.targets, snoozed, assignedByMonth.get(category.id), month),
       overspending: Math.max(0, -row.available),
     };
