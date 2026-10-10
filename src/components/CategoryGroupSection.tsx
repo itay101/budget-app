@@ -3,19 +3,16 @@
 import { useState } from "react";
 import { AddCategoryPopover } from "@/components/AddCategoryPopover";
 import { Icon } from "@/components/Icon";
-import { CategoryAmountCells } from "@/components/CategoryAmountCells";
+import { BudgetCategoryRow } from "@/components/BudgetCategoryRow";
+import { CategoryRenameForm } from "@/components/CategoryRenameForm";
+import type { TargetActions } from "@/components/TargetEditor";
 import { useServerAction } from "@/components/useServerAction";
+import { formatMilliunitsLtr } from "@/lib/money";
+import { totalNeeded } from "@/lib/targetDisplay";
+import type { BudgetCategoryRow as CategoryRow } from "@/lib/budget";
 
 type CategoryOption = { id: string; name: string; available: number };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
-
-type CategoryRow = {
-  id: string;
-  name: string;
-  budgeted: number;
-  activity: number;
-  available: number;
-};
 
 // The dataTransfer MIME type used to carry a dragged category's id between
 // CategoryGroupSection instances — every group renders one of these, and a
@@ -38,6 +35,11 @@ const nameInputClass =
  * Also owns renaming, both for the group itself and for each category —
  * a pencil icon toggles an inline input + ✓/✕ (same pattern as the
  * sidebar's budget rename control).
+ *
+ * Each row has a Target cell (#171) that expands the row's target editor
+ * in place, below the row's grid. Under a quick filter other than All the
+ * section also lists the group's matching hidden categories, marked with
+ * an icon and with Unhide in place of Hide.
  */
 export function CategoryGroupSection({
   groupId,
@@ -54,6 +56,7 @@ export function CategoryGroupSection({
   setBudgeted,
   setCategoryHidden,
   transferAvailable,
+  targetActions,
   categoryOptions,
 }: {
   groupId: string;
@@ -74,8 +77,10 @@ export function CategoryGroupSection({
   setBudgeted: (formData: FormData) => Promise<void>;
   setCategoryHidden: (formData: FormData) => Promise<void>;
   transferAvailable: (formData: FormData) => Promise<void>;
+  targetActions: TargetActions;
   categoryOptions: GroupOption[];
 }) {
+  const needed = totalNeeded(categories);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [groupDragOver, setGroupDragOver] = useState(false);
 
@@ -85,26 +90,22 @@ export function CategoryGroupSection({
   const [renamingCategoryId, setRenamingCategoryId] = useState<string | null>(
     null,
   );
-  const [categoryNameDraft, setCategoryNameDraft] = useState("");
 
   const moveAction = useServerAction(moveCategory);
   const deleteGroupAction = useServerAction(deleteCategoryGroup);
   const renameGroupAction = useServerAction(renameCategoryGroup);
   const hideCategoryAction = useServerAction(setCategoryHidden);
-  const renameCategoryAction = useServerAction(renameCategory);
 
   const pending =
     moveAction.pending ||
     deleteGroupAction.pending ||
     renameGroupAction.pending ||
-    hideCategoryAction.pending ||
-    renameCategoryAction.pending;
+    hideCategoryAction.pending;
   const error =
     moveAction.error ||
     deleteGroupAction.error ||
     renameGroupAction.error ||
-    hideCategoryAction.error ||
-    renameCategoryAction.error;
+    hideCategoryAction.error;
 
   function move(categoryId: string, beforeCategoryId: string | null) {
     moveAction
@@ -149,40 +150,60 @@ export function CategoryGroupSection({
     }
   }
 
-  async function handleHideCategory(categoryId: string) {
+  async function handleHideCategory(categoryId: string, hidden: boolean) {
     try {
-      await hideCategoryAction.run({ categoryId, hidden: "true" });
+      await hideCategoryAction.run({ categoryId, hidden: String(hidden) });
       setRenamingCategoryId(null);
     } catch {
       // error is surfaced via hideCategoryAction.error
     }
   }
 
-  function startCategoryRename(category: CategoryRow) {
-    setRenamingCategoryId(category.id);
-    setCategoryNameDraft(category.name);
-  }
-
-  function cancelCategoryRename() {
-    setRenamingCategoryId(null);
-  }
-
-  async function handleCategoryRenameSubmit(
-    e: React.FormEvent<HTMLFormElement>,
-    category: CategoryRow,
-  ) {
-    e.preventDefault();
-    const trimmed = categoryNameDraft.trim();
-    if (!trimmed || trimmed === category.name) {
-      cancelCategoryRename();
-      return;
-    }
-    try {
-      await renameCategoryAction.run({ categoryId: category.id, name: trimmed });
-      setRenamingCategoryId(null);
-    } catch {
-      // error is surfaced via renameCategoryAction.error
-    }
+  function categoryNameCell(category: CategoryRow) {
+    return renamingCategoryId === category.id ? (
+      <CategoryRenameForm
+        category={category}
+        renameCategory={renameCategory}
+        onClose={() => setRenamingCategoryId(null)}
+        extra={
+          <HideToggleButton
+            hidden={category.hidden}
+            disabled={pending}
+            onClick={() => handleHideCategory(category.id, !category.hidden)}
+          />
+        }
+      />
+    ) : (
+      <div className="group col-span-2 flex items-center gap-1.5 text-neutral-800 sm:col-span-1">
+        <span
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData(DRAG_TYPE, category.id);
+            e.dataTransfer.effectAllowed = "move";
+          }}
+          title="Drag to reorder or move to another group"
+          className="shrink-0 cursor-grab select-none text-neutral-400 hover:text-neutral-600 active:cursor-grabbing"
+        >
+          <Icon name="drag_indicator" label="Drag to reorder or move to another group" />
+        </span>
+        <span className="truncate">
+          <bdi>{category.name}</bdi>
+        </span>
+        {category.hidden && (
+          <span title="Hidden category" className="shrink-0 text-neutral-400">
+            <Icon name="visibility_off" label="Hidden category" />
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => setRenamingCategoryId(category.id)}
+          title="Rename or hide category"
+          className="shrink-0 rounded p-1 text-neutral-400 opacity-0 hover:bg-neutral-100 hover:text-neutral-600 focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+        >
+          <Icon name="edit" label="Rename or hide category" />
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -242,7 +263,9 @@ export function CategoryGroupSection({
           </form>
         ) : (
           <>
-            <span>{groupName}</span>
+            <span>
+              <bdi>{groupName}</bdi>
+            </span>
             <button
               type="button"
               onClick={() => {
@@ -269,13 +292,25 @@ export function CategoryGroupSection({
                 <Icon name="delete" label="Delete empty category group" />
               </button>
             )}
+            {needed > 0 && (
+              <span className="ms-auto whitespace-nowrap normal-case tracking-normal text-target-underfunded-fg">
+                {formatMilliunitsLtr(needed, currency)} needed
+              </span>
+            )}
           </>
         )}
       </div>
 
       {categories.map((category) => (
-        <div
+        <BudgetCategoryRow
           key={category.id}
+          category={category}
+          month={month}
+          currency={currency}
+          setBudgeted={setBudgeted}
+          transferAvailable={transferAvailable}
+          targetActions={targetActions}
+          categoryOptions={categoryOptions}
           onDragOver={(e) => {
             e.preventDefault();
             e.dataTransfer.dropEffect = "move";
@@ -292,88 +327,26 @@ export function CategoryGroupSection({
             if (!draggedId || draggedId === category.id) return;
             move(draggedId, category.id);
           }}
-          className={
-            "grid grid-cols-2 gap-x-3 gap-y-2 border-b border-neutral-100 px-200 py-3 text-body last:border-b-0 sm:grid-cols-[1fr_120px_120px_120px] sm:items-center sm:gap-2 sm:py-2 " +
-            (dragOverId === category.id
-              ? "border-t-2 border-t-brand-700"
-              : "")
-          }
-        >
-          {renamingCategoryId === category.id ? (
-            <form
-              onSubmit={(e) => handleCategoryRenameSubmit(e, category)}
-              className="col-span-2 flex items-center gap-1 sm:col-span-1"
-            >
-              <input
-                value={categoryNameDraft}
-                onChange={(e) => setCategoryNameDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") cancelCategoryRename();
-                }}
-                autoFocus
-                aria-label="Category name"
-                className={nameInputClass}
-              />
-              <button
-                type="submit"
-                disabled={pending}
-                title="Save"
-                className="shrink-0 rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
-              >
-                <Icon name="check" label="Save" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleHideCategory(category.id)}
-                disabled={pending}
-                title="Hide category"
-                className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 disabled:opacity-50"
-              >
-                <Icon name="visibility_off" label="Hide category" />
-              </button>
-              <button
-                type="button"
-                onClick={cancelCategoryRename}
-                title="Cancel"
-                className="shrink-0 rounded px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
-              >
-                <Icon name="close" label="Cancel" />
-              </button>
-            </form>
-          ) : (
-            <div className="group col-span-2 flex items-center gap-1.5 text-neutral-800 sm:col-span-1">
-              <span
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData(DRAG_TYPE, category.id);
-                  e.dataTransfer.effectAllowed = "move";
-                }}
-                title="Drag to reorder or move to another group"
-                className="shrink-0 cursor-grab select-none text-neutral-400 hover:text-neutral-600 active:cursor-grabbing"
-              >
-                <Icon name="drag_indicator" label="Drag to reorder or move to another group" />
-              </span>
-              <span className="truncate">{category.name}</span>
-              <button
-                type="button"
-                onClick={() => startCategoryRename(category)}
-                title="Rename or hide category"
-                className="shrink-0 rounded p-1 text-neutral-400 opacity-0 hover:bg-neutral-100 hover:text-neutral-600 focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
-              >
-                <Icon name="edit" label="Rename or hide category" />
-              </button>
-            </div>
-          )}
-          <CategoryAmountCells
-            category={category}
-            month={month}
-            currency={currency}
-            setBudgeted={setBudgeted}
-            transferAvailable={transferAvailable}
-            categoryOptions={categoryOptions}
-          />
-        </div>
+          className={dragOverId === category.id ? "border-t-2 border-t-brand-700" : ""}
+          nameCell={categoryNameCell(category)}
+        />
       ))}
     </div>
+  );
+}
+
+/** Hide, or Unhide for a hidden category a quick filter is showing. */
+function HideToggleButton({ hidden, disabled, onClick }: { hidden: boolean; disabled: boolean; onClick: () => void }) {
+  const label = hidden ? "Unhide category" : "Hide category";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 disabled:opacity-50"
+    >
+      <Icon name={hidden ? "visibility" : "visibility_off"} label={label} />
+    </button>
   );
 }

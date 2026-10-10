@@ -1,4 +1,4 @@
-import { ceilDiv } from "./money";
+import { ceilDiv, formatMilliunitsLtr } from "./money";
 
 describe("ceilDiv", () => {
   it("divides exactly when there's no remainder", () => {
@@ -22,5 +22,11 @@ describe("ceilDiv", () => {
   it("rejects a fractional amount or a non-positive divisor", () => {
     expect(() => ceilDiv(1.5, 2)).toThrow(RangeError);
     expect(() => ceilDiv(10, 0)).toThrow(RangeError);
+  });
+});
+
+describe("formatMilliunitsLtr", () => {
+  it("wraps the formatted amount in a left-to-right isolate", () => {
+    expect(formatMilliunitsLtr(-150000, "ILS")).toBe("⁦-₪150.00⁩");
   });
 });

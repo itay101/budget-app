@@ -11,6 +11,7 @@ import {
   type TargetRow,
   type TargetStatus,
 } from "@/lib/targets";
+import type { TargetHistoryEntry } from "@/lib/targetDisplay";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { accessibleBudgetWhere } from "@/lib/authorization";
@@ -254,13 +255,34 @@ export type CategoryOption = {
 /** A category's Target state for the viewed month (ADR 0011). */
 export interface CategoryTargetState {
   target: Target | null;
+  /** Every stored target row, newest first, NONE rows as a null target:
+   * the editor's history and its "earlier months keep" note (#171). */
+  history: TargetHistoryEntry[];
   need: TargetNeed | null;
   snoozed: boolean;
   status: TargetStatus;
 }
 
+function historyFor(rows: TargetRow[]): TargetHistoryEntry[] {
+  return [...rows]
+    .sort((a, b) => b.startMonth.getTime() - a.startMonth.getTime())
+    .map(({ startMonth, ...target }) => ({
+      startMonth: formatBudgetMonth(startMonth),
+      target: target.kind === "NONE" ? null : pickTarget(target),
+    }));
+}
+
+/** Just the Target fields of a stored row, so Prisma's ids and timestamps
+ * don't travel to the client. */
+function pickTarget({ kind, cadence, amount, weekday, dueDay, dueDate }: Target): Target {
+  return { kind, cadence, amount, weekday, dueDay, dueDate };
+}
+
 export type BudgetCategoryRow = CategoryRow &
   CategoryTargetState & {
+    /** Hidden categories show in their own section, or marked under a
+     * quick filter other than All (#171). */
+    hidden: boolean;
     /** Cash overspending to cover this month: how far Available is below
      * 0, else 0. The plan's total is `totals.overspending`. */
     overspending: number;
@@ -277,14 +299,13 @@ export type BudgetMonthRows = {
     categories: BudgetCategoryRow[];
   }[];
   categoryOptions: CategoryOption[];
-  hiddenCategories: (BudgetCategoryRow & { groupName: string })[];
+  hiddenCategories: (BudgetCategoryRow & { groupId: string; groupName: string })[];
   /** Plan-level Underfunded, overspending and Cost to Be Me, over every
    * category, hidden ones included (ADR 0011). */
   totals: PlanTotals;
 };
 
-/** Works out a row's Target state from its stored target rows (at most the
- * latest on or before `month`), whether this month is snoozed, and its
+/** Works out a row's Target state from its stored target rows, whether this month is snoozed, and its
  * assignments by month (a yearly Set aside counts this cycle's). */
 function targetStateFor(
   row: CategoryRow,
@@ -293,11 +314,13 @@ function targetStateFor(
   assignedByMonth: Map<string, number> | undefined,
   month: Date,
 ): CategoryTargetState {
-  const target = effectiveTarget(rows, month);
+  const effective = effectiveTarget(rows, month);
+  const target = effective && pickTarget(effective);
   const funding = { carriedIn: row.carriedIn, assigned: row.budgeted, snoozed, assignedByMonth };
   const need = target ? needFor(target, funding, month) : null;
   return {
     target,
+    history: historyFor(rows),
     need,
     snoozed,
     status: targetStatus(target, need, { ...funding, available: row.available }),
@@ -374,8 +397,9 @@ export async function getBudgetMonthRows(
             where: { date: { gte: month, lt: nextMonth } },
             select: { amount: true },
           },
-          // ADR 0011: only the latest row on or before this month applies.
-          targets: { where: { startMonth: { lte: month } }, orderBy: { startMonth: "desc" }, take: 1 },
+          // Every row, newest first: effectiveTarget picks the one in effect
+          // (ADR 0011) and the editor shows the rest as the target's history.
+          targets: { orderBy: { startMonth: "desc" } },
           targetSnoozes: { where: { month }, select: { id: true } },
         },
       },
@@ -403,6 +427,7 @@ export async function getBudgetMonthRows(
     const snoozed = category.targetSnoozes.length > 0;
     return {
       ...row,
+      hidden: category.hidden,
       ...targetStateFor(row, category.targets, snoozed, assignedByMonth.get(category.id), month),
       overspending: Math.max(0, -row.available),
     };
@@ -431,7 +456,7 @@ export async function getBudgetMonthRows(
   const hiddenCategories = groups.flatMap((group) =>
     group.categories
       .filter((c) => c.hidden)
-      .map((category) => ({ ...categoryRow(category), groupName: group.name })),
+      .map((category) => ({ ...categoryRow(category), groupId: group.id, groupName: group.name })),
   );
 
   const visibleGroups = groups.map((group) => ({
