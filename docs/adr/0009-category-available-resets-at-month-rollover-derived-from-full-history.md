@@ -10,7 +10,8 @@ Available(M) = max(0, Available(M-1)) + assigned(M) + activity(M)
 
 RTA(M) = Ready to Assign income through M
        - cash overspending in every month before M
-       - everything assigned, in any month (past, M, or future)
+       - everything assigned in M and every month before it
+       - (current Budget Month and later only) everything assigned in any later month
 ```
 
 A negative Ready to Assign carries forward as-is, so later income covers
@@ -21,17 +22,27 @@ Uncategorized balance never becomes income ([ADR 0008](0008-ready-to-assign-inco
 Credit overspending never reaches Ready to Assign. Which part of a mixed
 cash-and-card overspend counts as cash is left to the credit-card work.
 
-RTA(M) is shown only for the current Budget Month and later. An earlier
-month shows Ready to Assign as zero, because that money has carried into
-the current month, and Move Money from Ready to Assign is refused there.
-Changing a category's assigned amount in an earlier month is still allowed
-and, like any assignment, comes out of the current month's Ready to Assign.
+An earlier Budget Month shows its own Ready to Assign: the last term is
+left out, so a later assignment never changes it. The current month and
+later keep the last term, which is how money assigned to a future month
+comes out of the current month straight away. An earlier month's box also
+shows the current month's figure alongside its own, because assigning
+there costs the current month too.
+
+Assigning in an earlier month, by Move Money from Ready to Assign or by
+changing a category's assigned amount, is allowed. It lowers Ready to
+Assign in that month and every month after it. It may leave that month's
+own figure negative, which is shown in red, the same as a negative current
+month. Auto-Assign is stricter: in an earlier month it adds money only
+while no month from that one through the current month would go below
+zero.
 
 Nothing about the rollover is stored. Every month is recomputed at read
 time from transactions and assignments, as Available already is. An edit
 to a past month, such as a back-dated transaction or a changed assignment,
-carries forward on its own. Its new overspending lowers the current month's
-Ready to Assign, and editing shows no warning. A deleted category follows
+carries forward on its own. Its new overspending lowers Ready to Assign in
+every later month, including the current one, and editing shows no warning
+even when it leaves a month's figure negative. A deleted category follows
 the same rule: with no transactions its assignments are dropped, so the
 money returns to Ready to Assign. With transactions, its transactions and
 assignments move to a replacement category and every month is recomputed.
@@ -43,9 +54,19 @@ then absorbed instead of silently dragging a category down forever.
 - **Keep the running total** (today's `availableFor`): rejected because an
   overspent category stays negative in every later month and Ready to
   Assign never reflects money that was actually spent.
-- **Show RTA(M) in past months too**: rejected because the formula takes
-  off every later assignment, so a past month shows a confusing, often
-  negative number that no action in that month can fix.
+- **Show the current-month formula in past months too**: rejected because
+  it takes off every later assignment, so a past month shows a confusing,
+  often negative number that no action in that month can fix. Leaving the
+  later-month term out of past months answers that objection.
+- **Show zero in past months and refuse Move Money from Ready to Assign
+  there** (this ADR's earlier rule): rejected because the owner wants each
+  month to show what it had left. Refusing Move Money only added friction,
+  because editing a category's assigned amount had the same effect on the
+  money.
+- **Never let a past month's own figure go below zero**: rejected for Move
+  Money, to keep one rule with the current month, where Move Money may leave
+  Ready to Assign negative. It's kept for Auto-Assign, which already stops
+  at zero.
 - **Absorb overspending immediately** in the same month: rejected because
   it hides the red signal the user is meant to fix by moving money.
 - **Snapshot each closed month** and apply later edits as an adjustment in
