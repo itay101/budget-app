@@ -38,6 +38,9 @@ const config: Config = {
         200: "16px",
         300: "24px",
         400: "32px",
+        // Height of MobileNavShell's top bar (p-200 + an h3 line + its
+        // 1px border), so sticky page toolbars sit just under it.
+        "mobile-nav": "57px",
       },
       keyframes: {
         "mutation-bar": {

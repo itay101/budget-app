@@ -1,11 +1,8 @@
 import { PrismaClient } from "@prisma/client";
 import { E2E_TEST_USER_ID } from "../src/lib/e2eTestAuth";
+import { currentBudgetMonth } from "../src/lib/budgetMonth";
 
 const prisma = new PrismaClient();
-
-function startOfMonth(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), 1);
-}
 
 // A fixed id/email so re-running the seed against a non-empty database
 // (unlike db:e2e:reset, which always starts from a fresh schema) reuses
@@ -100,7 +97,8 @@ async function main() {
     (c) => c.name === "Groceries",
   )!;
 
-  const month = startOfMonth(new Date());
+  // Budget Months are UTC firsts-of-month (#124), matching what /budget reads.
+  const month = currentBudgetMonth();
 
   await prisma.categoryMonth.createMany({
     data: immediateObligations.categories.map((category, i) => ({
