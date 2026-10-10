@@ -48,7 +48,7 @@ export function PrototypeHeader({
   currencyOptions,
   groups,
   ...rest
-}: Omit<VariantProps, "groups"> & {
+}: Omit<VariantProps, "groups" | "past"> & {
   variant: string;
   state: RtaState;
   theme: Theme;
@@ -62,6 +62,7 @@ export function PrototypeHeader({
     <>
       <Component
         {...rest}
+        past={rest.month < rest.currentMonth}
         currency={currency}
         state={state}
         theme={theme}

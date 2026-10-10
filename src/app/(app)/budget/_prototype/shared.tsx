@@ -17,7 +17,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { formatMilliunits, numberToMilliunits } from "@/lib/money";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
-import { monthName, shiftMonth } from "./months";
+import { monthLabel, monthName, shiftMonth } from "./months";
 
 export { monthLabel } from "./months";
 
@@ -33,6 +33,7 @@ export type PickerGroup = {
 export type VariantProps = {
   month: string; // YYYY-MM
   currentMonth: string; // today's UTC month
+  past: boolean; // month < currentMonth: Ready to Assign shows 0 there
   minMonth: string; // stub navigable range (issue #124's rules)
   maxMonth: string;
   currency: string;
@@ -139,6 +140,12 @@ const STATE_COPY: Record<
   },
 };
 
+const PAST_COPY = {
+  label: "Ready to Assign",
+  hint: "Past month. Ready to Assign carries into this month",
+  icon: "history",
+};
+
 function palette(theme: Theme) {
   return theme === "dark"
     ? {
@@ -234,11 +241,14 @@ export function Money({
 /** What every variant derives from its props before rendering. */
 export function useHeaderModel(props: VariantProps) {
   const p = palette(props.theme);
+  // Past months show 0: Ready to Assign only lives in the current and
+  // future months (feedback on the preview).
+  const state = props.past ? "zero" : props.state;
   return {
     p,
-    s: p.state[props.state],
-    copy: STATE_COPY[props.state],
-    total: totalOf(breakdownFor(props.state)),
+    s: p.state[state],
+    copy: props.past ? PAST_COPY : STATE_COPY[state],
+    total: props.past ? 0 : totalOf(breakdownFor(state)),
     href: useMonthHref(),
     ...monthNav(props),
   };
@@ -283,7 +293,7 @@ export function MonthArrow({
 // The breakdown's exact lines.
 // ---------------------------------------------------------------------------
 
-export function BreakdownLines({
+function BreakdownLines({
   month,
   currency,
   state,
@@ -597,4 +607,31 @@ export function AssignFromRtaForm({
       <FormButtons onCancel={onDone} disabled={!to || milli === 0} p={p} />
     </form>
   );
+}
+
+/** Stands in for the breakdown and the Assign form in a past month. */
+function PastNote(props: VariantProps & { p: Palette }) {
+  const { currentMonth, p } = props;
+  const href = useMonthHref();
+  return (
+    <p className={`text-body ${p.subtle}`}>
+      Ready to Assign is 0 in past months. It lives in the current month and
+      later.{" "}
+      <Link
+        href={href(currentMonth)}
+        scroll={false}
+        className="text-brand-700 underline"
+      >
+        Go to {monthLabel(currentMonth)}
+      </Link>
+    </p>
+  );
+}
+
+/** The breakdown, or the past-month note. */
+export function MonthBreakdown(
+  props: VariantProps & { p: Palette; compact?: boolean },
+) {
+  if (props.past) return <PastNote {...props} />;
+  return <BreakdownLines {...props} />;
 }

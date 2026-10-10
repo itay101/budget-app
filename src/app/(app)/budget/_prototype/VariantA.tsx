@@ -11,7 +11,7 @@ import { Icon } from "@/components/Icon";
 import { usePopover } from "@/components/usePopover";
 import {
   AssignFromRtaForm,
-  BreakdownLines,
+  MonthBreakdown,
   Money,
   MonthArrow,
   monthLabel,
@@ -127,8 +127,8 @@ function PopoverBody(
       <p className={`mb-2 text-small font-medium ${p.text}`}>
         Ready to Assign Breakdown
       </p>
-      <BreakdownLines month={month} currency={currency} state={state} p={p} />
-      <div className="mt-3 flex justify-end">
+      <MonthBreakdown {...props} p={p} />
+      <div className={`mt-3 justify-end ${props.past ? "hidden" : "flex"}`}>
         <button
           type="button"
           onClick={() => setMode("assign")}

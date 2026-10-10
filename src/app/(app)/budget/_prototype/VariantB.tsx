@@ -11,7 +11,7 @@ import { createPortal } from "react-dom";
 import { Icon } from "@/components/Icon";
 import {
   AssignFromRtaForm,
-  BreakdownLines,
+  MonthBreakdown,
   Money,
   MonthArrow,
   monthLabel,
@@ -177,30 +177,28 @@ export function VariantB(props: VariantProps) {
               >
                 Breakdown
               </h2>
-              <BreakdownLines
-                month={month}
-                currency={currency}
-                state={state}
-                p={p}
-              />
+              <MonthBreakdown {...props} p={p} />
 
-              <h2
-                className={`mb-2 mt-300 text-small font-medium uppercase tracking-wide ${p.subtle}`}
-              >
-                Assign money
-              </h2>
-              <AssignFromRtaForm
-                month={month}
-                currency={currency}
-                state={state}
-                groups={groups}
-                p={p}
-                autoFocus={false}
-              />
+              <DrawerAssign {...props} p={p} />
             </div>
           </div>,
           document.body,
         )}
+    </>
+  );
+}
+
+function DrawerAssign(props: VariantProps & { p: Palette }) {
+  const { past, p } = props;
+  if (past) return null;
+  return (
+    <>
+      <h2
+        className={`mb-2 mt-300 text-small font-medium uppercase tracking-wide ${p.subtle}`}
+      >
+        Assign money
+      </h2>
+      <AssignFromRtaForm {...props} autoFocus={false} />
     </>
   );
 }

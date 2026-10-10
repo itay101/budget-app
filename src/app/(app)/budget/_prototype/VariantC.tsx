@@ -10,7 +10,7 @@ import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import {
   AssignFromRtaForm,
-  BreakdownLines,
+  MonthBreakdown,
   Money,
   monthLabel,
   useHeaderModel,
@@ -57,7 +57,7 @@ export function VariantC(props: VariantProps) {
               open={assignOpen}
               onToggle={() => setAssignOpen((o) => !o)}
               labels={["Assign money", "Close"]}
-              className={`font-medium ${p.button}`}
+              className={`font-medium ${props.past ? "hidden" : ""} ${p.button}`}
             />
             <ToggleButton
               open={breakdownOpen}
@@ -69,13 +69,7 @@ export function VariantC(props: VariantProps) {
         </div>
 
         <div className={`${VISIBILITY[String(breakdownOpen)]} p-300 sm:block`}>
-          <BreakdownLines
-            month={month}
-            currency={currency}
-            state={state}
-            p={p}
-            compact
-          />
+          <MonthBreakdown {...props} p={p} compact />
         </div>
       </div>
 
