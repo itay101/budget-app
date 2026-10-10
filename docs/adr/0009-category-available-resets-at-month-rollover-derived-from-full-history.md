@@ -21,6 +21,12 @@ Uncategorized balance never becomes income ([ADR 0008](0008-ready-to-assign-inco
 Credit overspending never reaches Ready to Assign. Which part of a mixed
 cash-and-card overspend counts as cash is left to the credit-card work.
 
+RTA(M) is shown only for the current Budget Month and later. An earlier
+month shows Ready to Assign as zero, because that money has carried into
+the current month, and Move Money from Ready to Assign is refused there.
+Changing a category's assigned amount in an earlier month is still allowed
+and, like any assignment, comes out of the current month's Ready to Assign.
+
 Nothing about the rollover is stored. Every month is recomputed at read
 time from transactions and assignments, as Available already is. An edit
 to a past month, such as a back-dated transaction or a changed assignment,
@@ -37,6 +43,9 @@ then absorbed instead of silently dragging a category down forever.
 - **Keep the running total** (today's `availableFor`): rejected because an
   overspent category stays negative in every later month and Ready to
   Assign never reflects money that was actually spent.
+- **Show RTA(M) in past months too**: rejected because the formula takes
+  off every later assignment, so a past month shows a confusing, often
+  negative number that no action in that month can fix.
 - **Absorb overspending immediately** in the same month: rejected because
   it hides the red signal the user is meant to fix by moving money.
 - **Snapshot each closed month** and apply later edits as an adjustment in
