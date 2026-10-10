@@ -148,3 +148,13 @@ before anything already assigned is taken off. Undated Have a balance of
 targets are left out. It's compared against Expected Income, a number the
 user types in.
 _Avoid_: total targets, monthly need
+
+**Auto-Assign**:
+Setting what is assigned to many categories in one Budget Month in a single
+step, using one rule for the whole Budget or one category group: Underfunded,
+Assigned or Spent Last Month, Average Assigned or Spent, Reduce Overfunding,
+or Reset Available or Assigned. The user sees every change before confirming.
+When Ready to Assign can't cover everything, overspending is covered first,
+then Targets in order of when they're due, and the last category may get
+only part of what it needs.
+_Avoid_: quick budget (YNAB's old name), auto-fill
