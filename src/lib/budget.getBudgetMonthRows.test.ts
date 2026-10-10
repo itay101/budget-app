@@ -46,6 +46,8 @@ describe("getBudgetMonthRows", () => {
               where: { date: { gte: month, lt: nextMonth } },
               select: { amount: true },
             },
+            targets: { where: { startMonth: { lte: month } }, orderBy: { startMonth: "desc" }, take: 1 },
+            targetSnoozes: { where: { month }, select: { id: true } },
           },
         },
       },
@@ -60,7 +62,7 @@ describe("getBudgetMonthRows", () => {
       {
         id: "group-1",
         name: "Everyday Expenses",
-        categories: [{ id: "cat-1", name: "Groceries", hidden: false, months: [], transactions: [] }],
+        categories: [{ id: "cat-1", name: "Groceries", hidden: false, months: [], transactions: [], targets: [], targetSnoozes: [] }],
       },
     ] as never);
 
@@ -89,7 +91,7 @@ describe("getBudgetMonthRows", () => {
             name: "Groceries",
             hidden: false,
             months: [{ budgeted: 5000 }],
-            transactions: [{ amount: -1200 }, { amount: -800 }],
+            transactions: [{ amount: -1200 }, { amount: -800 }], targets: [], targetSnoozes: [],
           },
         ],
       },
@@ -119,6 +121,11 @@ describe("getBudgetMonthRows", () => {
             activity: -2000,
             carriedIn: 8000,
             available: 11000, // 8000 carried in + 5000 - 2000
+            target: null,
+            need: null,
+            snoozed: false,
+            status: "none",
+            overspending: 0,
           },
         ],
       },
@@ -148,7 +155,7 @@ describe("getBudgetMonthRows", () => {
             name: "Old Category",
             hidden: true,
             months: [],
-            transactions: [],
+            transactions: [], targets: [], targetSnoozes: [],
           },
         ],
       },
@@ -172,14 +179,14 @@ describe("getBudgetMonthRows", () => {
             name: "Groceries",
             hidden: false,
             months: [{ budgeted: 5000 }],
-            transactions: [],
+            transactions: [], targets: [], targetSnoozes: [],
           },
           {
             id: "cat-hidden",
             name: "Old Category",
             hidden: true,
             months: [{ budgeted: 0 }],
-            transactions: [{ amount: -300 }],
+            transactions: [{ amount: -300 }], targets: [], targetSnoozes: [],
           },
         ],
       },
@@ -206,7 +213,7 @@ describe("getBudgetMonthRows", () => {
             name: "Old Category",
             hidden: true,
             months: [],
-            transactions: [],
+            transactions: [], targets: [], targetSnoozes: [],
           },
         ],
       },
@@ -230,7 +237,7 @@ describe("getBudgetMonthRows", () => {
         id: "group-1",
         name: "Everyday Expenses",
         categories: [
-          { id: "cat-1", name: "Dining", hidden: false, months: [{ budgeted: 1000 }], transactions: [] },
+          { id: "cat-1", name: "Dining", hidden: false, months: [{ budgeted: 1000 }], transactions: [], targets: [], targetSnoozes: [] },
         ],
       },
     ] as never);
@@ -253,7 +260,7 @@ describe("getBudgetMonthRows", () => {
       {
         id: "group-1",
         name: "Everyday Expenses",
-        categories: [{ id: "cat-hidden", name: "Old Gym", hidden: true, months: [], transactions: [] }],
+        categories: [{ id: "cat-hidden", name: "Old Gym", hidden: true, months: [], transactions: [], targets: [], targetSnoozes: [] }],
       },
     ] as never);
     mockActivityByMonth.mockResolvedValue([
@@ -263,5 +270,167 @@ describe("getBudgetMonthRows", () => {
     const result = await getBudgetMonthRows("budget-1", month);
 
     expect(result.hiddenCategories[0]).toMatchObject({ carriedIn: 0, available: 0 });
+  });
+
+  // ADR 0011: the latest target row on or before the month applies; plan
+  // totals cover hidden categories too.
+  it("attaches each category's target, need and status, and sums the plan totals", async () => {
+    const setAside = (amount: number) => ({
+      startMonth: new Date(Date.UTC(2026, 0, 1)),
+      kind: "SET_ASIDE",
+      cadence: "MONTHLY",
+      amount,
+      weekday: null,
+      dueDay: null,
+      dueDate: null,
+    });
+    mockFindMany.mockResolvedValue([
+      {
+        id: "group-1",
+        name: "Bills",
+        categories: [
+          { id: "rent", name: "Rent", hidden: false, months: [{ budgeted: 1000 }], transactions: [], targets: [setAside(4000)], targetSnoozes: [] },
+          { id: "gym", name: "Gym", hidden: true, months: [], transactions: [], targets: [setAside(500)], targetSnoozes: [] },
+          { id: "gifts", name: "Gifts", hidden: false, months: [], transactions: [], targets: [setAside(200)], targetSnoozes: [{ id: "s1" }] },
+        ],
+      },
+    ] as never);
+    mockAssignments.mockResolvedValue([{ categoryId: "rent", month, budgeted: 1000 }] as never);
+
+    const result = await getBudgetMonthRows("budget-1", month);
+
+    expect(result.groups[0].categories).toEqual([
+      expect.objectContaining({ id: "rent", status: "underfunded", snoozed: false, need: { ask: 4000, needed: 3000 } }),
+      expect.objectContaining({ id: "gifts", status: "snoozed", snoozed: true, need: { ask: 200, needed: 0 } }),
+    ]);
+    expect(result.hiddenCategories[0]).toMatchObject({ id: "gym", status: "underfunded" });
+    expect(result.totals).toEqual({
+      needed: 3000 + 500,
+      overspending: 0,
+      underfunded: 3000 + 500,
+      costToBeMe: 4000 + 500 + 200,
+    });
+  });
+
+  it("keeps an earlier month on the row it started from after a later month edits the target", async () => {
+    // Set aside $100 from Jan, edited to $250 from Mar. The mock applies
+    // the query's own filter (on or before the month, latest first, one row).
+    const stored = [
+      { startMonth: new Date(Date.UTC(2026, 0, 1)), amount: 100000 },
+      { startMonth: new Date(Date.UTC(2026, 2, 1)), amount: 250000 },
+    ].map((row) => ({ ...row, kind: "SET_ASIDE", cadence: "MONTHLY", weekday: null, dueDay: null, dueDate: null }));
+    mockFindMany.mockImplementation((async (args: {
+      include: { categories: { include: { targets: { where: { startMonth: { lte: Date } } } } } };
+    }) => {
+      const { lte } = args.include.categories.include.targets.where.startMonth;
+      const targets = stored
+        .filter((row) => row.startMonth <= lte)
+        .sort((a, b) => b.startMonth.getTime() - a.startMonth.getTime())
+        .slice(0, 1);
+      return [
+        {
+          id: "group-1",
+          name: "Bills",
+          categories: [{ id: "rent", name: "Rent", hidden: false, months: [], transactions: [], targets, targetSnoozes: [] }],
+        },
+      ];
+    }) as never);
+
+    const ask = async (m: Date) => (await getBudgetMonthRows("budget-1", m)).groups[0].categories[0].need?.ask;
+
+    expect(await ask(new Date(Date.UTC(2026, 1, 1)))).toBe(100000);
+    expect(await ask(new Date(Date.UTC(2026, 2, 1)))).toBe(250000);
+    expect(await ask(new Date(Date.UTC(2026, 3, 1)))).toBe(250000);
+  });
+
+  it("reports each row's overspending as a positive figure", async () => {
+    mockFindMany.mockResolvedValue([
+      {
+        id: "group-1",
+        name: "Bills",
+        categories: [
+          { id: "power", name: "Power", hidden: false, months: [], transactions: [], targets: [], targetSnoozes: [] },
+          { id: "food", name: "Food", hidden: true, months: [], transactions: [], targets: [], targetSnoozes: [] },
+        ],
+      },
+    ] as never);
+    mockAssignments.mockResolvedValue([{ categoryId: "food", month, budgeted: 5000 }] as never);
+    mockActivityByMonth.mockResolvedValue([{ categoryId: "power", month: "2026-03", amount: BigInt(-4000) }] as never);
+
+    const result = await getBudgetMonthRows("budget-1", month);
+
+    expect(result.groups[0].categories[0]).toMatchObject({ available: -4000, overspending: 4000, status: "overspent" });
+    expect(result.hiddenCategories[0]).toMatchObject({ available: 5000, overspending: 0 });
+    expect(result.totals.overspending).toBe(4000);
+  });
+
+  it("treats a NONE row as no target", async () => {
+    mockFindMany.mockResolvedValue([
+      {
+        id: "group-1",
+        name: "Bills",
+        categories: [
+          {
+            id: "rent",
+            name: "Rent",
+            hidden: false,
+            months: [],
+            transactions: [],
+            targets: [{ startMonth: month, kind: "NONE", cadence: null, amount: 0, weekday: null, dueDay: null, dueDate: null }],
+            targetSnoozes: [],
+          },
+        ],
+      },
+    ] as never);
+
+    const result = await getBudgetMonthRows("budget-1", month);
+
+    expect(result.groups[0].categories[0]).toMatchObject({ target: null, need: null, status: "none" });
+  });
+
+  it("gives a yearly Set aside this cycle's assignments, not its balance", async () => {
+    // Due Jun 1 each year, so the cycle runs Jul 2025 - Jun 2026. $600
+    // assigned in Jan and spent; nothing carried into March.
+    mockFindMany.mockResolvedValue([
+      {
+        id: "group-1",
+        name: "Bills",
+        categories: [
+          {
+            id: "insurance",
+            name: "Insurance",
+            hidden: false,
+            months: [],
+            transactions: [],
+            targets: [
+              {
+                startMonth: new Date(Date.UTC(2025, 0, 1)),
+                kind: "SET_ASIDE",
+                cadence: "YEARLY",
+                amount: 1200000,
+                weekday: null,
+                dueDay: null,
+                dueDate: new Date(Date.UTC(2026, 5, 1)),
+              },
+            ],
+            targetSnoozes: [],
+          },
+        ],
+      },
+    ] as never);
+    mockAssignments.mockResolvedValue([
+      { categoryId: "insurance", month: new Date(Date.UTC(2026, 0, 1)), budgeted: 600000 },
+    ] as never);
+    mockActivityByMonth.mockResolvedValue([
+      { categoryId: "insurance", month: "2026-01", amount: BigInt(-600000) },
+    ] as never);
+
+    const result = await getBudgetMonthRows("budget-1", month);
+
+    // ($1,200 - $600 set aside this cycle) / Mar..Jun (4 months) = $150.
+    expect(result.groups[0].categories[0]).toMatchObject({
+      carriedIn: 0,
+      need: { ask: 150000, needed: 150000, goal: { have: 600000, amount: 1200000 } },
+    });
   });
 });

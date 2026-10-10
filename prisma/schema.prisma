@@ -105,8 +105,68 @@ model Category {
   hidden          Boolean         @default(false)
   months          CategoryMonth[]
   transactions    Transaction[]
+  targets         CategoryTarget[]
+  targetSnoozes   CategoryTargetSnooze[]
 
   @@index([categoryGroupId])
+}
+
+enum TargetKind {
+  SET_ASIDE
+  REFILL
+  BALANCE
+  // A row that removes the target from its startMonth on (ADR 0011).
+  NONE
+}
+
+enum TargetCadence {
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+// A category's Target, effective from `startMonth` (ADR 0011): month M
+// uses the latest row whose startMonth is on or before M, so editing a
+// target in month M upserts the row for M and earlier months keep theirs.
+// Removing a target writes a NONE row. Underfunded is derived at read
+// time (src/lib/targets.ts), never stored.
+model CategoryTarget {
+  id         String         @id @default(cuid())
+  categoryId String
+  category   Category       @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  // A Budget Month: the UTC first of the month.
+  startMonth DateTime
+  kind       TargetKind
+  // Null for BALANCE and NONE.
+  cadence    TargetCadence?
+  // Milliunits; 0 for NONE.
+  amount     Int            @default(0)
+  // WEEKLY: 0 = Sunday ... 6 = Saturday.
+  weekday    Int?
+  // MONTHLY, optional: clamped to the month's last day. Only orders
+  // Auto-Assign and shows on screen.
+  dueDay     Int?
+  // YEARLY: the due date, repeating every year. Dated BALANCE: the due
+  // month, as its UTC first.
+  dueDate    DateTime?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@unique([categoryId, startMonth])
+}
+
+// A snoozed target for one Budget Month (ADR 0011). Kept apart from
+// CategoryTarget so snoozing doesn't start a new effective-from row; it
+// wakes up on its own the next month.
+model CategoryTargetSnooze {
+  id         String   @id @default(cuid())
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  month      DateTime
+  createdAt  DateTime @default(now())
+
+  @@unique([categoryId, month])
+  @@index([month])
 }
 
 // One row per (category, month): how much was budgeted ("assigned") to a
@@ -260,6 +320,8 @@ enum AuditEntityType {
   TRANSACTION
   BUDGET_MEMBERSHIP
   INVITE
+  CATEGORY_TARGET
+  CATEGORY_TARGET_SNOOZE
 }
 
 // One polymorphic table per change (ADR 0002), rather than one table per
