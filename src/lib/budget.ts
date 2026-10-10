@@ -1,5 +1,16 @@
 import { cookies } from "next/headers";
 import { Prisma } from "@prisma/client";
+import {
+  effectiveTarget,
+  needFor,
+  planTotals,
+  targetStatus,
+  type PlanTotals,
+  type Target,
+  type TargetNeed,
+  type TargetRow,
+  type TargetStatus,
+} from "@/lib/targets";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { accessibleBudgetWhere } from "@/lib/authorization";
@@ -240,6 +251,21 @@ export type CategoryOption = {
   categories: { id: string; name: string; available: number }[];
 };
 
+/** A category's Target state for the viewed month (ADR 0011). */
+export interface CategoryTargetState {
+  target: Target | null;
+  need: TargetNeed | null;
+  snoozed: boolean;
+  status: TargetStatus;
+}
+
+export type BudgetCategoryRow = CategoryRow &
+  CategoryTargetState & {
+    /** Cash overspending to cover this month: how far Available is below
+     * 0, else 0. The plan's total is `totals.overspending`. */
+    overspending: number;
+  };
+
 export type BudgetMonthRows = {
   groups: {
     id: string;
@@ -248,11 +274,35 @@ export type BudgetMonthRows = {
      * ones, which are filtered out of `categories` for display but still
      * count (see CategoryGroupSection's own `isEmpty` doc comment). */
     isEmpty: boolean;
-    categories: CategoryRow[];
+    categories: BudgetCategoryRow[];
   }[];
   categoryOptions: CategoryOption[];
-  hiddenCategories: (CategoryRow & { groupName: string })[];
+  hiddenCategories: (BudgetCategoryRow & { groupName: string })[];
+  /** Plan-level Underfunded, overspending and Cost to Be Me, over every
+   * category, hidden ones included (ADR 0011). */
+  totals: PlanTotals;
 };
+
+/** Works out a row's Target state from its stored target rows (at most the
+ * latest on or before `month`), whether this month is snoozed, and its
+ * assignments by month (a yearly Set aside counts this cycle's). */
+function targetStateFor(
+  row: CategoryRow,
+  rows: TargetRow[],
+  snoozed: boolean,
+  assignedByMonth: Map<string, number> | undefined,
+  month: Date,
+): CategoryTargetState {
+  const target = effectiveTarget(rows, month);
+  const funding = { carriedIn: row.carriedIn, assigned: row.budgeted, snoozed, assignedByMonth };
+  const need = target ? needFor(target, funding, month) : null;
+  return {
+    target,
+    need,
+    snoozed,
+    status: targetStatus(target, need, { ...funding, available: row.available }),
+  };
+}
 
 function addToMonthlyTotals(totals: MonthlyTotals, categoryId: string, monthKey: string, amount: number) {
   let months = totals.get(categoryId);
@@ -324,6 +374,9 @@ export async function getBudgetMonthRows(
             where: { date: { gte: month, lt: nextMonth } },
             select: { amount: true },
           },
+          // ADR 0011: only the latest row on or before this month applies.
+          targets: { where: { startMonth: { lte: month } }, orderBy: { startMonth: "desc" }, take: 1 },
+          targetSnoozes: { where: { month }, select: { id: true } },
         },
       },
     },
@@ -335,8 +388,8 @@ export async function getBudgetMonthRows(
   // needs every earlier month's assigned and activity per category.
   const { assignedByMonth, activityByMonth } = await loadMonthlyTotals(categoryIds, nextMonth);
 
-  function categoryRow(category: (typeof groups)[number]["categories"][number]) {
-    return rowFor(
+  function categoryRow(category: (typeof groups)[number]["categories"][number]): BudgetCategoryRow {
+    const row = rowFor(
       {
         id: category.id,
         name: category.name,
@@ -347,6 +400,12 @@ export async function getBudgetMonthRows(
       activityByMonth,
       month,
     );
+    const snoozed = category.targetSnoozes.length > 0;
+    return {
+      ...row,
+      ...targetStateFor(row, category.targets, snoozed, assignedByMonth.get(category.id), month),
+      overspending: Math.max(0, -row.available),
+    };
   }
 
   // Slimmed-down category list (just id/name/available) for the "move
@@ -375,15 +434,19 @@ export async function getBudgetMonthRows(
       .map((category) => ({ ...categoryRow(category), groupName: group.name })),
   );
 
+  const visibleGroups = groups.map((group) => ({
+    id: group.id,
+    name: group.name,
+    isEmpty: group.categories.length === 0,
+    categories: group.categories.filter((c) => !c.hidden).map(categoryRow),
+  }));
+  const visibleRows = visibleGroups.flatMap((group) => group.categories);
+
   return {
-    groups: groups.map((group) => ({
-      id: group.id,
-      name: group.name,
-      isEmpty: group.categories.length === 0,
-      categories: group.categories.filter((c) => !c.hidden).map(categoryRow),
-    })),
+    groups: visibleGroups,
     categoryOptions,
     hiddenCategories,
+    totals: planTotals([...visibleRows, ...hiddenCategories]),
   };
 }
 

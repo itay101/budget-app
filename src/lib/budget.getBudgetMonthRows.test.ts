@@ -46,6 +46,8 @@ describe("getBudgetMonthRows", () => {
               where: { date: { gte: month, lt: nextMonth } },
               select: { amount: true },
             },
+            targets: { where: { startMonth: { lte: month } }, orderBy: { startMonth: "desc" }, take: 1 },
+            targetSnoozes: { where: { month }, select: { id: true } },
           },
         },
       },
@@ -60,7 +62,7 @@ describe("getBudgetMonthRows", () => {
       {
         id: "group-1",
         name: "Everyday Expenses",
-        categories: [{ id: "cat-1", name: "Groceries", hidden: false, months: [], transactions: [] }],
+        categories: [{ id: "cat-1", name: "Groceries", hidden: false, months: [], transactions: [], targets: [], targetSnoozes: [] }],
       },
     ] as never);
 
@@ -89,7 +91,7 @@ describe("getBudgetMonthRows", () => {
             name: "Groceries",
             hidden: false,
             months: [{ budgeted: 5000 }],
-            transactions: [{ amount: -1200 }, { amount: -800 }],
+            transactions: [{ amount: -1200 }, { amount: -800 }], targets: [], targetSnoozes: [],
           },
         ],
       },
@@ -119,6 +121,11 @@ describe("getBudgetMonthRows", () => {
             activity: -2000,
             carriedIn: 8000,
             available: 11000, // 8000 carried in + 5000 - 2000
+            target: null,
+            need: null,
+            snoozed: false,
+            status: "none",
+            overspending: 0,
           },
         ],
       },
@@ -148,7 +155,7 @@ describe("getBudgetMonthRows", () => {
             name: "Old Category",
             hidden: true,
             months: [],
-            transactions: [],
+            transactions: [], targets: [], targetSnoozes: [],
           },
         ],
       },
@@ -172,14 +179,14 @@ describe("getBudgetMonthRows", () => {
             name: "Groceries",
             hidden: false,
             months: [{ budgeted: 5000 }],
-            transactions: [],
+            transactions: [], targets: [], targetSnoozes: [],
           },
           {
             id: "cat-hidden",
             name: "Old Category",
             hidden: true,
             months: [{ budgeted: 0 }],
-            transactions: [{ amount: -300 }],
+            transactions: [{ amount: -300 }], targets: [], targetSnoozes: [],
           },
         ],
       },
@@ -206,7 +213,7 @@ describe("getBudgetMonthRows", () => {
             name: "Old Category",
             hidden: true,
             months: [],
-            transactions: [],
+            transactions: [], targets: [], targetSnoozes: [],
           },
         ],
       },
@@ -230,7 +237,7 @@ describe("getBudgetMonthRows", () => {
         id: "group-1",
         name: "Everyday Expenses",
         categories: [
-          { id: "cat-1", name: "Dining", hidden: false, months: [{ budgeted: 1000 }], transactions: [] },
+          { id: "cat-1", name: "Dining", hidden: false, months: [{ budgeted: 1000 }], transactions: [], targets: [], targetSnoozes: [] },
         ],
       },
     ] as never);
@@ -253,7 +260,7 @@ describe("getBudgetMonthRows", () => {
       {
         id: "group-1",
         name: "Everyday Expenses",
-        categories: [{ id: "cat-hidden", name: "Old Gym", hidden: true, months: [], transactions: [] }],
+        categories: [{ id: "cat-hidden", name: "Old Gym", hidden: true, months: [], transactions: [], targets: [], targetSnoozes: [] }],
       },
     ] as never);
     mockActivityByMonth.mockResolvedValue([
