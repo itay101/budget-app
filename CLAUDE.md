@@ -69,6 +69,20 @@ When a chain of commits adds tests for the same change, put the test
 commit last, after the code it exercises — not interleaved with or ahead
 of it.
 
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `itay101/budget-app` (`gh`, or the GitHub MCP tools in cloud sessions). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
 <!-- fallow:agent-install v1 claude-import:start -->
 @AGENTS.md
 <!-- fallow:agent-install v1 claude-import:end -->
