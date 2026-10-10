@@ -16,6 +16,7 @@ import {
   recordAuditEntry,
 } from "@/lib/audit";
 import { numberToMilliunits } from "@/lib/money";
+import { effectiveTarget, parseTargetInput, type Target } from "@/lib/targets";
 
 /**
  * Creates a new category group, appended after every existing group in
@@ -452,6 +453,183 @@ export async function setBudgeted(formData: FormData) {
       changes: diffFields({ budgeted: before?.budgeted ?? 0 }, { budgeted }),
     });
   });
+
+  revalidatePath("/budget");
+}
+
+/** The category and viewed month every target action starts from,
+ * authorized the same way setBudgeted is. */
+async function requireTargetContext(formData: FormData) {
+  const categoryId = String(formData.get("categoryId") ?? "");
+  const monthInput = String(formData.get("month") ?? "");
+
+  if (!categoryId || !monthInput) {
+    throw new Error("categoryId and month are required");
+  }
+  const { user, budgetId } = await requireCategoryAccess(categoryId);
+  const month = await requireNavigableMonth(budgetId, monthInput);
+  return { categoryId, month, actorId: user.id, budgetId };
+}
+
+type TargetContext = Awaited<ReturnType<typeof requireTargetContext>>;
+
+const TARGET_FIELDS = {
+  kind: true,
+  cadence: true,
+  amount: true,
+  weekday: true,
+  dueDay: true,
+  dueDate: true,
+} as const;
+
+function sameTarget(a: Target, b: Target): boolean {
+  return (
+    a.kind === b.kind &&
+    a.cadence === b.cadence &&
+    a.amount === b.amount &&
+    a.weekday === b.weekday &&
+    a.dueDay === b.dueDay &&
+    a.dueDate?.getTime() === b.dueDate?.getTime()
+  );
+}
+
+/** Upserts the target row starting at the viewed month (ADR 0011), so the
+ * change applies from that month on and earlier months keep their rows.
+ * Writing the target that's already there is a no-op. */
+async function writeTargetRow({ categoryId, month, actorId, budgetId }: TargetContext, target: Target) {
+  const before = await prisma.categoryTarget.findUnique({
+    where: { categoryId_startMonth: { categoryId, startMonth: month } },
+    select: { id: true, ...TARGET_FIELDS },
+  });
+  if (before && sameTarget(before, target)) {
+    return;
+  }
+
+  await prisma.$transaction((tx) => {
+    const audit = { tx, budgetId, entityType: "CATEGORY_TARGET" as const, actorId };
+    if (before) {
+      const { id, ...beforeFields } = before;
+      return auditedUpdate({
+        ...audit,
+        entityId: id,
+        before: beforeFields,
+        after: { ...target },
+        apply: () => tx.categoryTarget.update({ where: { id }, data: target }),
+      });
+    }
+    return auditedCreate({
+      ...audit,
+      apply: () => tx.categoryTarget.create({ data: { categoryId, startMonth: month, ...target } }),
+      entityId: (row) => row.id,
+      fields: () => ({ categoryId, startMonth: month, ...target }),
+    });
+  });
+
+  revalidatePath("/budget");
+}
+
+/** The target in effect for the category in the viewed month, if any. */
+async function targetInEffect({ categoryId, month }: TargetContext): Promise<Target | null> {
+  const rows = await prisma.categoryTarget.findMany({
+    where: { categoryId, startMonth: { lte: month } },
+    orderBy: { startMonth: "desc" },
+    take: 1,
+  });
+  return effectiveTarget(rows, month);
+}
+
+/**
+ * Sets a category's target from the viewed month on (#170). The form's
+ * kind, cadence, amount and dates go through parseTargetInput, which
+ * rejects incomplete targets.
+ */
+export async function setTarget(formData: FormData) {
+  const context = await requireTargetContext(formData);
+  const fields = ["kind", "cadence", "amount", "weekday", "dueDay", "dueDate", "dated", "dueMonth"] as const;
+  const target = parseTargetInput(
+    Object.fromEntries(fields.map((field) => [field, String(formData.get(field) ?? "")])),
+  );
+  await writeTargetRow(context, target);
+}
+
+/**
+ * Removes a category's target from the viewed month on by writing a NONE
+ * row there (ADR 0011); earlier months keep theirs. A no-op when no target
+ * applies in that month.
+ */
+export async function removeTarget(formData: FormData) {
+  const context = await requireTargetContext(formData);
+  if (!(await targetInEffect(context))) {
+    return;
+  }
+  await writeTargetRow(context, {
+    kind: "NONE",
+    cadence: null,
+    amount: 0,
+    weekday: null,
+    dueDay: null,
+    dueDate: null,
+  });
+}
+
+/**
+ * Snoozes the category's target for the viewed month only (ADR 0011): it
+ * wakes up on its own the next month, and doesn't start a new target row.
+ */
+export async function snoozeTarget(formData: FormData) {
+  const context = await requireTargetContext(formData);
+  const { categoryId, month, actorId, budgetId } = context;
+
+  if (!(await targetInEffect(context))) {
+    throw new Error("This category has no target to snooze");
+  }
+  const existing = await prisma.categoryTargetSnooze.findUnique({
+    where: { categoryId_month: { categoryId, month } },
+    select: { id: true },
+  });
+  if (existing) {
+    return;
+  }
+
+  await prisma.$transaction((tx) =>
+    auditedCreate({
+      tx,
+      budgetId,
+      entityType: "CATEGORY_TARGET_SNOOZE",
+      actorId,
+      apply: () => tx.categoryTargetSnooze.create({ data: { categoryId, month } }),
+      entityId: (snooze) => snooze.id,
+      fields: () => ({ categoryId, month }),
+    }),
+  );
+
+  revalidatePath("/budget");
+}
+
+/** Wakes a snoozed target for the viewed month. A no-op when it isn't
+ * snoozed. */
+export async function unsnoozeTarget(formData: FormData) {
+  const { categoryId, month, actorId, budgetId } = await requireTargetContext(formData);
+
+  const existing = await prisma.categoryTargetSnooze.findUnique({
+    where: { categoryId_month: { categoryId, month } },
+    select: { id: true },
+  });
+  if (!existing) {
+    return;
+  }
+
+  await prisma.$transaction((tx) =>
+    auditedDelete({
+      tx,
+      budgetId,
+      entityType: "CATEGORY_TARGET_SNOOZE",
+      entityId: existing.id,
+      actorId,
+      before: { categoryId, month },
+      apply: () => tx.categoryTargetSnooze.delete({ where: { id: existing.id } }),
+    }),
+  );
 
   revalidatePath("/budget");
 }
