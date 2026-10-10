@@ -162,6 +162,12 @@ const CELL_LOOK: Record<CellState, string> = {
   normal: "text-neutral-800 hover:bg-neutral-100",
 };
 
+const CURRENT_RING: Record<CellState, string> = {
+  disabled: " ring-2 ring-inset ring-brand-700",
+  selected: " ring-2 ring-brand-700 ring-offset-2",
+  normal: " ring-2 ring-inset ring-brand-700",
+};
+
 function cellState(month: Date, key: string, viewedKey: string, range: BudgetMonthRange): CellState {
   if (!isInRange(month, range)) return "disabled";
   return key === viewedKey ? "selected" : "normal";
@@ -186,7 +192,9 @@ function MonthCell({
 }) {
   const key = formatBudgetMonth(month);
   const state = cellState(month, key, viewedKey, range);
-  const ring = key === currentKey && state !== "selected" ? " ring-2 ring-inset ring-brand-700" : "";
+  // The current month always has a ring (#136); on the filled viewed cell it
+  // sits outside the fill so it stays visible.
+  const ring = key === currentKey ? CURRENT_RING[state] : "";
   const className = `rounded py-1.5 text-center text-body ${CELL_LOOK[state]}${ring}`;
   if (state === "disabled") {
     return (

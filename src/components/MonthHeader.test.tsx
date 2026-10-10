@@ -88,4 +88,13 @@ describe("MonthHeader", () => {
     expect(cell("Oct").className).toContain("ring-2");
     expect(cell("Dec").className).not.toContain("ring-2");
   });
+
+  it("keeps the ring on the current month when it's also the viewed month", () => {
+    render({ month: "2026-10", current: "2026-10", first: "2026-03", last: "2027-10" });
+    const picker = openPicker();
+    const oct = [...picker.querySelectorAll<HTMLElement>("a")].find((el) => el.textContent === "Oct")!;
+    expect(oct.getAttribute("aria-current")).toBe("date");
+    expect(oct.className).toContain("ring-2");
+    expect(oct.className).toContain("ring-offset-2");
+  });
 });
