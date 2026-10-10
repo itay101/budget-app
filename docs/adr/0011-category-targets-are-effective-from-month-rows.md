@@ -31,7 +31,9 @@ Dates:
   only orders Auto-Assign and appears on screen.
 - **Weekly:** a required `weekday`.
 - **Yearly:** a required `dueDate` that repeats every year. A new cycle
-  starts the day after it.
+  starts the day after it. Needs are worked out in whole Budget Months, so
+  the cycle runs from the month after the due month through the next due
+  month.
 - **Dated balance:** a one-off due month.
 
 **Underfunded** for month M is derived at read time, like Available
@@ -45,7 +47,7 @@ handled separately.
 | Monthly Set aside | amount − assigned(M) |
 | Monthly Refill up to | amount − funded |
 | Weekly | the monthly rule, with amount × the number of that weekday in M |
-| Yearly | still to fund this cycle at the start of M ÷ months left to the due month (counting M), − assigned(M) |
+| Yearly | still to fund this cycle at the start of M ÷ months left to the due month (counting M), − assigned(M). For Refill up to, "still to fund" is amount − Available carried in. For Set aside, it's amount − what was assigned earlier this cycle, so last cycle's leftover doesn't count and spending mid-cycle doesn't reopen the need. |
 | Balance, dated | (amount − Available carried in) ÷ months left to the due month, − assigned(M). Once the due month has passed, the whole remainder. |
 | Balance, undated | amount − funded |
 | Snoozed, `NONE` or no target | 0 |
