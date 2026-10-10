@@ -19,8 +19,10 @@ const mockFindMany = jest.mocked(prisma.categoryGroup.findMany);
 const mockBudgetedGroupBy = jest.mocked(prisma.categoryMonth.groupBy);
 const mockActivityGroupBy = jest.mocked(prisma.transaction.groupBy);
 
-const month = new Date(2026, 2, 1); // Mar 1, 2026
-const nextMonth = new Date(2026, 3, 1); // Apr 1, 2026
+// Budget Months are UTC firsts-of-month (#124); Jest's TZ=Asia/Jerusalem
+// would expose any local-time month math.
+const month = new Date(Date.UTC(2026, 2, 1)); // Mar 1, 2026 UTC
+const nextMonth = new Date(Date.UTC(2026, 3, 1)); // Apr 1, 2026 UTC
 
 beforeEach(() => {
   jest.clearAllMocks();

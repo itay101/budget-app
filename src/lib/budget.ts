@@ -3,6 +3,14 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { accessibleBudgetWhere } from "@/lib/authorization";
 import { auditedUpdate } from "@/lib/audit";
+import {
+  addMonths,
+  currentBudgetMonth,
+  isInRange,
+  navigableRange,
+  parseBudgetMonth,
+  type BudgetMonthRange,
+} from "@/lib/budgetMonth";
 
 /**
  * This app supports multiple budgets per user — one per currency (see
@@ -204,7 +212,7 @@ export function rowFor(
 }
 
 function startOfNextMonth(month: Date): Date {
-  return new Date(month.getFullYear(), month.getMonth() + 1, 1);
+  return addMonths(month, 1);
 }
 
 export type CategoryOption = {
@@ -233,9 +241,7 @@ export type BudgetMonthRows = {
  * per-group category list the "move money to…" popover uses, and every
  * hidden category collected into its own synthetic section. Gathers the
  * two `groupBy` running-total queries availableFor/rowFor need (#98) —
- * `month` must already be normalized to the 1st, as every caller's own
- * `startOfMonth` guarantees (src/app/(app)/budget/page.tsx,
- * src/app/(app)/budget/actions.ts).
+ * `month` must be a Budget Month, the UTC 1st (src/lib/budgetMonth.ts).
  */
 export async function getBudgetMonthRows(
   budgetId: string,
@@ -334,4 +340,50 @@ export async function getBudgetMonthRows(
     categoryOptions,
     hiddenCategories,
   };
+}
+
+/**
+ * The months a budget can be navigated to (#124), from its creation date
+ * and three aggregates: the earliest transaction, the earliest assignment
+ * row and the latest month with money assigned.
+ */
+export async function getBudgetMonthRange(
+  budgetId: string,
+  now: Date = new Date(),
+): Promise<BudgetMonthRange> {
+  const inBudget = { category: { categoryGroup: { budgetId } } };
+  const [budget, transactions, firstAssignment, lastAssignment] = await Promise.all([
+    prisma.budget.findUniqueOrThrow({ where: { id: budgetId }, select: { createdAt: true } }),
+    prisma.transaction.aggregate({ where: { account: { budgetId } }, _min: { date: true } }),
+    prisma.categoryMonth.aggregate({ where: inBudget, _min: { month: true } }),
+    prisma.categoryMonth.aggregate({
+      where: { ...inBudget, budgeted: { not: 0 } },
+      _max: { month: true },
+    }),
+  ]);
+  return navigableRange(
+    {
+      budgetCreatedAt: budget.createdAt,
+      earliestTransaction: transactions._min.date,
+      earliestAssignment: firstAssignment._min.month,
+      latestAssignment: lastAssignment._max.month,
+    },
+    currentBudgetMonth(now),
+  );
+}
+
+/**
+ * Validates the `YYYY-MM` month a budget-page form sends (#124) into its
+ * UTC first-of-month, rejecting a malformed month or one outside the
+ * budget's navigable range.
+ */
+export async function requireNavigableMonth(budgetId: string, input: string): Promise<Date> {
+  const month = parseBudgetMonth(input);
+  if (!month) {
+    throw new Error("month must be YYYY-MM");
+  }
+  if (!isInRange(month, await getBudgetMonthRange(budgetId))) {
+    throw new Error("month is outside this budget's range");
+  }
+  return month;
 }
