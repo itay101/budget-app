@@ -16,6 +16,7 @@ import {
   AvailablePill,
   ChangeLog,
   ProgressBar,
+  overspendOf,
   type Store,
   TargetEditor,
   groupBy,
@@ -162,7 +163,7 @@ function Row({ c, store }: { c: ProtoCategory; store: Store }) {
           {e.status !== "none" ? (
             <>
               <div className="mt-1">
-                <ProgressBar status={e.status} progress={e.progress} />
+                <ProgressBar status={e.status} progress={e.progress} overspend={overspendOf(c, fmt)} />
               </div>
               <div className="mt-0.5 truncate text-small" style={{ color: tone(e.status).fg }}>
                 {e.summary}

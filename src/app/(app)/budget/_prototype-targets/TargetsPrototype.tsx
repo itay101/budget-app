@@ -81,6 +81,7 @@ function Inner({
           { param: "theme", label: "Theme", values: ["light", "dark"] },
           { param: "dir", label: "Dir", values: ["ltr", "rtl"] },
           { param: "data", label: "Data", values: ["fixture", "real"] },
+          { param: "over", label: "Overspent", values: ["dashed", "solid", "label"] },
         ]}
       />
     </div>

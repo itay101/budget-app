@@ -6,6 +6,7 @@
 // in-memory store standing in for the target/snooze actions.
 
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { formatMilliunits, milliunitsToNumber, numberToMilliunits } from "@/lib/money";
 import { Icon } from "@/components/Icon";
 import {
@@ -95,19 +96,92 @@ export function StatusChip({
   );
 }
 
+export type Overspend = { covered: number; spent: number; excessLabel: string };
+
+// For an overspent category: what was covered (carry-in + assigned), what
+// was spent, and the excess as "+₪150 · 125%".
+export function overspendOf(c: ProtoCategory, fmt: (n: number) => string): Overspend | undefined {
+  if (c.available >= 0) return undefined;
+  const covered = Math.max(0, c.carryIn + c.assigned);
+  const spent = covered - c.available;
+  const pct = covered > 0 ? ` · ${Math.round((spent / covered) * 100)}%` : "";
+  return { covered, spent, excessLabel: `+${fmt(-c.available)}${pct}` };
+}
+
+/**
+ * How an overspent bar shows the excess past 100%, picked with the
+ * prototype's `over` toggle (#148 preview feedback):
+ * - dashed: the bar is scaled to what was spent; a tick marks 100% and the
+ *   excess after it is a dashed, hatched segment.
+ * - solid: same scale and tick, the excess is a solid, darker segment.
+ * - label: the bar stays full and a "+₪150 · 125%" label sits beside it.
+ */
 export function ProgressBar({
   status,
   progress,
   height = 4,
   striped = false,
+  overspend,
 }: {
   status: Status;
   progress: number;
   height?: number;
   striped?: boolean;
+  overspend?: Overspend;
 }) {
+  const overStyle = useSearchParams().get("over") ?? "dashed";
   const c = tone(status);
   const overspent = status === "overspent_cash" || status === "overspent_credit";
+
+  if (overspent && overspend) {
+    const coveredPct = (overspend.covered / overspend.spent) * 100;
+    if (overStyle === "label") {
+      return (
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1 overflow-hidden rounded-full" style={{ height, background: c.solid }} />
+          <span className="shrink-0 text-small font-semibold tabular-nums" style={{ color: c.fg }}>
+            {overspend.excessLabel}
+          </span>
+        </div>
+      );
+    }
+    return (
+      <div
+        className="relative flex w-full items-center"
+        style={{ height: Math.max(height, 4) + 6 }}
+        role="img"
+        aria-label={`Overspent ${overspend.excessLabel}`}
+        title={`Overspent ${overspend.excessLabel}`}
+      >
+        <div
+          className="rounded-s-full"
+          style={{ width: `${coveredPct}%`, height, background: c.solid, opacity: 0.55 }}
+        />
+        <div
+          className="rounded-e-full"
+          style={{
+            flex: 1,
+            height,
+            boxSizing: "border-box",
+            ...(overStyle === "solid"
+              ? { background: c.fg }
+              : {
+                  border: `1.5px dashed ${c.solid}`,
+                  background: `repeating-linear-gradient(135deg, ${c.solid} 0 3px, transparent 3px 7px)`,
+                }),
+          }}
+        />
+        {coveredPct > 0 && (
+          <div
+            className="absolute top-0 h-full"
+            style={{ insetInlineStart: `calc(${coveredPct}% - 1px)`, width: 2, background: "var(--p-text)" }}
+            title="100%"
+          />
+        )}
+      </div>
+    );
+  }
+
   const fill = overspent ? 1 : status === "none" ? 0 : progress;
   return (
     <div

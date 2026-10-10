@@ -15,6 +15,7 @@ import type { ProtoCategory } from "./model";
 import {
   ChangeLog,
   ProgressBar,
+  overspendOf,
   StatusChip,
   type Store,
   TargetEditor,
@@ -163,7 +164,7 @@ function Row({
           ) : (
             <div className="flex items-center gap-2">
               <div className="min-w-0 flex-1">
-                <ProgressBar status={e.status} progress={e.progress} height={10} />
+                <ProgressBar status={e.status} progress={e.progress} height={10} overspend={overspendOf(c, fmt)} />
                 <div className="mt-0.5 flex justify-between gap-2 text-small" style={{ color: "var(--p-text-2)" }}>
                   <span className="truncate tabular-nums">{label}</span>
                   <span className="shrink-0">{e.dueLabel}</span>

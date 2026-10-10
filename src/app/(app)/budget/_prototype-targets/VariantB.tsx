@@ -15,6 +15,7 @@ import {
   AvailablePill,
   ChangeLog,
   ProgressBar,
+  overspendOf,
   StatusChip,
   type Store,
   TargetEditor,
@@ -194,7 +195,7 @@ function Inspector({ c, store, onClose }: { c: ProtoCategory; store: Store; onCl
                 {fmt(e.fundedTowardAsk)} / {fmt(e.monthlyAsk)}
               </span>
             </div>
-            <ProgressBar status={e.status} progress={e.progress} height={8} />
+            <ProgressBar status={e.status} progress={e.progress} height={8} overspend={overspendOf(c, fmt)} />
           </div>
           {e.overall && (
             <div>
