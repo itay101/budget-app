@@ -74,14 +74,17 @@ another, or between a category and Ready to Assign. It changes only what is
 assigned, never any transaction. Moving money to Ready to Assign un-assigns
 it, and it can leave the category's assigned amount below zero. Moving
 money from Ready to Assign assigns it, even when that leaves Ready to
-Assign negative.
+Assign negative, but it can't be done in a Budget Month before the current
+one.
 _Avoid_: Transfer (that's money between Accounts), reallocate
 
 **Ready to Assign**:
 Money in a Budget that has come in as income but isn't assigned to any
 category yet. Income means an on-budget transaction categorized
 **Inflow: Ready to Assign**, a system category that exists in every Budget
-and can't be assigned to. Rules: [ADR 0008](docs/adr/0008-ready-to-assign-income-is-a-system-category.md).
+and can't be assigned to. It belongs to the current Budget Month and later;
+an earlier month shows it as zero. Rules: [ADR 0008](docs/adr/0008-ready-to-assign-income-is-a-system-category.md),
+[ADR 0009](docs/adr/0009-category-available-resets-at-month-rollover-derived-from-full-history.md).
 _Avoid_: To Be Budgeted, unassigned, income category
 
 **Uncategorized**:

@@ -19,7 +19,9 @@ cashOverspend   = max(0, -cashLeft)
 
 Cash spending is covered first, and what's left covers the month's net card
 spending. When several cards share the shortfall, `funded` is split in
-proportion to each card's net spending, with largest-remainder rounding. A
+proportion to each card's net spending. Each share is rounded to whole
+cents (the currency's minor unit, not milliunits), largest remainder
+first: $100 covering $100 and $50 of card spending splits $66.67 / $33.33. A
 month where a card's net activity in a category is an inflow (a refund)
 moves that amount back out of the Payment Category. Payment Category
 Activity is the funded card spending, minus every on-budget Transfer into
