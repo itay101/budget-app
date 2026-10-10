@@ -1,0 +1,39 @@
+# Stage 1 (Plan) of docs/agents/sdlc.md: an intent is the proto-spec an
+# idea starts as. Draft it with Claude (/grill-me, or /grill-with-docs to
+# check it against CONTEXT.md and docs/adr/), then file it here. /triage
+# picks it up from needs-triage; /to-spec (or /wayfinder for anything
+# bigger than one session) turns an accepted intent into a spec.
+name: Intent
+description: A problem worth solving, before anyone decides how.
+title: "Intent: "
+labels: ["needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What's wrong or missing today, from the user's side. Use CONTEXT.md's vocabulary (Budget, Category, Ready to Assign, ...).
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Proposed outcome
+      description: What's true once this is done. The outcome, not the implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: affected
+    attributes:
+      label: Affected users and systems
+      description: Owner / Collaborator, pages, server actions, schema, imports, e2e flows...
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: ADRs this must respect, money-as-milliunits, audit trail, deadlines, things that must not change.
+  - type: textarea
+    id: questions
+    attributes:
+      label: Open questions
+      description: What still needs deciding. Each one is a candidate /wayfinder decision ticket.
