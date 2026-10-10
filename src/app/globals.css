@@ -38,3 +38,14 @@ body {
   -webkit-appearance: none;
   margin: 0;
 }
+
+/* An overspent target bar's excess past 100% (#148): dashed and hatched,
+   so it reads as "past the limit" without relying on colour. */
+.target-excess {
+  border: 1.5px dashed theme("colors.target.overspent.DEFAULT");
+  background: repeating-linear-gradient(
+    135deg,
+    theme("colors.target.overspent.DEFAULT") 0 3px,
+    transparent 3px 7px
+  );
+}

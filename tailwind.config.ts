@@ -24,6 +24,20 @@ const config: Config = {
         danger: "#CA3521",
         discovery: "#6E5DC6",
         info: "#1D7F8C",
+        // Category Target statuses (#148/#171): a solid for bars and icons,
+        // a soft chip background, and chip text that passes 4.5:1 on it.
+        // From design.md's status palette; the dark values recorded in #148
+        // wait for an app-wide dark mode.
+        target: {
+          funded: { DEFAULT: "#22A06B", bg: "#DCFFF1", fg: "#216E4E" },
+          overfunded: { DEFAULT: "#1868DB", bg: "#E9F2FF", fg: "#0055CC" },
+          ontrack: { DEFAULT: "#1D7F8C", bg: "#E7F9FF", fg: "#206A83" },
+          underfunded: { DEFAULT: "#B38600", bg: "#FFF7D6", fg: "#7F5F01" },
+          overspent: { DEFAULT: "#CA3521", bg: "#FFECEB", fg: "#AE2E24" },
+          snoozed: { DEFAULT: "#6E5DC6", bg: "#F3F0FF", fg: "#5E4DB2" },
+          none: { DEFAULT: "#8590A2", bg: "#F1F2F4", fg: "#44546F" },
+          track: "#EBECF0",
+        },
       },
       fontSize: {
         display: ["35px", { lineHeight: "40px", fontWeight: "500" }],
@@ -41,6 +55,13 @@ const config: Config = {
         // Height of MobileNavShell's top bar (p-200 + an h3 line + its
         // 1px border), so sticky page toolbars sit just under it.
         "mobile-nav": "57px",
+      },
+      // The budget table's columns (#171), shared by its header row and
+      // each category row: Category · Budgeted · Activity · Available from
+      // sm (the target on its own line), with the Target column from lg.
+      gridTemplateColumns: {
+        budget: "1fr 120px 120px 120px",
+        "budget-targets": "minmax(9rem, 1fr) minmax(0, 2fr) 128px 100px 112px",
       },
       keyframes: {
         "mutation-bar": {
