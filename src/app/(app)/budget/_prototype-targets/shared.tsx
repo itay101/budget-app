@@ -34,6 +34,7 @@ export const PROTO_CSS = `
   --p-surface: #FFFFFF; --p-surface-2: #F7F8F9; --p-border: #DCDFE4; --p-track: #EBECF0;
   --p-text: #172B4D; --p-text-2: #44546F; --p-brand: #1868DB;
   --p-funded: #22A06B; --p-funded-bg: #DCFFF1; --p-funded-fg: #216E4E;
+  --p-over: #1868DB; --p-over-bg: #E9F2FF; --p-over-fg: #0055CC;
   --p-track-ok: #1D7F8C; --p-track-ok-bg: #E7F9FF; --p-track-ok-fg: #206A83;
   --p-under: #B38600; --p-under-bg: #FFF7D6; --p-under-fg: #7F5F01;
   --p-cash: #CA3521; --p-cash-bg: #FFECEB; --p-cash-fg: #AE2E24;
@@ -46,6 +47,7 @@ export const PROTO_CSS = `
   --p-surface: #22272B; --p-surface-2: #1D2125; --p-border: #38414A; --p-track: #2C333A;
   --p-text: #DEE4EA; --p-text-2: #9FADBC; --p-brand: #579DFF;
   --p-funded: #4BCE97; --p-funded-bg: #164B35; --p-funded-fg: #7EE2B8;
+  --p-over: #579DFF; --p-over-bg: #09326C; --p-over-fg: #CCE0FF;
   --p-track-ok: #60C6D2; --p-track-ok-bg: #1D474C; --p-track-ok-fg: #9DD9EE;
   --p-under: #F5CD47; --p-under-bg: #533F04; --p-under-fg: #F8E6A0;
   --p-cash: #F87168; --p-cash-bg: #5D1F1A; --p-cash-fg: #FFD5D2;
@@ -58,6 +60,7 @@ export const PROTO_CSS = `
 
 const TONE: Record<Status, string> = {
   funded: "funded",
+  overfunded: "over",
   on_track: "track-ok",
   underfunded: "under",
   overspent_cash: "cash",
@@ -601,7 +604,7 @@ export function groupBy(cats: ProtoCategory[]) {
   return groups;
 }
 
-// The Underfunded filter for variants B and C: hidden categories count.
+// The Underfunded filter for variant B: hidden categories count.
 export function underfundedOrVisible(store: Store, underfundedOnly: boolean) {
   return underfundedOnly
     ? store.cats.filter((c) => store.evaluate(c).status === "underfunded")

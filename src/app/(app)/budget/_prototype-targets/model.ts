@@ -39,6 +39,7 @@ export type ProtoCategory = {
 
 export type Status =
   | "funded"
+  | "overfunded"
   | "on_track"
   | "underfunded"
   | "overspent_cash"
@@ -64,6 +65,7 @@ export type Evaluation = {
 
 export const STATUS_LABEL: Record<Status, string> = {
   funded: "Funded",
+  overfunded: "Overfunded",
   on_track: "On track",
   underfunded: "Underfunded",
   overspent_cash: "Overspent",
@@ -74,6 +76,7 @@ export const STATUS_LABEL: Record<Status, string> = {
 
 export const STATUS_ICON: Record<Status, string> = {
   funded: "check_circle",
+  overfunded: "keyboard_double_arrow_up",
   on_track: "trending_up",
   underfunded: "error",
   overspent_cash: "warning",
@@ -205,6 +208,13 @@ export function evaluate(
   else if (!t) status = "none";
   else if (c.snoozed) status = "snoozed";
   else if (needed > 0) status = "underfunded";
+  // More assigned this month than the target asks for, or a balance target
+  // already past its goal.
+  else if (
+    (monthlyAsk > 0 && fundedTowardAsk > monthlyAsk) ||
+    (overall && overall.have > overall.goal)
+  )
+    status = "overfunded";
   else if (overall && overall.have < overall.goal) status = "on_track";
   else status = "funded";
 
@@ -226,6 +236,13 @@ export function evaluate(
       break;
     case "underfunded":
       summary = `${fmt(needed)} more needed ${dueLabel}`;
+      break;
+    case "overfunded":
+      summary = `Overfunded by ${fmt(
+        overall && overall.have > overall.goal
+          ? overall.have - overall.goal
+          : fundedTowardAsk - monthlyAsk,
+      )}`;
       break;
     case "on_track":
       summary = `On track: ${fmt(overall!.have)} of ${fmt(overall!.goal)} ${dueLabel}`;
@@ -294,6 +311,11 @@ export function fixtureCategories(month: string): ProtoCategory[] {
       id: "clothing", name: "Clothing", groupName: "Everyday",
       assigned: k(100), activity: k(-300), overspentOn: "credit",
       target: { kind: "SET_ASIDE", cadence: "MONTHLY", amount: k(300), startMonth: "2026-01" },
+    }),
+    cat({
+      id: "coffee", name: "Coffee", groupName: "Everyday",
+      assigned: k(150), activity: k(-60),
+      target: { kind: "SET_ASIDE", cadence: "MONTHLY", amount: k(100), startMonth: "2026-01" },
     }),
     cat({
       id: "fuel", name: "Fuel", groupName: "Everyday",
