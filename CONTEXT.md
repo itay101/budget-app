@@ -78,6 +78,14 @@ Assign negative, but it can't be done in a Budget Month before the current
 one.
 _Avoid_: Transfer (that's money between Accounts), reallocate
 
+**Delete Category**:
+Removing a category permanently, unlike hiding it, which only changes the
+view. With no transactions, everything it had assigned returns to Ready to
+Assign. With transactions, the user picks a replacement category, which
+takes its transactions and adds its assignments onto its own. Inflow: Ready
+to Assign and Payment Categories can't be deleted. Rules: [ADR 0012](docs/adr/0012-deleting-a-category-is-a-hard-delete-that-merges-into-a-replacement.md).
+_Avoid_: archive, remove (fine informally, but Delete is the action's name)
+
 **Ready to Assign**:
 Money in a Budget that has come in as income but isn't assigned to any
 category yet. Income means an on-budget transaction categorized
