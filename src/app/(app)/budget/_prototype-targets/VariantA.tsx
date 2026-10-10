@@ -165,8 +165,11 @@ function Row({ c, store }: { c: ProtoCategory; store: Store }) {
               <div className="mt-1">
                 <ProgressBar status={e.status} progress={e.progress} overspend={overspendOf(c, fmt)} />
               </div>
-              <div className="mt-0.5 truncate text-small" style={{ color: tone(e.status).fg }}>
-                {e.summary}
+              <div className="mt-0.5 flex justify-between gap-2 text-small" style={{ color: tone(e.status).fg }}>
+                <span className="truncate">{e.summary}</span>
+                {overspendOf(c, fmt) && (
+                  <span className="shrink-0 font-semibold tabular-nums">{overspendOf(c, fmt)!.excessLabel}</span>
+                )}
               </div>
             </>
           ) : (

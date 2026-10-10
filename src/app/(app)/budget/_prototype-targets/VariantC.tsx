@@ -167,12 +167,15 @@ function Row({
                 <ProgressBar status={e.status} progress={e.progress} height={10} overspend={overspendOf(c, fmt)} />
                 <div className="mt-0.5 flex justify-between gap-2 text-small" style={{ color: "var(--p-text-2)" }}>
                   <span className="truncate tabular-nums">{label}</span>
-                  <span className="shrink-0">{e.dueLabel}</span>
+                  <span className="shrink-0">{overspendOf(c, fmt)?.excessLabel ?? e.dueLabel}</span>
                 </div>
               </div>
-              <StatusChip status={e.status}>
-                {e.status === "underfunded" ? `${fmt(e.needed)} more` : undefined}
-              </StatusChip>
+              {/* Fixed-width slot so every bar has the same width (preview feedback). */}
+              <div className="w-40 shrink-0 text-end">
+                <StatusChip status={e.status}>
+                  {e.status === "underfunded" ? `${fmt(e.needed)} more` : undefined}
+                </StatusChip>
+              </div>
             </div>
           )}
         </div>

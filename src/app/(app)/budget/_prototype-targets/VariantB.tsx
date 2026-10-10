@@ -192,7 +192,7 @@ function Inspector({ c, store, onClose }: { c: ProtoCategory; store: Store; onCl
             <div className="mb-1 flex justify-between text-small" style={{ color: "var(--p-text-2)" }}>
               <span>This month</span>
               <span className="tabular-nums">
-                {fmt(e.fundedTowardAsk)} / {fmt(e.monthlyAsk)}
+                {overspendOf(c, fmt)?.excessLabel ?? `${fmt(e.fundedTowardAsk)} / ${fmt(e.monthlyAsk)}`}
               </span>
             </div>
             <ProgressBar status={e.status} progress={e.progress} height={8} overspend={overspendOf(c, fmt)} />

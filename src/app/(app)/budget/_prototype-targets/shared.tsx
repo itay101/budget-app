@@ -114,7 +114,8 @@ export function overspendOf(c: ProtoCategory, fmt: (n: number) => string): Overs
  * - dashed: the bar is scaled to what was spent; a tick marks 100% and the
  *   excess after it is a dashed, hatched segment.
  * - solid: same scale and tick, the excess is a solid, darker segment.
- * - label: the bar stays full and a "+₪150 · 125%" label sits beside it.
+ * - label: the bar stays full; the excess shows only in the caption.
+ * Every variant's caption prints the excess ("+₪150 · 125%") either way.
  */
 export function ProgressBar({
   status,
@@ -135,15 +136,9 @@ export function ProgressBar({
 
   if (overspent && overspend) {
     const coveredPct = (overspend.covered / overspend.spent) * 100;
+    // label: a plain full bar; the rows print the excess in their caption.
     if (overStyle === "label") {
-      return (
-        <div className="flex items-center gap-2">
-          <div className="min-w-0 flex-1 overflow-hidden rounded-full" style={{ height, background: c.solid }} />
-          <span className="shrink-0 text-small font-semibold tabular-nums" style={{ color: c.fg }}>
-            {overspend.excessLabel}
-          </span>
-        </div>
-      );
+      return <div className="w-full rounded-full" style={{ height, background: c.solid }} />;
     }
     return (
       <div
