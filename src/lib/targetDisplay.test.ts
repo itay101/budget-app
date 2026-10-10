@@ -4,6 +4,7 @@ import {
   filterRows,
   budgetTable,
   historyRanges,
+  nextChangeAfter,
   overspendBar,
   parseQuickFilter,
   QUICK_FILTERS,
@@ -209,6 +210,12 @@ describe("target history", () => {
     expect(targetAsOf(history, "2026-09")).toBeNull();
     expect(targetAsOf(history, "2026-12")).toBe(refill);
     expect(targetAsOf(history, "2026-05")).toBeNull();
+  });
+
+  it("finds the first change after a month", () => {
+    expect(nextChangeAfter(history, "2026-07")?.startMonth).toBe("2026-08");
+    expect(nextChangeAfter(history, "2026-08")?.startMonth).toBe("2026-10");
+    expect(nextChangeAfter(history, "2026-10")).toBeNull();
   });
 
   it("labels the months each row covered", () => {

@@ -100,6 +100,12 @@ describe("TargetEditor", () => {
     expect(text()).toContain("Funded so far$300.00 of $600.00");
   });
 
+  it("says a save only lasts until a later month's change", () => {
+    render({ target: null, history: [{ startMonth: "2027-01", target: setAside }] });
+    expect(text()).toContain("Applies from October 2026 until December 2026.");
+    expect(text()).toContain("January 2027 onwards keeps its own change.");
+  });
+
   it("says earlier months had no target for a new one", () => {
     render({ target: null, history: [] });
     expect(text()).toContain("September 2026 and earlier had no target");
