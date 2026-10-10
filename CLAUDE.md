@@ -35,6 +35,21 @@ title they implement, not just `ticket-<number>-<random suffix>`. e.g. for
 something like `claude/add-memo-payee-filter-<suffix>` over
 `claude/ticket-22-<suffix>`.
 
+This applies even when the session assigns a generated branch name such
+as `claude/hopeful-galileo-obcxm8`. Don't push to that name: create a
+descriptive branch for the change and push and open the PR from there.
+Name follow-up work in the same session after its own change, rather than
+reusing the earlier branch.
+
+## Linking PRs to issues
+
+Every PR that implements or settles an issue must close it on merge: put
+a closing keyword for each issue in the PR body (e.g. `Closes #143`, one
+line per issue), not just a link or a "Settles …" mention, which GitHub
+doesn't treat as a close. For a sub-issue, close the sub-issue itself, not
+its parent map. If a PR is merged without one, close the issue as
+completed right after the merge.
+
 ## Commit structure
 
 Split a PR's changes into logical, atomic commits rather than one big
