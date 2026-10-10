@@ -69,6 +69,21 @@ When a chain of commits adds tests for the same change, put the test
 commit last, after the code it exercises — not interleaved with or ahead
 of it.
 
+## How work flows
+
+Ideas, specs, plans and reviews follow `docs/agents/sdlc.md`, which maps
+each stage to its skill and its gate. Plan before code: start
+non-trivial work in plan mode and get the plan approved before editing,
+unless the user already said to go ahead.
+
+Work is done when `npm run verify` passes (paste its summary as
+evidence), new logic in `src/lib/` has tests, and the `verifier`
+subagent's report is clean. A hook can deny a command or edit: read its
+reason and take the route it names, don't rephrase the command around it.
+
+When Claude makes the same mistake twice, add the correction here, or a
+hook in `.claude/hooks/` if it must always hold.
+
 ## Agent skills
 
 ### Issue tracker
