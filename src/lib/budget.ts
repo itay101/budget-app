@@ -263,9 +263,11 @@ function addToMonthlyTotals(totals: MonthlyTotals, categoryId: string, monthKey:
 /**
  * Every month's assigned and activity totals before `nextMonth`, per
  * category. Activity is grouped by month in SQL (#135): Prisma's groupBy
- * can't group by a truncated date. Transaction dates are stored at UTC
- * midnight in a timestamp without time zone, so date_trunc gives the UTC
- * Budget Month.
+ * can't group by a truncated date. Transaction dates are UTC wall-clock
+ * times in a timestamp without time zone, so date_trunc gives the UTC
+ * Budget Month. The upper bound is bound as a timestamp literal too: a JS
+ * Date parameter arrives as timestamptz, and comparing it to the column
+ * would depend on the database session's time zone.
  */
 async function loadMonthlyTotals(categoryIds: string[], nextMonth: Date) {
   const assignedByMonth: MonthlyTotals = new Map();
@@ -282,7 +284,7 @@ async function loadMonthlyTotals(categoryIds: string[], nextMonth: Date) {
              to_char(date_trunc('month', "date"), 'YYYY-MM') AS "month",
              SUM("amount")::bigint AS "amount"
       FROM "Transaction"
-      WHERE "categoryId" IN (${Prisma.join(categoryIds)}) AND "date" < ${nextMonth}
+      WHERE "categoryId" IN (${Prisma.join(categoryIds)}) AND "date" < ${`${formatBudgetMonth(nextMonth)}-01`}::timestamp
       GROUP BY 1, 2
     `,
   ]);

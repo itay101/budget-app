@@ -73,7 +73,9 @@ describe("getBudgetMonthRows", () => {
     const [sql, ...values] = mockActivityByMonth.mock.calls[0] as unknown as [TemplateStringsArray, ...unknown[]];
     expect(sql.join("?")).toContain("date_trunc('month', \"date\")");
     expect(sql.join("?")).toContain("GROUP BY 1, 2");
-    expect(values).toContainEqual(nextMonth);
+    // A plain timestamp literal, so the session time zone can't move the bound.
+    expect(values).toContainEqual("2026-04-01");
+    expect(sql.join("?")).toContain("?::timestamp");
   });
 
   it("builds a row per visible category, using this month's budgeted/activity and the rolled-forward available", async () => {
