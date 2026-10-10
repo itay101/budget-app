@@ -8,7 +8,8 @@
  * UTC first of the month (src/lib/budgetMonth.ts).
  */
 
-import { ceilDiv } from "@/lib/money";
+import { parseBudgetMonth } from "@/lib/budgetMonth";
+import { ceilDiv, numberToMilliunits } from "@/lib/money";
 
 export type TargetKind = "SET_ASIDE" | "REFILL" | "BALANCE" | "NONE";
 export type TargetCadence = "WEEKLY" | "MONTHLY" | "YEARLY";
@@ -262,5 +263,99 @@ export function matchesQuickFilter(
       return row.status === "overfunded";
     case "available":
       return row.available > 0;
+  }
+}
+
+/** A target form's fields, as strings straight from FormData. */
+export type TargetInput = Partial<
+  Record<"kind" | "cadence" | "amount" | "weekday" | "dueDay" | "dueDate" | "dated" | "dueMonth", string>
+>;
+
+const INPUT_KINDS: readonly TargetKind[] = ["SET_ASIDE", "REFILL", "BALANCE"];
+const CADENCES: readonly TargetCadence[] = ["WEEKLY", "MONTHLY", "YEARLY"];
+const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+/** CategoryTarget.amount is a Postgres Int. */
+const MAX_AMOUNT = 2_147_483_647;
+
+/** An integer in [min, max] parsed from `input`, or null when it's
+ * missing, not an integer or out of range. */
+function intInRange(input: string | undefined, min: number, max: number): number | null {
+  if (!input || !/^\d+$/.test(input.trim())) return null;
+  const value = Number(input);
+  return value >= min && value <= max ? value : null;
+}
+
+/** `YYYY-MM-DD` → its UTC midnight, or null if malformed or not a real
+ * date (2026-02-30). */
+function parseDate(input: string | undefined): Date | null {
+  const match = DATE_PATTERN.exec(input ?? "");
+  if (!match) return null;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? date : null;
+}
+
+/**
+ * Validates a target form (#170) into a complete Target, or throws with a
+ * message for the user. The stored rows are trusted on read, so this is
+ * where incomplete targets are kept out: weekly needs a weekday (0-6),
+ * yearly a due date, a dated balance a due month; a monthly due day is
+ * optional (1-31, clamped to the month's last day when shown). Fields the
+ * kind and cadence don't use are dropped. NONE isn't a choice here:
+ * removing a target writes it.
+ */
+export function parseTargetInput(input: TargetInput): Target {
+  const kind = INPUT_KINDS.find((k) => k === input.kind);
+  if (!kind) throw new Error("Choose a target type");
+
+  const amount = numberToMilliunits(Number(input.amount));
+  if (!Number.isFinite(amount)) throw new Error("Enter a target amount");
+  if (amount <= 0) throw new Error("Target amount must be greater than zero");
+  if (amount > MAX_AMOUNT) throw new Error("Target amount is too large");
+
+  return {
+    kind,
+    amount,
+    cadence: null,
+    weekday: null,
+    dueDay: null,
+    dueDate: null,
+    ...(kind === "BALANCE" ? balanceFields(input) : cadenceFields(input)),
+  };
+}
+
+type ScheduleFields = Partial<Pick<Target, "cadence" | "weekday" | "dueDay" | "dueDate">>;
+
+/** Have a balance of: undated, or dated with a due month. `dated` is
+ * "true", or "on" from a checkbox with no value. */
+function balanceFields(input: TargetInput): ScheduleFields {
+  if (input.dated !== "true" && input.dated !== "on") return {};
+  const dueMonth = parseBudgetMonth(input.dueMonth ?? "");
+  if (!dueMonth) throw new Error("A dated balance target needs a due month");
+  return { dueDate: dueMonth };
+}
+
+/** Set aside and Refill up to: a cadence and the date field it needs. */
+function cadenceFields(input: TargetInput): ScheduleFields {
+  const cadence = CADENCES.find((c) => c === input.cadence);
+  if (!cadence) throw new Error("Choose how often the target repeats");
+
+  switch (cadence) {
+    case "WEEKLY": {
+      const weekday = intInRange(input.weekday, 0, 6);
+      if (weekday === null) throw new Error("A weekly target needs a day of the week");
+      return { cadence, weekday };
+    }
+    case "MONTHLY": {
+      if (!input.dueDay) return { cadence };
+      const dueDay = intInRange(input.dueDay, 1, 31);
+      if (dueDay === null) throw new Error("Due day must be between 1 and 31");
+      return { cadence, dueDay };
+    }
+    case "YEARLY": {
+      const dueDate = parseDate(input.dueDate);
+      if (!dueDate) throw new Error("A yearly target needs a due date");
+      return { cadence, dueDate };
+    }
   }
 }
