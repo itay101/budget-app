@@ -38,3 +38,16 @@ export function getCurrencySymbol(currency: string): string {
     .find((p) => p.type === "currency");
   return part?.value ?? currency;
 }
+
+/**
+ * `milliunits ÷ parts`, rounded up, in integer arithmetic only: the
+ * remainder comes off first, so the one division left is exact. For
+ * splitting an amount over months without float rounding (AGENTS.md).
+ */
+export function ceilDiv(milliunits: number, parts: number): number {
+  if (!Number.isSafeInteger(milliunits) || !Number.isSafeInteger(parts) || parts <= 0) {
+    throw new RangeError(`ceilDiv needs integer milliunits and a positive integer divisor, got ${milliunits} / ${parts}`);
+  }
+  const rest = milliunits % parts;
+  return (milliunits - rest) / parts + (rest > 0 ? 1 : 0);
+}
