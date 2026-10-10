@@ -1,4 +1,15 @@
-import { getBudgetMonthRows, getCurrentBudget } from "@/lib/budget";
+import { redirect } from "next/navigation";
+import {
+  getBudgetMonthRange,
+  getBudgetMonthRows,
+  getCurrentBudget,
+} from "@/lib/budget";
+import {
+  currentBudgetMonth,
+  formatBudgetMonth,
+  resolveViewedMonth,
+} from "@/lib/budgetMonth";
+import { MonthHeader } from "@/components/MonthHeader";
 import { AddCategoryGroupPopover } from "@/components/AddCategoryGroupPopover";
 import { CategoryGroupSection } from "@/components/CategoryGroupSection";
 import { HiddenCategoriesSection } from "@/components/HiddenCategoriesSection";
@@ -16,13 +27,26 @@ import {
 
 export const dynamic = "force-dynamic";
 
-function startOfMonth(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
-export default async function BudgetPage() {
+/**
+ * `/budget?month=YYYY-MM` (#124). A missing or malformed month shows the
+ * current UTC month; one outside the budget's navigable range redirects to
+ * the nearest month in range, so the URL always matches what's shown.
+ */
+export default async function BudgetPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ month?: string | string[] }>;
+}) {
   const budget = await getCurrentBudget();
-  const month = startOfMonth(new Date());
+  const current = currentBudgetMonth();
+  const range = await getBudgetMonthRange(budget.id);
+
+  const viewed = resolveViewedMonth((await searchParams).month, range, current);
+  if ("redirectTo" in viewed) {
+    redirect(`/budget?month=${formatBudgetMonth(viewed.redirectTo)}`);
+  }
+  const { month } = viewed;
+  const monthKey = formatBudgetMonth(month);
 
   const { groups, categoryOptions, hiddenCategories } = await getBudgetMonthRows(
     budget.id,
@@ -31,11 +55,17 @@ export default async function BudgetPage() {
 
   return (
     <div className="space-y-300">
-      <div>
-        <h1 className="text-h2 text-neutral-800 sm:text-h1">Budget</h1>
-        <p className="text-body text-neutral-600">
-          {month.toLocaleString("en-US", { month: "long", year: "numeric" })}
-        </p>
+      <h1 className="text-h2 text-neutral-800 sm:text-h1">Budget</h1>
+
+      {/* Sticky month toolbar (#136): under the mobile top bar on phones,
+          edge to edge there; at the top of the page from md up. */}
+      <div className="sticky top-mobile-nav z-10 -mx-200 border-y border-neutral-200 bg-neutral-100/95 px-200 py-1 backdrop-blur md:top-0 md:mx-0 md:rounded-lg md:border md:bg-neutral-0/95 md:px-2">
+        <MonthHeader
+          month={monthKey}
+          current={formatBudgetMonth(current)}
+          first={formatBudgetMonth(range.first)}
+          last={formatBudgetMonth(range.last)}
+        />
       </div>
 
       <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-0">
@@ -54,7 +84,7 @@ export default async function BudgetPage() {
             key={group.id}
             groupId={group.id}
             groupName={group.name}
-            month={month.toISOString()}
+            month={monthKey}
             currency={budget.currency}
             isEmpty={group.isEmpty}
             createCategory={createCategory}
@@ -79,7 +109,7 @@ export default async function BudgetPage() {
 
         {hiddenCategories.length > 0 && (
           <HiddenCategoriesSection
-            month={month.toISOString()}
+            month={monthKey}
             currency={budget.currency}
             renameCategory={renameCategory}
             setBudgeted={setBudgeted}

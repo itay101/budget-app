@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { getCurrentBudget } from "@/lib/budget";
+import { getCurrentBudget, requireNavigableMonth } from "@/lib/budget";
 import { getCurrentUser } from "@/lib/auth";
 import {
   requireCategoryAccess,
@@ -360,7 +360,7 @@ export async function transferAvailable(formData: FormData) {
     throw new Error("Cannot move money between different budgets");
   }
 
-  const month = new Date(monthInput);
+  const month = await requireNavigableMonth(fromBudgetId, monthInput);
   const amount = numberToMilliunits(Number(amountInput) || 0);
 
   if (amount <= 0) {
@@ -426,7 +426,7 @@ export async function setBudgeted(formData: FormData) {
   }
   const { user, budgetId } = await requireCategoryAccess(categoryId);
 
-  const month = new Date(monthInput);
+  const month = await requireNavigableMonth(budgetId, monthInput);
   const budgeted = numberToMilliunits(Number(amountInput) || 0);
 
   const before = await prisma.categoryMonth.findUnique({
