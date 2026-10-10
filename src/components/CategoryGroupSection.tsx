@@ -263,7 +263,9 @@ export function CategoryGroupSection({
           </form>
         ) : (
           <>
-            <span>{groupName}</span>
+            <span>
+              <bdi>{groupName}</bdi>
+            </span>
             <button
               type="button"
               onClick={() => {

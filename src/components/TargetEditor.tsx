@@ -8,6 +8,8 @@ import {
   describeTarget,
   dueLabel,
   historyRanges,
+  labelOf,
+  nextChangeAfter,
   targetAsOf,
   targetProgress,
   type TargetHistoryEntry,
@@ -276,12 +278,14 @@ function EffectiveFromNote({ history, month, fmt }: { history: TargetHistoryEntr
   const previous = addMonths(month, -1);
   const earlier = targetAsOf(history, formatBudgetMonth(previous));
   const replacesThisMonth = history.some((entry) => entry.startMonth === formatBudgetMonth(month));
+  const later = nextChangeAfter(history, formatBudgetMonth(month));
   return (
     <div className="flex gap-2 rounded border-s-4 border-brand-700 bg-neutral-0 px-2 py-1.5 text-small text-neutral-600">
       <Icon name="event_upcoming" />
       <div>
         <div className="text-neutral-800">
-          Applies from <strong>{monthLabel(month)}</strong> onwards.
+          Applies from <strong>{monthLabel(month)}</strong>
+          {later ? ` until ${monthLabel(addMonths(parseBudgetMonth(later.startMonth) ?? month, -1))}.` : " onwards."}
         </div>
         <div>
           <bdi>
@@ -290,6 +294,7 @@ function EffectiveFromNote({ history, month, fmt }: { history: TargetHistoryEntr
               : `${monthLabel(previous)} and earlier had no target, and stay that way.`}
           </bdi>
           {replacesThisMonth && " This replaces the change already made for this month."}
+          {later && ` ${labelOf(later.startMonth)} onwards keeps its own change.`}
         </div>
       </div>
     </div>

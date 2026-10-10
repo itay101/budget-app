@@ -229,7 +229,14 @@ export function targetAsOf(history: TargetHistoryEntry[], monthKey: string): Tar
   return history.find((entry) => entry.startMonth <= monthKey)?.target ?? null;
 }
 
-function labelOf(monthKey: string): string {
+/** The first change after a month (`YYYY-MM`), if the history has one: a
+ * save in that month only lasts until then. */
+export function nextChangeAfter(history: TargetHistoryEntry[], monthKey: string): TargetHistoryEntry | null {
+  return [...history].reverse().find((entry) => entry.startMonth > monthKey) ?? null;
+}
+
+/** "October 2026" for `2026-10`. */
+export function labelOf(monthKey: string): string {
   const month = parseBudgetMonth(monthKey);
   return month ? monthLabel(month) : monthKey;
 }
