@@ -74,8 +74,8 @@ another, or between a category and Ready to Assign. It changes only what is
 assigned, never any transaction. Moving money to Ready to Assign un-assigns
 it, and it can leave the category's assigned amount below zero. Moving
 money from Ready to Assign assigns it, even when that leaves Ready to
-Assign negative, but it can't be done in a Budget Month before the current
-one.
+Assign negative. That includes a Budget Month before the current one,
+where it also lowers Ready to Assign in every later month.
 _Avoid_: Transfer (that's money between Accounts), reallocate
 
 **Delete Category**:
@@ -90,8 +90,10 @@ _Avoid_: archive, remove (fine informally, but Delete is the action's name)
 Money in a Budget that has come in as income but isn't assigned to any
 category yet. Income means an on-budget transaction categorized
 **Inflow: Ready to Assign**, a system category that exists in every Budget
-and can't be assigned to. It belongs to the current Budget Month and later;
-an earlier month shows it as zero. Rules: [ADR 0008](docs/adr/0008-ready-to-assign-income-is-a-system-category.md),
+and can't be assigned to. Each Budget Month has its own figure. An earlier
+month's figure counts only that month and the months before it. The
+current month's figure also takes off money already assigned to future
+months. Rules: [ADR 0008](docs/adr/0008-ready-to-assign-income-is-a-system-category.md),
 [ADR 0009](docs/adr/0009-category-available-resets-at-month-rollover-derived-from-full-history.md).
 _Avoid_: To Be Budgeted, unassigned, income category
 
