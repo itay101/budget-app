@@ -11,7 +11,7 @@
 import { Fragment, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { describeTarget, monthLabel, previousMonthKey } from "./model";
-import type { ProtoCategory } from "./model";
+import type { Evaluation, ProtoCategory } from "./model";
 import {
   ChangeLog,
   ProgressBar,
@@ -20,17 +20,49 @@ import {
   type Store,
   TargetEditor,
   groupBy,
-  underfundedOrVisible,
   tone,
 } from "./shared";
 
 
+// Quick filters (#148 verdict). "All" is the normal budget, hidden
+// categories left out; every other filter also searches hidden categories
+// and marks them, so nothing that needs attention stays out of sight.
+type QuickFilter = "all" | "snoozed" | "underfunded" | "overfunded" | "available";
+
+const QUICK_FILTERS: { key: QuickFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "snoozed", label: "Snoozed" },
+  { key: "underfunded", label: "Underfunded" },
+  { key: "overfunded", label: "Overfunded" },
+  { key: "available", label: "Money Available" },
+];
+
+// Underfunded is "still needs money this month" (ADR 0011's needed > 0),
+// so an overspent category that is also short of its target counts, and
+// the count matches the banner's total.
+function matchesQuickFilter(filter: QuickFilter, c: ProtoCategory, e: Evaluation): boolean {
+  const status = e.status;
+  switch (filter) {
+    case "all":
+      return !c.hidden;
+    case "snoozed":
+      return status === "snoozed";
+    case "underfunded":
+      return e.needed > 0;
+    case "overfunded":
+      return status === "overfunded";
+    case "available":
+      return c.available > 0;
+  }
+}
+
 export function VariantC({ store }: { store: Store }) {
-  const [filtered, setFiltered] = useState(false);
+  const [filter, setFilter] = useState<QuickFilter>("all");
   const [openId, setOpenId] = useState<string | null>(null);
   const { cats, evaluate, totals, fmt } = store;
 
-  const groups = groupBy(underfundedOrVisible(store, filtered));
+  const inFilter = (f: QuickFilter) => cats.filter((c) => matchesQuickFilter(f, c, evaluate(c)));
+  const groups = groupBy(inFilter(filter));
 
   return (
     <div className="space-y-200">
@@ -63,13 +95,41 @@ export function VariantC({ store }: { store: Store }) {
         {totals.underfundedCount > 0 && (
           <button
             type="button"
-            onClick={() => setFiltered((f) => !f)}
+            onClick={() => setFilter((f) => (f === "underfunded" ? "all" : "underfunded"))}
             className="rounded border px-3 py-1 text-body font-medium"
             style={{ borderColor: "currentColor" }}
           >
-            {filtered ? "Show all" : "Show only these"}
+            {filter === "underfunded" ? "Show all" : "Show only these"}
           </button>
         )}
+      </div>
+
+      <div role="toolbar" aria-label="Quick filters" className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 sm:flex-wrap">
+        {QUICK_FILTERS.map(({ key, label }) => {
+          const active = filter === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={active}
+              onClick={() => setFilter(key)}
+              className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border-2 px-3 py-1.5 text-body font-medium"
+              style={
+                active
+                  ? { background: "var(--p-over-bg)", borderColor: "var(--p-brand)", color: "var(--p-over-fg)" }
+                  : { background: "var(--p-track)", borderColor: "transparent", color: "var(--p-text)" }
+              }
+            >
+              {label}
+              <span
+                className="min-w-[1.5rem] rounded-full px-1.5 text-small tabular-nums"
+                style={{ background: active ? "var(--p-surface)" : "var(--p-surface-2)" }}
+              >
+                {inFilter(key).length}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       <div
@@ -113,6 +173,11 @@ export function VariantC({ store }: { store: Store }) {
             </Fragment>
           );
         })}
+        {groups.length === 0 && (
+          <div className="px-200 py-300 text-body" style={{ color: "var(--p-text-2)" }}>
+            No categories match this filter in {monthLabel(store.month)}.
+          </div>
+        )}
       </div>
       <ChangeLog log={store.log} />
     </div>
@@ -166,8 +231,8 @@ function Row({
               <div className="min-w-0 flex-1">
                 <ProgressBar status={e.status} progress={e.progress} height={10} overspend={overspendOf(c, fmt)} />
                 <div className="mt-0.5 flex justify-between gap-2 text-small" style={{ color: "var(--p-text-2)" }}>
-                  <span className="truncate tabular-nums">{label}</span>
-                  <span className="shrink-0">{overspendOf(c, fmt)?.excessLabel ?? e.dueLabel}</span>
+                  <span className="truncate tabular-nums"><bdi>{label}</bdi></span>
+                  <span className="shrink-0"><bdi>{overspendOf(c, fmt)?.excessLabel ?? e.dueLabel}</bdi></span>
                 </div>
               </div>
               {/* Fixed-width slot so every bar has the same width (preview feedback). */}
