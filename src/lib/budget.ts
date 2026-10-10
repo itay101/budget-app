@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { accessibleBudgetWhere } from "@/lib/authorization";
@@ -6,6 +7,7 @@ import { auditedUpdate } from "@/lib/audit";
 import {
   addMonths,
   currentBudgetMonth,
+  formatBudgetMonth,
   isInRange,
   navigableRange,
   parseBudgetMonth,
@@ -141,38 +143,56 @@ export async function softDeleteBudget(budgetId: string, actorId: string) {
 }
 
 /**
- * Per-category running totals through a given month, keyed by category id:
- * everything ever budgeted (or spent/earned) in that category from the
- * beginning of time up to and including the month in question. Built by
- * the caller (src/app/budget/page.tsx) from two `groupBy` queries scoped
- * to `date`/`month < nextMonth`, and passed in as plain `Map`s so
- * availableFor/rowFor don't need to know Prisma's query-result shapes.
+ * Per-category, per-month totals in milliunits: category id → Budget Month
+ * (`YYYY-MM`) → amount. Built by getBudgetMonthRows from the month's
+ * assignments and a per-month activity query, and passed in as plain
+ * `Map`s so balanceFor/rowFor don't need to know Prisma's result shapes.
  */
-export type ThroughMonthTotals = Map<string, number>;
+export type MonthlyTotals = Map<string, Map<string, number>>;
+
+export interface CategoryBalance {
+  /** Available carried in from the month before: max(0, Available(M-1)). */
+  carriedIn: number;
+  available: number;
+}
 
 /**
- * YNAB-style "available rolls forward" math (#49): this month's available
- * for a category is everything ever budgeted to it through this month,
- * plus everything ever spent/earned in it through this month. That's
- * equivalent to (last month's available) + (this month's budgeted) +
- * (this month's activity), computed here as a running total rather than
- * recursively — so a category with $0 budgeted this month but money left
- * over from last month still shows that leftover, and one that's
- * overspent stays negative until enough gets budgeted to cover it.
+ * A category's Available for a Budget Month, by ADR 0009's rollover rule:
  *
- * Moved out of the page component (where it lived as a local closure) so
- * this math — the highest-consequence arithmetic in the app — is directly
- * unit testable instead of only reachable through the rendered page.
+ *   Available(M) = max(0, Available(M-1)) + assigned(M) + activity(M)
+ *
+ * A positive balance carries forward; an overspent (negative) one resets to
+ * 0 at the next month, where it comes out of Ready to Assign instead. The
+ * fold only visits months that have an assignment or activity: a month with
+ * neither just re-applies the max(0, ·), which changes nothing after the
+ * first time.
+ *
+ * Kept pure and in this module, out of the page, so this — the
+ * highest-consequence arithmetic in the app — is directly unit testable.
  */
-export function availableFor(
+export function balanceFor(
   categoryId: string,
-  budgetedThroughMonth: ThroughMonthTotals,
-  activityThroughMonth: ThroughMonthTotals,
-): number {
-  return (
-    (budgetedThroughMonth.get(categoryId) ?? 0) +
-    (activityThroughMonth.get(categoryId) ?? 0)
-  );
+  assignedByMonth: MonthlyTotals,
+  activityByMonth: MonthlyTotals,
+  month: Date,
+): CategoryBalance {
+  const target = formatBudgetMonth(month);
+  const assigned = assignedByMonth.get(categoryId) ?? new Map<string, number>();
+  const activity = activityByMonth.get(categoryId) ?? new Map<string, number>();
+  // YYYY-MM keys sort chronologically as strings.
+  const earlier = [...new Set([...assigned.keys(), ...activity.keys()])]
+    .filter((key) => key < target)
+    .sort();
+
+  let available = 0;
+  for (const key of earlier) {
+    available = Math.max(0, available) + (assigned.get(key) ?? 0) + (activity.get(key) ?? 0);
+  }
+  const carriedIn = Math.max(0, available);
+  return {
+    carriedIn,
+    available: carriedIn + (assigned.get(target) ?? 0) + (activity.get(target) ?? 0),
+  };
 }
 
 /**
@@ -189,25 +209,24 @@ export interface CategoryMonthActivity {
   activity: number;
 }
 
-export interface CategoryRow extends CategoryMonthActivity {
-  available: number;
-}
+export interface CategoryRow extends CategoryMonthActivity, CategoryBalance {}
 
 /**
  * One row of the budget table: this month's budgeted/activity alongside
- * the rolled-forward available (see availableFor).
+ * the rolled-over Available and what was carried in (see balanceFor).
  */
 export function rowFor(
   category: CategoryMonthActivity,
-  budgetedThroughMonth: ThroughMonthTotals,
-  activityThroughMonth: ThroughMonthTotals,
+  assignedByMonth: MonthlyTotals,
+  activityByMonth: MonthlyTotals,
+  month: Date,
 ): CategoryRow {
   return {
     id: category.id,
     name: category.name,
     budgeted: category.budgeted,
     activity: category.activity,
-    available: availableFor(category.id, budgetedThroughMonth, activityThroughMonth),
+    ...balanceFor(category.id, assignedByMonth, activityByMonth, month),
   };
 }
 
@@ -235,12 +254,54 @@ export type BudgetMonthRows = {
   hiddenCategories: (CategoryRow & { groupName: string })[];
 };
 
+function addToMonthlyTotals(totals: MonthlyTotals, categoryId: string, monthKey: string, amount: number) {
+  let months = totals.get(categoryId);
+  if (!months) totals.set(categoryId, (months = new Map()));
+  months.set(monthKey, (months.get(monthKey) ?? 0) + amount);
+}
+
+/**
+ * Every month's assigned and activity totals before `nextMonth`, per
+ * category. Activity is grouped by month in SQL (#135): Prisma's groupBy
+ * can't group by a truncated date. Transaction dates are stored at UTC
+ * midnight in a timestamp without time zone, so date_trunc gives the UTC
+ * Budget Month.
+ */
+async function loadMonthlyTotals(categoryIds: string[], nextMonth: Date) {
+  const assignedByMonth: MonthlyTotals = new Map();
+  const activityByMonth: MonthlyTotals = new Map();
+  if (categoryIds.length === 0) return { assignedByMonth, activityByMonth };
+
+  const [assignments, activity] = await Promise.all([
+    prisma.categoryMonth.findMany({
+      where: { categoryId: { in: categoryIds }, month: { lt: nextMonth }, budgeted: { not: 0 } },
+      select: { categoryId: true, month: true, budgeted: true },
+    }),
+    prisma.$queryRaw<{ categoryId: string; month: string; amount: bigint }[]>`
+      SELECT "categoryId",
+             to_char(date_trunc('month', "date"), 'YYYY-MM') AS "month",
+             SUM("amount")::bigint AS "amount"
+      FROM "Transaction"
+      WHERE "categoryId" IN (${Prisma.join(categoryIds)}) AND "date" < ${nextMonth}
+      GROUP BY 1, 2
+    `,
+  ]);
+
+  for (const row of assignments) {
+    addToMonthlyTotals(assignedByMonth, row.categoryId, formatBudgetMonth(row.month), row.budgeted);
+  }
+  for (const row of activity) {
+    addToMonthlyTotals(activityByMonth, row.categoryId, row.month, Number(row.amount));
+  }
+  return { assignedByMonth, activityByMonth };
+}
+
 /**
  * The budget page's full month view for one budget: every category group
  * (with its non-hidden categories rendered as rows), the slimmed-down
  * per-group category list the "move money to…" popover uses, and every
  * hidden category collected into its own synthetic section. Gathers the
- * two `groupBy` running-total queries availableFor/rowFor need (#98) —
+ * per-month totals balanceFor/rowFor need (#98, ADR 0009) —
  * `month` must be a Budget Month, the UTC 1st (src/lib/budgetMonth.ts).
  */
 export async function getBudgetMonthRows(
@@ -268,28 +329,9 @@ export async function getBudgetMonthRows(
 
   const categoryIds = groups.flatMap((g) => g.categories.map((c) => c.id));
 
-  // Available rolls forward month to month, YNAB-style — see availableFor
-  // above for the math itself; here we just gather the two running-total
-  // queries it needs.
-  const [budgetedTotals, activityTotals] = await Promise.all([
-    prisma.categoryMonth.groupBy({
-      by: ["categoryId"],
-      where: { categoryId: { in: categoryIds }, month: { lt: nextMonth } },
-      _sum: { budgeted: true },
-    }),
-    prisma.transaction.groupBy({
-      by: ["categoryId"],
-      where: { categoryId: { in: categoryIds }, date: { lt: nextMonth } },
-      _sum: { amount: true },
-    }),
-  ]);
-
-  const budgetedThroughMonth = new Map(
-    budgetedTotals.map((row) => [row.categoryId, row._sum.budgeted ?? 0]),
-  );
-  const activityThroughMonth = new Map(
-    activityTotals.map((row) => [row.categoryId!, row._sum.amount ?? 0]),
-  );
+  // Available rolls over month by month (ADR 0009, see balanceFor), so it
+  // needs every earlier month's assigned and activity per category.
+  const { assignedByMonth, activityByMonth } = await loadMonthlyTotals(categoryIds, nextMonth);
 
   function categoryRow(category: (typeof groups)[number]["categories"][number]) {
     return rowFor(
@@ -299,8 +341,9 @@ export async function getBudgetMonthRows(
         budgeted: category.months[0]?.budgeted ?? 0,
         activity: category.transactions.reduce((sum, t) => sum + t.amount, 0),
       },
-      budgetedThroughMonth,
-      activityThroughMonth,
+      assignedByMonth,
+      activityByMonth,
+      month,
     );
   }
 
@@ -314,7 +357,7 @@ export async function getBudgetMonthRows(
     categories: group.categories.map((c) => ({
       id: c.id,
       name: c.name,
-      available: availableFor(c.id, budgetedThroughMonth, activityThroughMonth),
+      available: balanceFor(c.id, assignedByMonth, activityByMonth, month).available,
     })),
   }));
 
