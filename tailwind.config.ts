@@ -4,6 +4,9 @@ import type { Config } from "tailwindcss";
 // design system, since this is a personal app built for one user's own use.
 const config: Config = {
   content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
+  // PROTOTYPE (#145): dark mode only where a `dark` class is set (the credit
+  // card prototype's theme toggle), not from the OS setting.
+  darkMode: "class",
   theme: {
     extend: {
       colors: {
