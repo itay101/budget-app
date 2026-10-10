@@ -2,6 +2,7 @@ import {
   effectiveTarget,
   matchesQuickFilter,
   needFor,
+  parseTargetInput,
   planTotals,
   targetStatus,
   type Target,
@@ -313,5 +314,108 @@ describe("matchesQuickFilter", () => {
     expect(matchesQuickFilter("overfunded", row({ status: "overfunded" }))).toBe(true);
     expect(matchesQuickFilter("available", row({ available: 1 }))).toBe(true);
     expect(matchesQuickFilter("available", row({ available: 0 }))).toBe(false);
+  });
+});
+
+describe("parseTargetInput", () => {
+  const empty = { weekday: null, dueDay: null, dueDate: null };
+
+  it("parses a monthly target, with or without a due day", () => {
+    expect(parseTargetInput({ kind: "SET_ASIDE", cadence: "MONTHLY", amount: "400" })).toEqual({
+      kind: "SET_ASIDE",
+      cadence: "MONTHLY",
+      amount: $(400),
+      ...empty,
+    });
+    expect(parseTargetInput({ kind: "REFILL", cadence: "MONTHLY", amount: "12.34", dueDay: "31" })).toEqual({
+      kind: "REFILL",
+      cadence: "MONTHLY",
+      amount: $(12.34),
+      ...empty,
+      dueDay: 31,
+    });
+  });
+
+  it("parses a weekly target with its weekday", () => {
+    expect(parseTargetInput({ kind: "SET_ASIDE", cadence: "WEEKLY", amount: "50", weekday: "0" })).toEqual({
+      kind: "SET_ASIDE",
+      cadence: "WEEKLY",
+      amount: $(50),
+      ...empty,
+      weekday: 0,
+    });
+  });
+
+  it("parses a yearly target's due date as UTC midnight", () => {
+    expect(parseTargetInput({ kind: "REFILL", cadence: "YEARLY", amount: "1200", dueDate: "2027-03-15" })).toEqual({
+      kind: "REFILL",
+      cadence: "YEARLY",
+      amount: $(1200),
+      ...empty,
+      dueDate: utc(2027, 3, 15),
+    });
+  });
+
+  it("parses an undated balance, and a dated one's due month as its UTC first", () => {
+    expect(parseTargetInput({ kind: "BALANCE", amount: "5000" })).toEqual({
+      kind: "BALANCE",
+      cadence: null,
+      amount: $(5000),
+      ...empty,
+    });
+    expect(parseTargetInput({ kind: "BALANCE", amount: "5000", dated: "true", dueMonth: "2027-06" })).toEqual({
+      kind: "BALANCE",
+      cadence: null,
+      amount: $(5000),
+      ...empty,
+      dueDate: utc(2027, 6),
+    });
+  });
+
+  it("treats a checkbox's default \"on\" as a dated balance", () => {
+    expect(parseTargetInput({ kind: "BALANCE", amount: "1", dated: "on", dueMonth: "2027-06" }).dueDate).toEqual(
+      utc(2027, 6),
+    );
+  });
+
+  it("drops fields the kind and cadence don't use", () => {
+    const stray = { weekday: "3", dueDay: "10", dueDate: "2027-01-01", dated: "true", dueMonth: "2027-01" };
+    expect(parseTargetInput({ kind: "SET_ASIDE", cadence: "MONTHLY", amount: "1", ...stray })).toMatchObject({
+      weekday: null,
+      dueDate: null,
+    });
+    expect(parseTargetInput({ kind: "SET_ASIDE", cadence: "WEEKLY", amount: "1", ...stray })).toMatchObject({
+      dueDay: null,
+      dueDate: null,
+    });
+    expect(parseTargetInput({ kind: "BALANCE", cadence: "YEARLY", amount: "1", ...stray })).toMatchObject({
+      cadence: null,
+      weekday: null,
+      dueDay: null,
+      dueDate: utc(2027, 1),
+    });
+  });
+
+  it.each([
+    ["no kind", { cadence: "MONTHLY", amount: "1" }, "Choose a target type"],
+    ["NONE as a kind", { kind: "NONE", amount: "1" }, "Choose a target type"],
+    ["a zero amount", { kind: "BALANCE", amount: "0" }, "greater than zero"],
+    ["a negative amount", { kind: "BALANCE", amount: "-5" }, "greater than zero"],
+    ["a non-numeric amount", { kind: "BALANCE", amount: "abc" }, "Enter a target amount"],
+    ["an amount past a Postgres Int", { kind: "BALANCE", amount: "3000000" }, "too large"],
+    ["Set aside with no cadence", { kind: "SET_ASIDE", amount: "1" }, "how often"],
+    ["an unknown cadence", { kind: "REFILL", cadence: "DAILY", amount: "1" }, "how often"],
+    ["weekly with no weekday", { kind: "SET_ASIDE", cadence: "WEEKLY", amount: "1" }, "day of the week"],
+    ["weekday 7", { kind: "SET_ASIDE", cadence: "WEEKLY", amount: "1", weekday: "7" }, "day of the week"],
+    ["weekday -1", { kind: "SET_ASIDE", cadence: "WEEKLY", amount: "1", weekday: "-1" }, "day of the week"],
+    ["weekday 1.5", { kind: "SET_ASIDE", cadence: "WEEKLY", amount: "1", weekday: "1.5" }, "day of the week"],
+    ["due day 0", { kind: "SET_ASIDE", cadence: "MONTHLY", amount: "1", dueDay: "0" }, "between 1 and 31"],
+    ["due day 32", { kind: "SET_ASIDE", cadence: "MONTHLY", amount: "1", dueDay: "32" }, "between 1 and 31"],
+    ["yearly with no due date", { kind: "REFILL", cadence: "YEARLY", amount: "1" }, "due date"],
+    ["a yearly due date that isn't a date", { kind: "REFILL", cadence: "YEARLY", amount: "1", dueDate: "2027-02-30" }, "due date"],
+    ["a dated balance with no due month", { kind: "BALANCE", amount: "1", dated: "true" }, "due month"],
+    ["a dated balance with a bad due month", { kind: "BALANCE", amount: "1", dated: "true", dueMonth: "2027-13" }, "due month"],
+  ])("rejects %s", (_, input, message) => {
+    expect(() => parseTargetInput(input)).toThrow(message);
   });
 });
