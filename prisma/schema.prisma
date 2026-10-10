@@ -227,7 +227,10 @@ model Invite {
   budgetId  String
   budget    Budget @relation(fields: [budgetId], references: [id], onDelete: Cascade)
   invitedBy String @db.Uuid
-  inviter   User   @relation(fields: [invitedBy], references: [id])
+  // NoAction matches the constraint 20260913120000_add_auth_and_sharing
+  // created; Prisma's default (Restrict) would show up as drift in every
+  // new migration.
+  inviter   User   @relation(fields: [invitedBy], references: [id], onDelete: NoAction)
   // true: this Invite created a fresh, unconfirmed auth.users row via
   //   admin.inviteUserByEmail — canceling must admin.deleteUser it too
   //   (ADR 0003), or the old invite link keeps working.
@@ -278,9 +281,10 @@ model AuditEntry {
   action     String
   // Always a User — never a system/cron process, since this only covers
   // changes made by people. Required, no special onDelete behavior: safe
-  // only because User rows are never hard-deleted (ADR 0005).
+  // only because User rows are never hard-deleted (ADR 0005). NoAction
+  // matches the constraint the add_auth_and_sharing migration created.
   actorId    String          @db.Uuid
-  actor      User            @relation(fields: [actorId], references: [id])
+  actor      User            @relation(fields: [actorId], references: [id], onDelete: NoAction)
   // Field-level diff: `{ fieldName: [oldValue, newValue] }`.
   changes    Json
   createdAt  DateTime        @default(now())
