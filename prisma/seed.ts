@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { E2E_TEST_USER_ID } from "../src/lib/e2eTestAuth";
-import { currentBudgetMonth } from "../src/lib/budgetMonth";
+import { addMonths, currentBudgetMonth } from "../src/lib/budgetMonth";
 
 const prisma = new PrismaClient();
 
@@ -51,14 +51,15 @@ async function main() {
   // Starting-balance transactions, so each account's transaction list sums
   // to its cached balance instead of the balance being an unexplained
   // number with nothing behind it. Checking's is offset by the grocery
-  // purchase below so the account still ends up at $1,500.00.
+  // purchase and last month's electric bill below so the account still
+  // ends up at $1,500.00.
   await prisma.transaction.createMany({
     data: [
       {
         accountId: checking.id,
         payeeId: startingBalance.id,
         date: new Date(),
-        amount: 1_584_990,
+        amount: 1_624_990,
         memo: "Starting balance",
         cleared: "RECONCILED",
       },
@@ -116,6 +117,28 @@ async function main() {
       date: new Date(),
       amount: -84_990, // -$84.99
       memo: "Weekly shop",
+      cleared: "CLEARED",
+    },
+  });
+
+  // Last month's overspend (ADR 0009): $40 of Utilities with nothing
+  // assigned that month. It shows as -$40.00 last month, and Utilities
+  // starts this month at $0 + this month's $150 instead of carrying -$40.
+  const powerCompany = await prisma.payee.create({
+    data: { budgetId: budget.id, name: "Power Company" },
+  });
+  const utilitiesCategory = immediateObligations.categories.find(
+    (c) => c.name === "Utilities",
+  )!;
+  const lastMonth = addMonths(month, -1);
+  await prisma.transaction.create({
+    data: {
+      accountId: checking.id,
+      payeeId: powerCompany.id,
+      categoryId: utilitiesCategory.id,
+      date: new Date(Date.UTC(lastMonth.getUTCFullYear(), lastMonth.getUTCMonth(), 15)),
+      amount: -40_000, // -$40.00
+      memo: "Electric bill",
       cleared: "CLEARED",
     },
   });
