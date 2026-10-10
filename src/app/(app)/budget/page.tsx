@@ -13,6 +13,8 @@ import {
   setCategoryHidden,
   transferAvailable,
 } from "./actions";
+import { TargetsPrototype } from "./_prototype-targets/TargetsPrototype";
+import { fixtureCategories, fromRealRows, monthKey } from "./_prototype-targets/model";
 
 export const dynamic = "force-dynamic";
 
@@ -20,14 +22,56 @@ function startOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
-export default async function BudgetPage() {
+// PROTOTYPE (#148): `?variant=` swaps the table for the targets prototype.
+// Off in production (Vercel production, or a local production build).
+const prototypesEnabled = process.env.VERCEL_ENV
+  ? process.env.VERCEL_ENV !== "production"
+  : process.env.NODE_ENV !== "production";
+
+export default async function BudgetPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
   const budget = await getCurrentBudget();
   const month = startOfMonth(new Date());
+  const params = await searchParams;
 
   const { groups, categoryOptions, hiddenCategories } = await getBudgetMonthRows(
     budget.id,
     month,
   );
+
+  if (prototypesEnabled && params.variant) {
+    const key = monthKey(month);
+    const realRows = [
+      ...groups.flatMap((g) =>
+        g.categories.map((c) => ({ ...c, groupName: g.name, hidden: false })),
+      ),
+      ...hiddenCategories.map((c) => ({ ...c, hidden: true })),
+    ];
+    return (
+      <div className="space-y-300">
+        <div>
+          <h1 className="text-h2 text-neutral-800 sm:text-h1">Budget</h1>
+          <p className="text-body text-neutral-600">
+            {month.toLocaleString("en-US", { month: "long", year: "numeric" })}
+          </p>
+        </div>
+        <TargetsPrototype
+          variant={params.variant}
+          theme={params.theme ?? "light"}
+          dir={params.dir ?? "ltr"}
+          data={params.data ?? "fixture"}
+          categories={
+            params.data === "real" ? fromRealRows(realRows, key) : fixtureCategories(key)
+          }
+          month={key}
+          currency={budget.currency}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-300">
