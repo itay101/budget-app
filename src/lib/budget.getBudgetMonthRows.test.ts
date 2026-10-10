@@ -247,4 +247,21 @@ describe("getBudgetMonthRows", () => {
     expect(result.groups[0].categories[0]).toMatchObject({ carriedIn: 0, available: 1000 });
     expect(result.categoryOptions[0].categories[0].available).toBe(1000);
   });
+
+  it("resets a hidden category's overspending the same way", async () => {
+    mockFindMany.mockResolvedValue([
+      {
+        id: "group-1",
+        name: "Everyday Expenses",
+        categories: [{ id: "cat-hidden", name: "Old Gym", hidden: true, months: [], transactions: [] }],
+      },
+    ] as never);
+    mockActivityByMonth.mockResolvedValue([
+      { categoryId: "cat-hidden", month: "2026-02", amount: BigInt(-3000) },
+    ] as never);
+
+    const result = await getBudgetMonthRows("budget-1", month);
+
+    expect(result.hiddenCategories[0]).toMatchObject({ carriedIn: 0, available: 0 });
+  });
 });
