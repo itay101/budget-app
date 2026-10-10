@@ -13,6 +13,7 @@ import { t } from "./tokens";
 export type ProtoActions = {
   pay: (cardId: string, fromAccountId: string, amount: number) => void;
   releaseClosed: (cardId: string) => void;
+  setBudgeted: (id: string, amount: number) => void;
 };
 
 /** A user-supplied name inside LTR copy: isolate it so Hebrew doesn't reorder the sentence. */

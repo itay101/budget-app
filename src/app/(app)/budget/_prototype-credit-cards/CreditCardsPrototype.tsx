@@ -13,6 +13,7 @@ import {
   initialState,
   pay,
   releaseClosed,
+  setBudgeted,
   viewCards,
   viewRow,
   type CardView,
@@ -38,7 +39,7 @@ export type VariantProps = {
 };
 
 const VARIANTS = [
-  { key: "A", name: "Inline rows", Component: VariantA },
+  { key: "A", name: "YNAB-style rows", Component: VariantA },
   { key: "B", name: "Card panel", Component: VariantB },
   { key: "C", name: "Inspector", Component: VariantC },
 ];
@@ -69,6 +70,7 @@ export function CreditCardsPrototype({
   const actions: ProtoActions = {
     pay: (cardId, fromId, amount) => setState((s) => pay(s, cardId, fromId, amount)),
     releaseClosed: (cardId) => setState((s) => releaseClosed(s, cardId)),
+    setBudgeted: (id, amount) => setState((s) => setBudgeted(s, id, amount)),
   };
 
   const Component = current.Component;

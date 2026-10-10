@@ -264,3 +264,16 @@ export function releaseClosed(state: ProtoState, cardId: string): ProtoState {
     ],
   };
 }
+
+export function setBudgeted(
+  state: ProtoState,
+  id: string,
+  amount: number,
+): ProtoState {
+  return {
+    ...state,
+    cards: state.cards.map((c) => (c.id === id ? { ...c, budgeted: amount } : c)),
+    rows: state.rows.map((r) => (r.id === id ? { ...r, budgeted: amount } : r)),
+    log: [...state.log, `Budgeted ${amount / 1000} to "${id}"`],
+  };
+}
