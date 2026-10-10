@@ -46,7 +46,7 @@ describe("getBudgetMonthRows", () => {
               where: { date: { gte: month, lt: nextMonth } },
               select: { amount: true },
             },
-            targets: { where: { startMonth: { lte: month } }, orderBy: { startMonth: "desc" }, take: 1 },
+            targets: { orderBy: { startMonth: "desc" } },
             targetSnoozes: { where: { month }, select: { id: true } },
           },
         },
@@ -122,6 +122,7 @@ describe("getBudgetMonthRows", () => {
             carriedIn: 8000,
             available: 11000, // 8000 carried in + 5000 - 2000
             target: null,
+            history: [],
             need: null,
             snoozed: false,
             status: "none",
@@ -313,28 +314,19 @@ describe("getBudgetMonthRows", () => {
   });
 
   it("keeps an earlier month on the row it started from after a later month edits the target", async () => {
-    // Set aside $100 from Jan, edited to $250 from Mar. The mock applies
-    // the query's own filter (on or before the month, latest first, one row).
-    const stored = [
-      { startMonth: new Date(Date.UTC(2026, 0, 1)), amount: 100000 },
+    // Set aside $100 from Jan, edited to $250 from Mar. Every row loads;
+    // the one in effect is picked per month.
+    const targets = [
       { startMonth: new Date(Date.UTC(2026, 2, 1)), amount: 250000 },
+      { startMonth: new Date(Date.UTC(2026, 0, 1)), amount: 100000 },
     ].map((row) => ({ ...row, kind: "SET_ASIDE", cadence: "MONTHLY", weekday: null, dueDay: null, dueDate: null }));
-    mockFindMany.mockImplementation((async (args: {
-      include: { categories: { include: { targets: { where: { startMonth: { lte: Date } } } } } };
-    }) => {
-      const { lte } = args.include.categories.include.targets.where.startMonth;
-      const targets = stored
-        .filter((row) => row.startMonth <= lte)
-        .sort((a, b) => b.startMonth.getTime() - a.startMonth.getTime())
-        .slice(0, 1);
-      return [
-        {
-          id: "group-1",
-          name: "Bills",
-          categories: [{ id: "rent", name: "Rent", hidden: false, months: [], transactions: [], targets, targetSnoozes: [] }],
-        },
-      ];
-    }) as never);
+    mockFindMany.mockResolvedValue([
+      {
+        id: "group-1",
+        name: "Bills",
+        categories: [{ id: "rent", name: "Rent", hidden: false, months: [], transactions: [], targets, targetSnoozes: [] }],
+      },
+    ] as never);
 
     const ask = async (m: Date) => (await getBudgetMonthRows("budget-1", m)).groups[0].categories[0].need?.ask;
 
