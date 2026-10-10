@@ -81,7 +81,7 @@ export const initialState: ProtoState = {
   rows: [
     {
       id: "groceries",
-      name: "Groceries",
+      name: "Supermarket",
       budgeted: 600_000,
       cashSpending: 450_000,
       cardSpending: [{ cardId: "isracard", amount: 230_000 }],
