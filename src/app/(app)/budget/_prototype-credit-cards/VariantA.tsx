@@ -1,7 +1,8 @@
 "use client";
 
 // PROTOTYPE (#145) — Variant A, "YNAB-style rows": modelled on YNAB's own
-// budget screen. "Credit Card Payments" is a system category group whose
+// budget screen. "Credit Card Payments" is a system category group, last in
+// the list just above Hidden, whose
 // header carries the group totals (Available labelled PAYMENT), and each card
 // is an ordinary category row — just its name, an editable Budgeted amount,
 // Activity, and an Available pill (green, grey at zero). Nothing about the
@@ -118,6 +119,29 @@ export function VariantA({
       <div className={`overflow-hidden rounded-lg border ${t.border} ${t.surface}`}>
         <TableHeader addGroupButton={addGroupButton} />
 
+        <GroupHeading>
+          <span>Everyday</span>
+          <MockDataTag />
+        </GroupHeading>
+        {rows.map((row) => (
+          <div key={row.id} className={`${rowGrid} ${t.rowBorder}`}>
+            <div className={`col-span-2 truncate sm:col-span-1 ${t.text}`}>
+              <bdi>{row.name}</bdi>
+            </div>
+            <BudgetedInput id={row.id} value={row.budgeted} currency={currency} onSave={actions.setBudgeted} />
+            <div className={`sm:text-right ${t.text}`}>
+              <MobileLabel>Activity</MobileLabel>
+              {fmt(row.activity)}
+            </div>
+            <div className="flex items-baseline justify-between gap-2 sm:block sm:text-right">
+              <MobileLabel>Available</MobileLabel>
+              <OverspendPill row={row} currency={currency} />
+            </div>
+          </div>
+        ))}
+
+        {realGroups}
+
         <div
           className={`grid grid-cols-[1fr_auto] items-center gap-2 border-b px-200 py-1.5 sm:grid-cols-[1fr_120px_120px_120px] ${t.border} bg-neutral-200/60 dark:bg-[#2C333A]`}
         >
@@ -158,28 +182,6 @@ export function VariantA({
           </div>
         ))}
 
-        <GroupHeading>
-          <span>Everyday</span>
-          <MockDataTag />
-        </GroupHeading>
-        {rows.map((row) => (
-          <div key={row.id} className={`${rowGrid} ${t.rowBorder}`}>
-            <div className={`col-span-2 truncate sm:col-span-1 ${t.text}`}>
-              <bdi>{row.name}</bdi>
-            </div>
-            <BudgetedInput id={row.id} value={row.budgeted} currency={currency} onSave={actions.setBudgeted} />
-            <div className={`sm:text-right ${t.text}`}>
-              <MobileLabel>Activity</MobileLabel>
-              {fmt(row.activity)}
-            </div>
-            <div className="flex items-baseline justify-between gap-2 sm:block sm:text-right">
-              <MobileLabel>Available</MobileLabel>
-              <OverspendPill row={row} currency={currency} />
-            </div>
-          </div>
-        ))}
-
-        {realGroups}
 
         {closed.length > 0 && (
           <>

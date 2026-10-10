@@ -191,6 +191,29 @@ export function VariantC({
         <TableHeader addGroupButton={addGroupButton} alwaysShowAvailable />
 
         <GroupHeading>
+          <span>Everyday</span>
+          <MockDataTag />
+        </GroupHeading>
+        {rows.map((row) => (
+          <button
+            key={row.id}
+            type="button"
+            onClick={() => setSelected({ kind: "row", id: row.id })}
+            className={`${rowGrid} ${t.rowBorder} ${t.hover} ${selected?.id === row.id ? t.surfaceAlt : ""}`}
+          >
+            <span className={`truncate ${t.text}`}>
+              <bdi>{row.name}</bdi>
+            </span>
+            <span className={`hidden text-right sm:block ${t.text}`}>{fmt(row.budgeted)}</span>
+            <span className={`hidden text-right sm:block ${t.text}`}>{fmt(row.activity)}</span>
+            <span className="text-right">
+              <AvailableCell row={row} currency={currency} />
+            </span>
+          </button>
+        ))}
+        {realGroups}
+
+        <GroupHeading>
           Credit Card Payments
         </GroupHeading>
         {open.map((card) => (
@@ -217,29 +240,6 @@ export function VariantC({
             </span>
           </button>
         ))}
-
-        <GroupHeading>
-          <span>Everyday</span>
-          <MockDataTag />
-        </GroupHeading>
-        {rows.map((row) => (
-          <button
-            key={row.id}
-            type="button"
-            onClick={() => setSelected({ kind: "row", id: row.id })}
-            className={`${rowGrid} ${t.rowBorder} ${t.hover} ${selected?.id === row.id ? t.surfaceAlt : ""}`}
-          >
-            <span className={`truncate ${t.text}`}>
-              <bdi>{row.name}</bdi>
-            </span>
-            <span className={`hidden text-right sm:block ${t.text}`}>{fmt(row.budgeted)}</span>
-            <span className={`hidden text-right sm:block ${t.text}`}>{fmt(row.activity)}</span>
-            <span className="text-right">
-              <AvailableCell row={row} currency={currency} />
-            </span>
-          </button>
-        ))}
-        {realGroups}
         {realHidden}
       </div>
 
