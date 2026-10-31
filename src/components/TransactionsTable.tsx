@@ -120,12 +120,11 @@ function formatGroupDate(iso: string): string {
 const inputClass =
   "w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-body hover:border-neutral-200 focus:border-brand-700 focus:bg-neutral-0 focus:outline-none focus:ring-1 focus:ring-brand-700";
 
-// The trailing column is icon-only actions (reconcile/kebab, plus
-// close/check while a row is dirty) rather than a labeled field, so it's
-// sized to just fit those buttons - not the ~150px a labeled column would
-// need - leaving the rest of the row to the fields above it. A row with
-// every action showing at once (dirty + unreconciled) wraps to a second
-// line here rather than widening the column for that transient case.
+// The trailing column is icon-only actions (reconcile/kebab) rather than a
+// labeled field, so it's sized to just fit those two buttons - not the
+// ~150px a labeled column would need - leaving the rest of the row to the
+// fields. A dirty row's Cancel/Save go in a strip below the fields
+// instead of widening this column for that transient case.
 // The leading column is the bulk-select checkbox (#41) - just wide enough
 // for the input itself, desktop-only (mobile selects from the summary row
 // instead, see TransactionRow).
@@ -974,32 +973,6 @@ function TransactionRow({
         </div>
 
         <div className="col-span-2 flex justify-end gap-1 md:col-span-1">
-          {isDirty && (
-            <>
-              <button
-                type="button"
-                onClick={handleCancel}
-                disabled={pending}
-                title="Cancel"
-                className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
-              >
-                <Icon name="close" label="Cancel" className="text-[1.1em]" />
-              </button>
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={pending}
-                title="Save"
-                className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
-              >
-                {pending ? (
-                  "…"
-                ) : (
-                  <Icon name="check" label="Save" className="text-[1.1em]" />
-                )}
-              </button>
-            </>
-          )}
           {isReconciled ? (
             <button
               type="button"
@@ -1068,6 +1041,40 @@ function TransactionRow({
             )}
         </div>
       </div>
+
+      {/* Cancel/Save get their own strip below the fields while the row is
+          dirty, rather than joining reconcile/kebab in the 80px trailing
+          column, where four buttons don't fit and spilled left over the
+          Outflow input. The strip is right-aligned to the row's edge; on
+          mobile it follows the editor's expanded state. */}
+      {isDirty && (
+        <div
+          className={
+            (expanded ? "flex " : "hidden ") + "px-200 pb-3 md:flex md:pb-2"
+          }
+        >
+          <div className="flex flex-1 justify-end gap-1">
+            <button
+              type="button"
+              onClick={handleCancel}
+              disabled={pending}
+              title="Cancel"
+              className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={pending}
+              title="Save"
+              className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+            >
+              {pending ? "…" : "Save"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
