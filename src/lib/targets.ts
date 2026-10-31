@@ -147,11 +147,16 @@ function yearlyProgress(target: Target & { dueDate: Date }, funding: TargetFundi
     : funding.carriedIn;
 }
 
+/** A monthly or weekly target's amount for `month`: weekly counts how
+ * many of its weekday the month has. */
+export function recurringAmount(target: Target, month: Date): number {
+  return target.cadence === "WEEKLY" ? target.amount * weekdaysInMonth(month, target.weekday ?? 0) : target.amount;
+}
+
 /** Monthly or weekly: the month's amount; a refill counts what was
  * carried in toward it. */
 function recurringAsk(target: Target, carriedIn: number, month: Date): number {
-  const amount =
-    target.cadence === "WEEKLY" ? target.amount * weekdaysInMonth(month, target.weekday ?? 0) : target.amount;
+  const amount = recurringAmount(target, month);
   return target.kind === "REFILL" ? Math.max(0, amount - carriedIn) : amount;
 }
 

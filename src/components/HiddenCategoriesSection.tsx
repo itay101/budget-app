@@ -2,25 +2,20 @@
 
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
-import { CategoryAmountCells } from "@/components/CategoryAmountCells";
+import { BudgetCategoryRow } from "@/components/BudgetCategoryRow";
+import { CategoryRenameForm } from "@/components/CategoryRenameForm";
+import type { TargetActions } from "@/components/TargetEditor";
 import { useServerAction } from "@/components/useServerAction";
+import type { BudgetCategoryRow as Row } from "@/lib/budget";
 
 type CategoryOption = { id: string; name: string; available: number };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
 
-type HiddenCategoryRow = {
-  id: string;
-  name: string;
+type HiddenCategoryRow = Row & {
   // The real category group this category belongs to — hiding doesn't
   // move it, so unhiding puts it right back here.
   groupName: string;
-  budgeted: number;
-  activity: number;
-  available: number;
 };
-
-const nameInputClass =
-  "min-w-0 flex-1 rounded border border-neutral-200 px-2 py-1 text-small focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700";
 
 /**
  * The synthetic "Hidden" section at the end of the budget page, collecting
@@ -30,7 +25,10 @@ const nameInputClass =
  * the only way a category leaves is the eye icon, which unhides it back
  * into its real group at its original position (see setCategoryHidden).
  *
- * The budget page only renders this at all when it's non-empty.
+ * The budget page only renders this at all when it's non-empty, and only
+ * under the All quick filter (#171), collapsed to "Hidden (n)" since All
+ * leaves hidden categories out of the budget itself; the other filters
+ * list hidden categories in their real groups instead.
  */
 export function HiddenCategoriesSection({
   categories,
@@ -40,6 +38,7 @@ export function HiddenCategoriesSection({
   setBudgeted,
   setCategoryHidden,
   transferAvailable,
+  targetActions,
   categoryOptions,
 }: {
   categories: HiddenCategoryRow[];
@@ -49,45 +48,13 @@ export function HiddenCategoriesSection({
   setBudgeted: (formData: FormData) => Promise<void>;
   setCategoryHidden: (formData: FormData) => Promise<void>;
   transferAvailable: (formData: FormData) => Promise<void>;
+  targetActions: TargetActions;
   categoryOptions: GroupOption[];
 }) {
   const [renamingCategoryId, setRenamingCategoryId] = useState<string | null>(
     null,
   );
-  const [categoryNameDraft, setCategoryNameDraft] = useState("");
-
-  const renameCategoryAction = useServerAction(renameCategory);
   const unhideAction = useServerAction(setCategoryHidden);
-
-  const pending = renameCategoryAction.pending || unhideAction.pending;
-  const error = renameCategoryAction.error || unhideAction.error;
-
-  function startCategoryRename(category: HiddenCategoryRow) {
-    setRenamingCategoryId(category.id);
-    setCategoryNameDraft(category.name);
-  }
-
-  function cancelCategoryRename() {
-    setRenamingCategoryId(null);
-  }
-
-  async function handleCategoryRenameSubmit(
-    e: React.FormEvent<HTMLFormElement>,
-    category: HiddenCategoryRow,
-  ) {
-    e.preventDefault();
-    const trimmed = categoryNameDraft.trim();
-    if (!trimmed || trimmed === category.name) {
-      cancelCategoryRename();
-      return;
-    }
-    try {
-      await renameCategoryAction.run({ categoryId: category.id, name: trimmed });
-      setRenamingCategoryId(null);
-    } catch {
-      // error is surfaced via renameCategoryAction.error
-    }
-  }
 
   function handleUnhide(categoryId: string) {
     unhideAction.run({ categoryId, hidden: "false" }).catch(() => {
@@ -95,96 +62,74 @@ export function HiddenCategoriesSection({
     });
   }
 
+  function categoryNameCell(category: HiddenCategoryRow) {
+    return renamingCategoryId === category.id ? (
+      <CategoryRenameForm
+        category={category}
+        renameCategory={renameCategory}
+        onClose={() => setRenamingCategoryId(null)}
+      />
+    ) : (
+      <div className="col-span-2 flex min-w-0 items-center gap-1.5 text-neutral-800 sm:col-span-1">
+        <span className="min-w-[5rem] truncate" title={`${category.name} — ${category.groupName}`}>
+          <bdi>{category.name}</bdi>
+        </span>
+        <span className="min-w-0 truncate text-small font-normal text-neutral-400 lg:hidden 2xl:inline">
+          — <bdi>{category.groupName}</bdi>
+        </span>
+        <button
+          type="button"
+          onClick={() => setRenamingCategoryId(category.id)}
+          title="Rename category"
+          className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+        >
+          <Icon name="edit" label="Rename category" />
+        </button>
+        <button
+          type="button"
+          onClick={() => handleUnhide(category.id)}
+          disabled={unhideAction.pending}
+          title="Unhide category"
+          className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 disabled:opacity-50"
+        >
+          <Icon name="visibility" label="Unhide category" />
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div>
-      <div className="flex items-center gap-2 bg-neutral-100 px-200 py-1.5 text-small font-semibold uppercase tracking-wide text-neutral-600">
-        <span>Hidden</span>
+    <details>
+      <summary className="flex cursor-pointer list-none items-center gap-2 bg-neutral-100 px-200 py-1.5 text-small font-semibold uppercase tracking-wide text-neutral-600">
+        <Icon name="chevron_right" className="transition-transform [details[open]_&]:rotate-90" />
+        <span>Hidden ({categories.length})</span>
         <span
           title="Hidden categories keep their spot in their real group — unhide one to bring it back"
           className="text-neutral-400"
         >
           <Icon name="lock" label="Hidden categories keep their spot in their real group — unhide one to bring it back" />
         </span>
-      </div>
+      </summary>
 
-      {error && (
+      {unhideAction.error && (
         <p className="bg-danger/10 px-200 py-1 text-small text-danger">
-          {error}
+          {unhideAction.error}
         </p>
       )}
 
       {categories.map((category) => (
-        <div
+        <BudgetCategoryRow
           key={category.id}
-          className="grid grid-cols-2 gap-x-3 gap-y-2 border-b border-neutral-100 px-200 py-3 text-body last:border-b-0 sm:grid-cols-[1fr_120px_120px_120px] sm:items-center sm:gap-2 sm:py-2"
-        >
-          {renamingCategoryId === category.id ? (
-            <form
-              onSubmit={(e) => handleCategoryRenameSubmit(e, category)}
-              className="col-span-2 flex items-center gap-1 sm:col-span-1"
-            >
-              <input
-                value={categoryNameDraft}
-                onChange={(e) => setCategoryNameDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") cancelCategoryRename();
-                }}
-                autoFocus
-                aria-label="Category name"
-                className={nameInputClass}
-              />
-              <button
-                type="submit"
-                disabled={pending}
-                title="Save"
-                className="shrink-0 rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
-              >
-                <Icon name="check" label="Save" />
-              </button>
-              <button
-                type="button"
-                onClick={cancelCategoryRename}
-                title="Cancel"
-                className="shrink-0 rounded px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
-              >
-                <Icon name="close" label="Cancel" />
-              </button>
-            </form>
-          ) : (
-            <div className="col-span-2 flex min-w-0 items-center gap-1.5 text-neutral-800 sm:col-span-1">
-              <span className="truncate">{category.name}</span>
-              <span className="shrink-0 truncate text-small font-normal text-neutral-400">
-                — {category.groupName}
-              </span>
-              <button
-                type="button"
-                onClick={() => startCategoryRename(category)}
-                title="Rename category"
-                className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
-              >
-                <Icon name="edit" label="Rename category" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleUnhide(category.id)}
-                disabled={pending}
-                title="Unhide category"
-                className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 disabled:opacity-50"
-              >
-                <Icon name="visibility" label="Unhide category" />
-              </button>
-            </div>
-          )}
-          <CategoryAmountCells
-            category={category}
-            month={month}
-            currency={currency}
-            setBudgeted={setBudgeted}
-            transferAvailable={transferAvailable}
-            categoryOptions={categoryOptions}
-          />
-        </div>
+          category={category}
+          month={month}
+          currency={currency}
+          setBudgeted={setBudgeted}
+          transferAvailable={transferAvailable}
+          targetActions={targetActions}
+          categoryOptions={categoryOptions}
+          nameCell={categoryNameCell(category)}
+        />
       ))}
-    </div>
+    </details>
   );
 }
