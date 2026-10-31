@@ -19,6 +19,15 @@ open GitHub.
   (`pull_request_read` → `get_status`, or the repo's commit statuses) to
   find the Vercel deployment URL and share it once it's ready.
 
+## Vercel toolbar comments
+
+Every Vercel toolbar comment that needs addressing gets a GitHub issue
+before any fix: one comment is one issue. Merge several comments into one
+issue only when they're clearly the same change (e.g. a follow-up comment
+on the preview of that fix), and link every thread from the issue body.
+The fix's PR then closes the issue (see "Linking PRs to issues"), and
+the reply on the toolbar thread links the issue or PR.
+
 ## e2e tests
 
 Changes to existing e2e tests (anything under `e2e/*.spec.ts`) require the
