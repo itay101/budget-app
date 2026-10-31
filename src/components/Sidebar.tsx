@@ -9,6 +9,7 @@ import {
   createBudget,
   deleteBudget,
   renameBudget,
+  setDefaultBudget,
   switchBudget,
 } from "@/app/budgets/actions";
 import { cancelInvite, resendInvite, sendInvite } from "@/app/budgets/inviteActions";
@@ -53,6 +54,7 @@ export async function Sidebar() {
           budgets={budgets}
           availableCurrencies={availableCurrencies}
           switchBudget={switchBudget}
+          setDefaultBudget={setDefaultBudget}
           createBudget={createBudget}
           renameBudget={renameBudget}
           deleteBudget={deleteBudget}

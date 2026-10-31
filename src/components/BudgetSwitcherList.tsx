@@ -15,6 +15,7 @@ type BudgetOption = {
   currency: string;
   isOwner: boolean;
   ownerEmail: string;
+  isDefault: boolean;
   collaborators: Collaborator[];
   pendingInvites: PendingInvite[];
 };
@@ -53,6 +54,11 @@ type CurrencyOption = { code: string; name: string };
  * way to call it). A shared row has neither affordance: it shows the
  * Owner's email and a visible "Leave" action instead, since only Owners
  * can delete budgets or manage collaborators (CONTEXT.md).
+ *
+ * Every row, owned or shared, has a star that marks it as the user's
+ * default Budget (#189), the one they land on after signing out or on a
+ * new device. The star is filled on the current default, and clicking it
+ * there clears the default. Setting a default doesn't switch budgets.
  */
 export function BudgetSwitcherList({
   currentBudget,
@@ -60,6 +66,7 @@ export function BudgetSwitcherList({
   budgets,
   availableCurrencies,
   switchBudget,
+  setDefaultBudget,
   createBudget,
   renameBudget,
   deleteBudget,
@@ -75,6 +82,7 @@ export function BudgetSwitcherList({
   budgets: BudgetOption[];
   availableCurrencies: CurrencyOption[];
   switchBudget: (formData: FormData) => Promise<void>;
+  setDefaultBudget: (formData: FormData) => Promise<void>;
   createBudget: (formData: FormData) => Promise<void>;
   renameBudget: (formData: FormData) => Promise<void>;
   deleteBudget: (formData: FormData) => Promise<void>;
@@ -87,6 +95,7 @@ export function BudgetSwitcherList({
   const [confirmText, setConfirmText] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const switchAction = useServerAction(switchBudget);
+  const defaultAction = useServerAction(setDefaultBudget);
   const createAction = useServerAction(createBudget);
   const renameAction = useServerAction(renameBudget);
   const deleteAction = useServerAction(deleteBudget);
@@ -94,12 +103,17 @@ export function BudgetSwitcherList({
 
   const pending =
     switchAction.pending ||
+    defaultAction.pending ||
     createAction.pending ||
     renameAction.pending ||
     deleteAction.pending ||
     leaveAction.pending;
   const actionError =
-    switchAction.error || createAction.error || deleteAction.error || leaveAction.error;
+    switchAction.error ||
+    defaultAction.error ||
+    createAction.error ||
+    deleteAction.error ||
+    leaveAction.error;
   const { open, setOpen, position, triggerRef, panelRef } = usePopover({
     width: 256, // matches the popover's w-64
     onDismiss: () => {
@@ -143,6 +157,35 @@ export function BudgetSwitcherList({
     } catch {
       // error is surfaced via createAction.error
     }
+  }
+
+  async function handleToggleDefault(budget: BudgetOption) {
+    try {
+      await defaultAction.run({ budgetId: budget.isDefault ? "" : budget.id });
+    } catch {
+      // error is surfaced via defaultAction.error
+    }
+  }
+
+  function defaultToggle(budget: BudgetOption) {
+    const label = budget.isDefault
+      ? `${budget.name} is your default budget. Click to clear it.`
+      : `Set ${budget.name} as your default budget`;
+    return (
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => handleToggleDefault(budget)}
+        title={label}
+        aria-pressed={budget.isDefault}
+        className={
+          "shrink-0 rounded p-1 hover:bg-neutral-100 " +
+          (budget.isDefault ? "text-warning" : "text-neutral-400 hover:text-neutral-600")
+        }
+      >
+        <Icon name="star" filled={budget.isDefault} label={label} />
+      </button>
+    );
   }
 
   function cancelRename() {
@@ -406,6 +449,7 @@ export function BudgetSwitcherList({
                         >
                           <span className="block truncate">{b.name}</span>
                         </button>
+                        {defaultToggle(b)}
                         {b.collaborators.length > 0 && (
                           <span
                             className="flex shrink-0 items-center gap-0.5 text-neutral-600"
@@ -491,6 +535,7 @@ export function BudgetSwitcherList({
                           </span>
                         </span>
                       </button>
+                      {defaultToggle(b)}
                       <button
                         type="button"
                         disabled={pending}

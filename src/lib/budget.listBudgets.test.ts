@@ -71,6 +71,7 @@ describe("listBudgets", () => {
         currency: "USD",
         isOwner: true,
         ownerEmail: "owner@example.com",
+        isDefault: false,
         collaborators: [
           { userId: "collaborator-1", email: "collaborator@example.com" },
         ],
@@ -99,6 +100,7 @@ describe("listBudgets", () => {
         currency: "EUR",
         isOwner: true,
         ownerEmail: "owner@example.com",
+        isDefault: false,
         collaborators: [],
         pendingInvites: [],
       },
@@ -134,9 +136,44 @@ describe("listBudgets", () => {
         currency: "GBP",
         isOwner: false,
         ownerEmail: "another-owner@example.com",
+        isDefault: false,
         collaborators: [],
         pendingInvites: [],
       },
+    ]);
+  });
+
+  it("flags the signed-in user's default budget, owned or shared", async () => {
+    mockGetCurrentUser.mockResolvedValue({
+      id: "signed-in-user",
+      defaultBudgetId: "shared-budget",
+    } as never);
+    mockFindMany.mockResolvedValue([
+      {
+        id: "owned-budget",
+        name: "Household",
+        currency: "USD",
+        ownerId: "signed-in-user",
+        owner: { email: "owner@example.com" },
+        memberships: [],
+        invites: [],
+      },
+      {
+        id: "shared-budget",
+        name: "Trip",
+        currency: "GBP",
+        ownerId: "another-user",
+        owner: { email: "another-owner@example.com" },
+        memberships: [],
+        invites: [],
+      },
+    ] as never);
+
+    const budgets = await listBudgets();
+
+    expect(budgets.map((b) => [b.id, b.isDefault])).toEqual([
+      ["owned-budget", false],
+      ["shared-budget", true],
     ]);
   });
 });

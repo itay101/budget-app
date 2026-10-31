@@ -53,6 +53,9 @@ model Budget {
   memberships    BudgetMembership[]
   invites        Invite[]
   auditEntries   AuditEntry[]
+  // Users who picked this Budget as their default (#189) — see
+  // User.defaultBudgetId.
+  defaultForUsers User[]        @relation("UserDefaultBudget")
 }
 
 enum AccountType {
@@ -230,7 +233,7 @@ model Transaction {
 // since every other column there can change out from under you. A
 // Postgres trigger (this migration) mirrors `auth.users` into this table
 // on signup and on email change; nothing here is ever written by the app
-// directly except `deactivatedAt`.
+// directly except `deactivatedAt` and `defaultBudgetId`.
 model User {
   id            String    @id @db.Uuid
   // Lower-cased on write (by the mirroring trigger, and by app code for
@@ -242,6 +245,16 @@ model User {
   // permanently resolvable, forever. See the "prevent orphaning" trigger
   // below for the backstop this implies.
   deactivatedAt DateTime?
+  // The Budget this User lands on when there's no current-budget cookie
+  // (#189): after signing out, or on a new device. A per-user preference,
+  // not budget data, so setting it writes no AuditEntry. Read through
+  // getCurrentBudget (src/lib/budget.ts), which only honors it while the
+  // Budget is still accessible and not deleted — losing access (soft
+  // delete, removal as a Collaborator) falls back silently rather than
+  // clearing it. `SetNull` only matters for a real Budget delete, which
+  // the app never does today.
+  defaultBudgetId String?
+  defaultBudget   Budget?   @relation("UserDefaultBudget", fields: [defaultBudgetId], references: [id], onDelete: SetNull)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

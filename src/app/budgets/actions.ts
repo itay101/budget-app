@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { CURRENT_BUDGET_COOKIE, softDeleteBudget } from "@/lib/budget";
+import { CURRENT_BUDGET_COOKIE, getCurrentBudget, softDeleteBudget } from "@/lib/budget";
 import { isCurrencyCode } from "@/lib/currencies";
 import { getCurrentUser } from "@/lib/auth";
 import { requireBudgetAccess, requireBudgetOwnership } from "@/lib/authorization";
@@ -121,6 +121,38 @@ export async function switchBudget(formData: FormData) {
   const { budget } = await requireBudgetAccess(budgetId);
 
   (await cookies()).set(CURRENT_BUDGET_COOKIE, budget.id, { path: "/" });
+  revalidatePath("/", "layout");
+}
+
+/**
+ * Sets, or with an empty `budgetId` clears, the signed-in user's default
+ * Budget (#189): the one getCurrentBudget lands them on when there's no
+ * current-budget cookie. Any budget they can access (owned or
+ * collaborated) qualifies. Setting a default doesn't switch budgets, and
+ * switching doesn't change the default either. Without a cookie (right
+ * after signing in, or on a new device) the current budget *is* the
+ * fallback, so it's pinned in the cookie first. Otherwise the page would
+ * jump to the new default as soon as it re-renders. A per-user preference,
+ * not budget data, so it writes no AuditEntry.
+ */
+export async function setDefaultBudget(formData: FormData) {
+  const budgetId = String(formData.get("budgetId") ?? "");
+  const user = await getCurrentUser();
+
+  if (budgetId) {
+    await requireBudgetAccess(budgetId, user);
+  }
+
+  const cookieStore = await cookies();
+  if (!cookieStore.get(CURRENT_BUDGET_COOKIE)) {
+    const current = await getCurrentBudget();
+    cookieStore.set(CURRENT_BUDGET_COOKIE, current.id, { path: "/" });
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { defaultBudgetId: budgetId || null },
+  });
   revalidatePath("/", "layout");
 }
 

@@ -37,23 +37,30 @@ export const CURRENT_BUDGET_COOKIE = "budgetId";
 
 /**
  * The budget every page renders against, scoped to the signed-in user
- * (owner or collaborator — see src/lib/authorization.ts). Honors the
- * cookie set by switchBudget/createBudget when it points at a budget
- * this user can still access, otherwise falls back to their oldest
- * accessible budget — creating a default USD one, owned by them, if they
- * don't have access to any budget yet (a brand-new user's very first
- * visit), so the app still works either way.
+ * (owner or collaborator — see src/lib/authorization.ts). Tries, in order:
+ *
+ * 1. the cookie set by switchBudget/createBudget,
+ * 2. the user's default Budget (`User.defaultBudgetId`, #189), which is
+ *    what someone lands on after signing out or on a new device,
+ * 3. their oldest accessible budget,
+ * 4. a new USD one, owned by them, if they can't access any budget yet
+ *    (a brand-new user's very first visit), so the app still works.
+ *
+ * Steps 1 and 2 only count while that budget is still accessible and not
+ * deleted. Otherwise they fall through silently. A lost default is left
+ * in place rather than cleared, so regaining access restores it.
  */
 export async function getCurrentBudget() {
   const user = await getCurrentUser();
   const where = accessibleBudgetWhere(user.id);
   const selectedId = (await cookies()).get(CURRENT_BUDGET_COOKIE)?.value;
 
-  if (selectedId) {
-    const selected = await prisma.budget.findFirst({
-      where: { id: selectedId, deleted: false, ...where },
+  for (const id of new Set([selectedId, user.defaultBudgetId])) {
+    if (!id) continue;
+    const preferred = await prisma.budget.findFirst({
+      where: { id, deleted: false, ...where },
     });
-    if (selected) return selected;
+    if (preferred) return preferred;
   }
 
   const first = await prisma.budget.findFirst({
@@ -75,6 +82,8 @@ export type BudgetSummary = {
   isOwner: boolean;
   /** The Owner's email — only meaningful for a budget this user doesn't own. */
   ownerEmail: string;
+  /** Whether this is the signed-in user's default Budget (#189). */
+  isDefault: boolean;
   /** Only populated for budgets this user owns — see BudgetSwitcherPopover's
    * inline collaborator management (#76); a Collaborator doesn't get the
    * rest of a Budget's membership list handed to them (BudgetSwitcherList's
@@ -107,6 +116,7 @@ export async function listBudgets(): Promise<BudgetSummary[]> {
       currency: b.currency,
       isOwner,
       ownerEmail: b.owner.email,
+      isDefault: b.id === user.defaultBudgetId,
       collaborators: isOwner
         ? b.memberships.map((m) => ({ userId: m.userId, email: m.user.email }))
         : [],
