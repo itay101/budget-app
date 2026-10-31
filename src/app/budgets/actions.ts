@@ -125,6 +125,29 @@ export async function switchBudget(formData: FormData) {
 }
 
 /**
+ * Sets, or with an empty `budgetId` clears, the signed-in user's default
+ * Budget (#189): the one getCurrentBudget lands them on when there's no
+ * current-budget cookie. Any budget they can access (owned or
+ * collaborated) qualifies. It doesn't switch budgets or touch the cookie,
+ * and switching doesn't change the default either. A per-user preference,
+ * not budget data, so it writes no AuditEntry.
+ */
+export async function setDefaultBudget(formData: FormData) {
+  const budgetId = String(formData.get("budgetId") ?? "");
+  const user = await getCurrentUser();
+
+  if (budgetId) {
+    await requireBudgetAccess(budgetId, user);
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { defaultBudgetId: budgetId || null },
+  });
+  revalidatePath("/", "layout");
+}
+
+/**
  * Soft-deletes a budget — marks it `deleted` and closes every one of its
  * accounts (so they drop out of the open-accounts totals and move to the
  * sidebar's "Closed" section), but doesn't remove anything from the
