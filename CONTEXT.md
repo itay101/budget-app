@@ -100,7 +100,12 @@ _Avoid_: To Be Budgeted, unassigned, income category
 **Uncategorized**:
 An on-budget transaction that isn't a Transfer and has no category yet. It
 counts as neither income nor spending in any real category until the user
-categorizes it. The budget page totals these in their own Uncategorized row.
+categorizes it. The budget page totals these in the Uncategorized row, a
+system group pinned at the top of the list. It can't take assigned money or a
+Target, and isn't a Move Money or Auto-Assign option: categorizing the
+transactions is the only way to clear it. Its overspending follows the same
+cash and Credit Overspending rules as any category, and a positive Available
+carries over until the inflow is categorized.
 _Avoid_: implying uncategorized inflows are Ready to Assign income, because they aren't.
 
 **Overspending**:
