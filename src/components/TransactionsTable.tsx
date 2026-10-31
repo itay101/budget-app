@@ -1043,20 +1043,17 @@ function TransactionRow({
       </div>
 
       {/* Cancel/Save get their own strip below the fields while the row is
-          dirty, the same layout NewTransactionRow uses, rather than joining
-          reconcile/kebab in the 80px trailing column, where four buttons
-          don't fit and spilled left over the Outflow input. On desktop it
-          spans every column but the trailing one (`[grid-column:1/-2]`) so
-          its right edge lines up with Outflow's; on mobile it follows the
-          editor's expanded state. */}
+          dirty, rather than joining reconcile/kebab in the 80px trailing
+          column, where four buttons don't fit and spilled left over the
+          Outflow input. The strip is right-aligned to the row's edge; on
+          mobile it follows the editor's expanded state. */}
       {isDirty && (
         <div
           className={
-            (expanded ? "flex " : "hidden ") +
-            `px-200 pb-3 md:grid md:items-center md:gap-2 md:pb-2 ${gridCols}`
+            (expanded ? "flex " : "hidden ") + "px-200 pb-3 md:flex md:pb-2"
           }
         >
-          <div className="flex flex-1 justify-end gap-1 md:flex-none md:[grid-column:1/-2]">
+          <div className="flex flex-1 justify-end gap-1">
             <button
               type="button"
               onClick={handleCancel}
