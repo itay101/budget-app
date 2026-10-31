@@ -171,6 +171,18 @@ Payment Categories included, plus the Uncategorized row, but never Inflow:
 Ready to Assign. Every month shows its own figures, past and future alike.
 _Avoid_: inspector, month overview
 
+**Next-Month Warning**:
+A red flag on the Ready to Assign pill and drawer when the viewed Budget
+Month's Ready to Assign is $0 or more but the next month's would be below
+$0. Only the current month and later months show it. The next month's
+figure is this month's Ready to Assign, minus this month's cash
+Overspending, plus income dated next month. Credit Overspending never
+counts. Assigning from Ready to Assign can't clear the warning, because it
+lowers this month's figure by the same amount it covers. Only moving money
+in from other categories, or new income, clears it.
+_Avoid_: projected Ready to Assign (no forecast is stored or shown beyond
+next month), negative balance alert
+
 **Auto-Assign**:
 Setting what is assigned to many categories in one Budget Month in a single
 step, using one rule for the whole Budget or one category group: Underfunded,
