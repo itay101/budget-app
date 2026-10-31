@@ -50,6 +50,13 @@ descriptive branch for the change and push and open the PR from there.
 Name follow-up work in the same session after its own change, rather than
 reusing the earlier branch.
 
+## Session titles
+
+Whenever you start working on a GitHub issue, rename the session (in
+cloud sessions, `set_session_title`) to describe the actual change, e.g.
+"Add memo/payee filter to transactions list", not "Issue #22" or the
+generated name. Rename again when the session moves on to another issue.
+
 ## Linking PRs to issues
 
 Every PR that implements or settles an issue must close it on merge: put
