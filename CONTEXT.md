@@ -147,9 +147,24 @@ _Avoid_: pause, skip
 **Cost to Be Me**:
 The total that fully funding every Target would take in a Budget Month,
 before anything already assigned is taken off. Undated Have a balance of
-targets are left out. It's compared against Expected Income, a number the
-user types in.
+targets are left out.
 _Avoid_: total targets, monthly need
+
+**Carried Over**:
+The money a Budget Month starts with in its categories: the sum of every
+category's positive Available at the end of the month before. Overspent
+categories carry over nothing, because they start the month at zero.
+_Avoid_: left over (that's leftover Ready to Assign in the Ready to Assign
+breakdown), rollover
+
+**Month Summary**:
+The totals for one Budget Month, shown in the Ready to Assign drawer:
+Carried Over + Assigned + Activity = Available, then cash Overspending,
+Credit Overspending, Underfunded, Cost to Be Me and, when it's higher, the
+next month's Cost to Be Me. It counts every category, hidden ones and
+Payment Categories included, plus the Uncategorized row, but never Inflow:
+Ready to Assign. Every month shows its own figures, past and future alike.
+_Avoid_: inspector, month overview
 
 **Auto-Assign**:
 Setting what is assigned to many categories in one Budget Month in a single
