@@ -131,7 +131,8 @@ function unprefixRoot(xml: string, namespaces: Set<string>): string {
   // The first tag that isn't a declaration/PI/comment is the root element.
   const root = xml.match(/<(?:([A-Za-z_][\w.-]*):)?[A-Za-z_][\w.-]*(?=[\s/>])[^>]*>/);
   if (!root || !root[1] || /\sxmlns\s*=/.test(root[0])) return xml;
-  const prefix = root[1];
+  // A prefix may contain "." or "-", so escape it before building patterns.
+  const prefix = root[1].replace(/[.-]/g, "\\$&");
   const decl = new RegExp(`\\sxmlns:${prefix}\\s*=\\s*("[^"]*"|'[^']*')`);
   const ns = root[0].match(decl);
   if (!ns || !namespaces.has(ns[1].slice(1, -1))) return xml;
