@@ -47,6 +47,28 @@ describe("unprefixRootNamespace", () => {
     );
   });
 
+  it("keeps prefixed attributes bound by leaving the prefixed declaration in place", () => {
+    const xml = `<x:c xmlns:x="${MAIN_NS}" x:r="A1"><x:v>1</x:v></x:c>`;
+    expect(unprefixRootNamespace(xml)).toBe(
+      `<c xmlns="${MAIN_NS}" xmlns:x="${MAIN_NS}" x:r="A1"><v>1</v></c>`,
+    );
+  });
+
+  it("rewrites a prefixed relationships root", () => {
+    const rels = "http://schemas.openxmlformats.org/package/2006/relationships";
+    const xml = `<r:Relationships xmlns:r='${rels}'><r:Relationship Id="rId1" /></r:Relationships>`;
+    expect(unprefixRootNamespace(xml)).toBe(
+      `<Relationships xmlns='${rels}' xmlns:r='${rels}'><Relationship Id="rId1" /></Relationships>`,
+    );
+  });
+
+  it("treats a dot in the prefix literally", () => {
+    const xml = `<a.b:workbook xmlns:a.b="${MAIN_NS}"><aXb:sheets /><a.b:sheets /></a.b:workbook>`;
+    expect(unprefixRootNamespace(xml)).toBe(
+      `<workbook xmlns="${MAIN_NS}" xmlns:a.b="${MAIN_NS}"><aXb:sheets /><sheets /></workbook>`,
+    );
+  });
+
   it("leaves a part with an unprefixed root alone, even if children are prefixed", () => {
     const xml = `<coreProperties xmlns:dcterms="D" xmlns="C"><dcterms:created>2026</dcterms:created></coreProperties>`;
     expect(unprefixRootNamespace(xml)).toBe(xml);
