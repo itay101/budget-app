@@ -4,12 +4,17 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { CURRENT_BUDGET_COOKIE, getCurrentBudget, softDeleteBudget } from "@/lib/budget";
+import {
+  CURRENT_BUDGET_COOKIE,
+  createBudgetWithDefaults,
+  getCurrentBudget,
+  softDeleteBudget,
+} from "@/lib/budget";
 import { isCurrencyCode } from "@/lib/currencies";
 import { getCurrentUser } from "@/lib/auth";
 import { requireBudgetAccess, requireBudgetOwnership } from "@/lib/authorization";
 import { revokeInvite } from "@/lib/invites";
-import { auditedUpdate, diffFields, recordAuditEntry } from "@/lib/audit";
+import { auditedUpdate } from "@/lib/audit";
 
 /**
  * Opens a new budget, owned by the signed-in user, in the given currency,
@@ -17,7 +22,8 @@ import { auditedUpdate, diffFields, recordAuditEntry } from "@/lib/audit";
  * primary guard (a friendly error before ever touching the database),
  * backed by the `(ownerId, currency)` unique constraint for the race
  * where two requests from the same owner create the same currency at
- * once.
+ * once. The budget starts with DEFAULT_CATEGORY_GROUPS, seeded in the
+ * same transaction.
  */
 export async function createBudget(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
@@ -45,20 +51,9 @@ export async function createBudget(formData: FormData) {
 
   let budget;
   try {
-    budget = await prisma.$transaction(async (tx) => {
-      const created = await tx.budget.create({
-        data: { name, currency, ownerId: user.id },
-      });
-      await recordAuditEntry(tx, {
-        budgetId: created.id,
-        entityType: "BUDGET",
-        entityId: created.id,
-        action: "created",
-        actorId: user.id,
-        changes: diffFields({}, { name, currency, ownerId: user.id }),
-      });
-      return created;
-    });
+    budget = await prisma.$transaction((tx) =>
+      createBudgetWithDefaults(tx, { name, currency, ownerId: user.id }),
+    );
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       throw new Error(`A budget for ${currency} already exists.`);
