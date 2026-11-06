@@ -1,7 +1,9 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentBudget } from "@/lib/budget";
+import { getCurrentUser } from "@/lib/auth";
+import { accessibleBudgetWhere } from "@/lib/authorization";
 import { formatMilliunits } from "@/lib/money";
 import { getTransactionEditOptions } from "@/lib/transactionOptions";
 import { parseTransactionFilters } from "@/lib/transactionFilters";
@@ -39,6 +41,19 @@ export default async function AccountPage({
   });
 
   if (!account) {
+    // #204: the current budget is a cookie, not part of the URL, so
+    // switching or creating a budget while on an account page re-renders
+    // this same URL against the new budget. An account the user can still
+    // reach in another budget isn't "missing", so send them to the new
+    // budget's accounts list instead of a 404 (which Next keeps on screen
+    // until the path changes, even after switching back). An id that
+    // doesn't exist, or that they can't access, still 404s.
+    const user = await getCurrentUser();
+    const elsewhere = await prisma.account.findFirst({
+      where: { id, budget: { deleted: false, ...accessibleBudgetWhere(user.id) } },
+      select: { id: true },
+    });
+    if (elsewhere) redirect("/accounts");
     notFound();
   }
 
