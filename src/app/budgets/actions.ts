@@ -10,6 +10,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { requireBudgetAccess, requireBudgetOwnership } from "@/lib/authorization";
 import { revokeInvite } from "@/lib/invites";
 import { auditedUpdate, diffFields, recordAuditEntry } from "@/lib/audit";
+import { seedDefaultCategories } from "@/lib/defaultCategories";
 
 /**
  * Opens a new budget, owned by the signed-in user, in the given currency,
@@ -17,7 +18,8 @@ import { auditedUpdate, diffFields, recordAuditEntry } from "@/lib/audit";
  * primary guard (a friendly error before ever touching the database),
  * backed by the `(ownerId, currency)` unique constraint for the race
  * where two requests from the same owner create the same currency at
- * once.
+ * once. The budget starts with DEFAULT_CATEGORY_GROUPS, seeded in the
+ * same transaction.
  */
 export async function createBudget(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
@@ -57,6 +59,7 @@ export async function createBudget(formData: FormData) {
         actorId: user.id,
         changes: diffFields({}, { name, currency, ownerId: user.id }),
       });
+      await seedDefaultCategories(tx, { budgetId: created.id, actorId: user.id });
       return created;
     });
   } catch (err) {
