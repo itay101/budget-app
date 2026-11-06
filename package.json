@@ -41,7 +41,7 @@
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.5",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "fallow": "^3.27.0",
+    "fallow": "^3.34.0",
     "jest": "^30.5.0",
     "jest-environment-jsdom": "^30.5.2",
     "postcss": "^8.4.47",
