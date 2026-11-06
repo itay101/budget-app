@@ -118,7 +118,7 @@ function formatGroupDate(iso: string): string {
 }
 
 const inputClass =
-  "w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-body hover:border-neutral-200 focus:border-brand-700 focus:bg-neutral-0 focus:outline-none focus:ring-1 focus:ring-brand-700";
+  "w-full rounded-sm border border-transparent bg-transparent px-1 py-0.5 text-body hover:border-neutral-200 focus:border-brand-700 focus:bg-neutral-0 focus:outline-hidden focus:ring-1 focus:ring-brand-700";
 
 // The trailing column is icon-only actions (reconcile/kebab) rather than a
 // labeled field, so it's sized to just fit those two buttons - not the
@@ -333,7 +333,7 @@ export function TransactionsTable({
               type="button"
               onClick={() => setAddingNew(true)}
               disabled={addingNew}
-              className="flex items-center gap-1 rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+              className="flex items-center gap-1 rounded-sm bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
             >
               <Icon name="add" className="text-[1.1em]" />
               Add Transaction
@@ -342,7 +342,7 @@ export function TransactionsTable({
               <button
                 type="button"
                 onClick={() => setImportOpen(true)}
-                className="flex items-center gap-1 rounded border border-neutral-200 px-2 py-1 text-small font-medium text-neutral-700 hover:bg-neutral-100"
+                className="flex items-center gap-1 rounded-sm border border-neutral-200 px-2 py-1 text-small font-medium text-neutral-700 hover:bg-neutral-100"
               >
                 <Icon name="upload_file" className="text-[1.1em]" />
                 File Import
@@ -357,7 +357,7 @@ export function TransactionsTable({
             <button
               type="button"
               onClick={clearAllFilters}
-              className="flex items-center gap-1 rounded border border-neutral-200 px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+              className="flex items-center gap-1 rounded-sm border border-neutral-200 px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
             >
               <Icon name="filter_alt_off" className="text-[1.1em]" />
               Clear filters
@@ -397,7 +397,7 @@ export function TransactionsTable({
               type="button"
               onClick={() => setSelectedIds(new Set())}
               disabled={bulkDeletePending}
-              className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
+              className="rounded-sm px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
             >
               Clear selection
             </button>
@@ -405,7 +405,7 @@ export function TransactionsTable({
               type="button"
               onClick={handleBulkDelete}
               disabled={bulkDeletePending}
-              className="flex items-center gap-1 rounded bg-danger px-2 py-1 text-small font-medium text-white hover:bg-danger/90 disabled:opacity-50"
+              className="flex items-center gap-1 rounded-sm bg-danger px-2 py-1 text-small font-medium text-white hover:bg-danger/90 disabled:opacity-50"
             >
               <Icon name="delete" className="text-[1.1em]" />
               {bulkDeletePending ? "Deleting…" : `Delete ${selectedIds.size}`}
@@ -434,7 +434,7 @@ export function TransactionsTable({
               onChange={toggleSelectAll}
               disabled={rows.length === 0}
               aria-label="Select all transactions"
-              className="h-4 w-4 rounded border-neutral-300 text-brand-700 focus:ring-brand-700"
+              className="h-4 w-4 rounded-sm border-neutral-300 text-brand-700 focus:ring-brand-700"
             />
           </div>
           <div>Date</div>
@@ -598,7 +598,7 @@ function ReconciliationBar({
             type="button"
             onClick={handleReconcile}
             disabled={pending}
-            className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+            className="rounded-sm bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
           >
             {pending ? "Reconciling…" : "Reconcile"}
           </button>
@@ -607,7 +607,7 @@ function ReconciliationBar({
           type="button"
           onClick={handleCancel}
           disabled={pending}
-          className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
+          className="rounded-sm px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
         >
           Cancel
         </button>
@@ -806,7 +806,7 @@ function TransactionRow({
           onChange={onToggleSelected}
           disabled={selectionDisabled}
           aria-label="Select transaction"
-          className="mt-1 h-4 w-4 shrink-0 rounded border-neutral-300 text-brand-700 focus:ring-brand-700"
+          className="mt-1 h-4 w-4 shrink-0 rounded-sm border-neutral-300 text-brand-700 focus:ring-brand-700"
         />
         <button
           type="button"
@@ -841,7 +841,7 @@ function TransactionRow({
               {formatMilliunits(summaryAmount, currency)}
             </div>
             {showAccount && (
-              <div className="mt-0.5 max-w-[10rem] truncate text-small text-neutral-600">
+              <div className="mt-0.5 max-w-40 truncate text-small text-neutral-600">
                 {transaction.accountName}
               </div>
             )}
@@ -865,7 +865,7 @@ function TransactionRow({
             onChange={onToggleSelected}
             disabled={selectionDisabled}
             aria-label="Select transaction"
-            className="h-4 w-4 rounded border-neutral-300 text-brand-700 focus:ring-brand-700"
+            className="h-4 w-4 rounded-sm border-neutral-300 text-brand-700 focus:ring-brand-700"
           />
         </div>
 
@@ -876,7 +876,7 @@ function TransactionRow({
             type="button"
             onClick={() => setExpanded(false)}
             title="Collapse"
-            className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+            className="rounded-sm p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
           >
             <Icon
               name="expand_less"
@@ -979,7 +979,7 @@ function TransactionRow({
               onClick={handleUnreconcile}
               disabled={pending}
               title="Un-reconcile"
-              className="rounded p-1 text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
+              className="rounded-sm p-1 text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
             >
               <Icon
                 name="lock"
@@ -993,7 +993,7 @@ function TransactionRow({
               onClick={handleReconcile}
               disabled={pending}
               title="Reconcile"
-              className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 disabled:opacity-50"
+              className="rounded-sm p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 disabled:opacity-50"
             >
               <Icon
                 name="lock_open"
@@ -1008,7 +1008,7 @@ function TransactionRow({
             onClick={() => setMenuOpen((o) => !o)}
             disabled={pending}
             title="More actions"
-            className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 disabled:opacity-50"
+            className="rounded-sm p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 disabled:opacity-50"
           >
             <Icon
               name="more_vert"
@@ -1059,7 +1059,7 @@ function TransactionRow({
               onClick={handleCancel}
               disabled={pending}
               title="Cancel"
-              className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
+              className="rounded-sm px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
             >
               Cancel
             </button>
@@ -1068,7 +1068,7 @@ function TransactionRow({
               onClick={handleSubmit}
               disabled={pending}
               title="Save"
-              className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+              className="rounded-sm bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
             >
               {pending ? "…" : "Save"}
             </button>
@@ -1244,20 +1244,20 @@ function NewTransactionRow({
           squeezing into the table's narrow trailing column - unlike
           TransactionRow's icon-only actions, "Save and add another" needs
           the room. On desktop this row reuses gridCols and spans every
-          field column but the last (`[grid-column:1/-2]`) so the button
+          field column but the last (`col-[1/-2]`) so the button
           group's right edge lines up with Outflow's above it, instead of
           drifting into the trailing column TransactionRow reserves for its
           icon actions - which this row leaves empty. */}
       <div
         className={`flex border-t border-neutral-100 px-200 pb-3 pt-2 md:grid md:items-center md:gap-2 md:pb-2 md:pt-1 ${gridCols}`}
       >
-        <div className="flex flex-1 flex-wrap justify-end gap-1 md:flex-none md:[grid-column:1/-2]">
+        <div className="flex flex-1 flex-wrap justify-end gap-1 md:flex-none md:col-[1/-2]">
           <button
             type="button"
             onClick={onClose}
             disabled={pending}
             title="Cancel"
-            className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
+            className="rounded-sm px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -1266,7 +1266,7 @@ function NewTransactionRow({
             onClick={handleSaveAndAddAnother}
             disabled={pending}
             title="Save and add another"
-            className="rounded border border-brand-700 px-2 py-1 text-small font-medium text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
+            className="rounded-sm border border-brand-700 px-2 py-1 text-small font-medium text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
           >
             {pending ? "…" : "Save and add another"}
           </button>
@@ -1275,7 +1275,7 @@ function NewTransactionRow({
             onClick={handleSave}
             disabled={pending}
             title="Save"
-            className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+            className="rounded-sm bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
           >
             {pending ? "…" : "Save"}
           </button>

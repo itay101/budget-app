@@ -77,7 +77,7 @@ export async function Sidebar() {
           <li>
             <Link
               href="/accounts/all"
-              className="flex items-center justify-between gap-2 rounded px-3 py-1.5 text-small font-medium hover:bg-neutral-100"
+              className="flex items-center justify-between gap-2 rounded-sm px-3 py-1.5 text-small font-medium hover:bg-neutral-100"
             >
               <span className="text-neutral-800">All Accounts</span>
               <span
@@ -94,7 +94,7 @@ export async function Sidebar() {
             <li key={account.id}>
               <Link
                 href={`/accounts/${account.id}`}
-                className="flex items-center justify-between gap-2 rounded px-3 py-1.5 text-small hover:bg-neutral-100"
+                className="flex items-center justify-between gap-2 rounded-sm px-3 py-1.5 text-small hover:bg-neutral-100"
               >
                 <span className="truncate text-neutral-800">
                   {account.name}
@@ -131,7 +131,7 @@ export async function Sidebar() {
                 <li key={account.id}>
                   <Link
                     href={`/accounts/${account.id}`}
-                    className="flex items-center justify-between gap-2 rounded px-3 py-1.5 text-small opacity-60 hover:bg-neutral-100 hover:opacity-100"
+                    className="flex items-center justify-between gap-2 rounded-sm px-3 py-1.5 text-small opacity-60 hover:bg-neutral-100 hover:opacity-100"
                   >
                     <span className="truncate text-neutral-800">
                       {account.name}
@@ -151,7 +151,7 @@ export async function Sidebar() {
         <form action={signOut}>
           <button
             type="submit"
-            className="w-full rounded px-3 py-1.5 text-left text-small text-neutral-600 hover:bg-neutral-100"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-small text-neutral-600 hover:bg-neutral-100"
           >
             Sign out
           </button>

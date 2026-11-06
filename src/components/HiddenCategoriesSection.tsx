@@ -71,7 +71,7 @@ export function HiddenCategoriesSection({
       />
     ) : (
       <div className="col-span-2 flex min-w-0 items-center gap-1.5 text-neutral-800 sm:col-span-1">
-        <span className="min-w-[5rem] truncate" title={`${category.name} — ${category.groupName}`}>
+        <span className="min-w-20 truncate" title={`${category.name} — ${category.groupName}`}>
           <bdi>{category.name}</bdi>
         </span>
         <span className="min-w-0 truncate text-small font-normal text-neutral-400 lg:hidden 2xl:inline">
@@ -81,7 +81,7 @@ export function HiddenCategoriesSection({
           type="button"
           onClick={() => setRenamingCategoryId(category.id)}
           title="Rename category"
-          className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+          className="shrink-0 rounded-sm p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
         >
           <Icon name="edit" label="Rename category" />
         </button>
@@ -90,7 +90,7 @@ export function HiddenCategoriesSection({
           onClick={() => handleUnhide(category.id)}
           disabled={unhideAction.pending}
           title="Unhide category"
-          className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 disabled:opacity-50"
+          className="shrink-0 rounded-sm p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 disabled:opacity-50"
         >
           <Icon name="visibility" label="Unhide category" />
         </button>

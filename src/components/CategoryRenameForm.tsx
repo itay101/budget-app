@@ -5,7 +5,7 @@ import { Icon } from "@/components/Icon";
 import { useServerAction } from "@/components/useServerAction";
 
 const nameInputClass =
-  "min-w-0 flex-1 rounded border border-neutral-200 px-2 py-1 text-small focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700";
+  "min-w-0 flex-1 rounded-sm border border-neutral-200 px-2 py-1 text-small focus:border-brand-700 focus:outline-hidden focus:ring-1 focus:ring-brand-700";
 
 /**
  * A budget row's inline category rename: an input + ✓/✕, the same pattern
@@ -59,7 +59,7 @@ export function CategoryRenameForm({
         type="submit"
         disabled={rename.pending}
         title="Save"
-        className="shrink-0 rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
+        className="shrink-0 rounded-sm px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
       >
         <Icon name="check" label="Save" />
       </button>
@@ -68,7 +68,7 @@ export function CategoryRenameForm({
         type="button"
         onClick={onClose}
         title="Cancel"
-        className="shrink-0 rounded px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+        className="shrink-0 rounded-sm px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
       >
         <Icon name="close" label="Cancel" />
       </button>

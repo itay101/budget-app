@@ -20,7 +20,7 @@ export function SidebarNav() {
             <Link
               href={link.href}
               className={
-                "block rounded px-3 py-2 text-body font-medium " +
+                "block rounded-sm px-3 py-2 text-body font-medium " +
                 (active
                   ? "bg-brand-700/10 text-brand-700"
                   : "text-neutral-600 hover:bg-neutral-100")

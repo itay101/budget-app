@@ -25,7 +25,7 @@ export function FlowFilter({
     <div
       role="group"
       aria-label="Filter by inflow or outflow"
-      className="flex overflow-hidden rounded border border-neutral-200 text-small"
+      className="flex overflow-hidden rounded-sm border border-neutral-200 text-small"
     >
       {OPTIONS.map((option, i) => (
         <button
