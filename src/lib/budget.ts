@@ -15,7 +15,8 @@ import type { TargetHistoryEntry } from "@/lib/targetDisplay";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { accessibleBudgetWhere } from "@/lib/authorization";
-import { auditedUpdate } from "@/lib/audit";
+import { auditedUpdate, diffFields, recordAuditEntry } from "@/lib/audit";
+import { seedDefaultCategories } from "@/lib/defaultCategories";
 import {
   addMonths,
   currentBudgetMonth,
@@ -72,6 +73,28 @@ export async function getCurrentBudget() {
   return prisma.budget.create({
     data: { name: "My Budget", currency: "USD", ownerId: user.id },
   });
+}
+
+/**
+ * Creates a Budget with its creation AuditEntry (ADR 0002) and seeds it
+ * with DEFAULT_CATEGORY_GROUPS (#196), all on the caller's `tx` so they
+ * commit or roll back together. Used by createBudget.
+ */
+export async function createBudgetWithDefaults(
+  tx: Prisma.TransactionClient,
+  { name, currency, ownerId }: { name: string; currency: string; ownerId: string },
+) {
+  const created = await tx.budget.create({ data: { name, currency, ownerId } });
+  await recordAuditEntry(tx, {
+    budgetId: created.id,
+    entityType: "BUDGET",
+    entityId: created.id,
+    action: "created",
+    actorId: ownerId,
+    changes: diffFields({}, { name, currency, ownerId }),
+  });
+  await seedDefaultCategories(tx, { budgetId: created.id, actorId: ownerId });
+  return created;
 }
 
 export type BudgetSummary = {
