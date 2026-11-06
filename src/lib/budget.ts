@@ -44,8 +44,9 @@ export const CURRENT_BUDGET_COOKIE = "budgetId";
  * 2. the user's default Budget (`User.defaultBudgetId`, #189), which is
  *    what someone lands on after signing out or on a new device,
  * 3. their oldest accessible budget,
- * 4. a new USD one, owned by them, if they can't access any budget yet
- *    (a brand-new user's very first visit), so the app still works.
+ * 4. a new USD one, owned by them and seeded with the default
+ *    categories, if they can't access any budget yet (a brand-new user's
+ *    very first visit), so the app still works.
  *
  * Steps 1 and 2 only count while that budget is still accessible and not
  * deleted. Otherwise they fall through silently. A lost default is left
@@ -70,15 +71,30 @@ export async function getCurrentBudget() {
   });
   if (first) return first;
 
-  return prisma.budget.create({
-    data: { name: "My Budget", currency: "USD", ownerId: user.id },
-  });
+  try {
+    return await prisma.$transaction((tx) =>
+      createBudgetWithDefaults(tx, { name: "My Budget", currency: "USD", ownerId: user.id }),
+    );
+  } catch (err) {
+    // The layout and the page both resolve the current budget, so a new
+    // user's first visit can race two creates; the loser hits the
+    // (ownerId, currency) unique constraint and uses the winner's budget.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      const created = await prisma.budget.findFirst({
+        where: { deleted: false, ...where },
+        orderBy: { createdAt: "asc" },
+      });
+      if (created) return created;
+    }
+    throw err;
+  }
 }
 
 /**
  * Creates a Budget with its creation AuditEntry (ADR 0002) and seeds it
  * with DEFAULT_CATEGORY_GROUPS (#196), all on the caller's `tx` so they
- * commit or roll back together. Used by createBudget.
+ * commit or roll back together. Every path that opens a new budget goes
+ * through here: createBudget and getCurrentBudget's first-visit fallback.
  */
 export async function createBudgetWithDefaults(
   tx: Prisma.TransactionClient,
