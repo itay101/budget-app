@@ -1,8 +1,10 @@
 import { cookies } from "next/headers";
+import { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
 import { accessibleBudgetWhere } from "@/lib/authorization";
 import { getCurrentBudget } from "@/lib/budget";
 import { prisma } from "@/lib/prisma";
+import { seedDefaultCategories } from "@/lib/defaultCategories";
 
 jest.mock("next/headers", () => ({ cookies: jest.fn() }));
 
@@ -14,15 +16,26 @@ jest.mock("@/lib/prisma", () => ({
   prisma: {
     budget: {
       findFirst: jest.fn(),
-      create: jest.fn(),
     },
+    $transaction: jest.fn(),
   },
+}));
+
+jest.mock("@/lib/defaultCategories", () => ({
+  seedDefaultCategories: jest.fn(),
 }));
 
 const mockCookies = jest.mocked(cookies);
 const mockGetCurrentUser = jest.mocked(getCurrentUser);
 const mockFindFirst = jest.mocked(prisma.budget.findFirst);
-const mockCreate = jest.mocked(prisma.budget.create);
+const mockTransaction = jest.mocked(prisma.$transaction);
+const mockSeed = jest.mocked(seedDefaultCategories);
+
+/** The stub client the mocked $transaction hands its callback. */
+const tx = {
+  budget: { create: jest.fn() },
+  auditEntry: { create: jest.fn() },
+};
 
 const USER_ID = "signed-in-user";
 const where = accessibleBudgetWhere(USER_ID);
@@ -108,13 +121,38 @@ describe("getCurrentBudget", () => {
     expect(mockFindFirst).toHaveBeenCalledTimes(2);
   });
 
-  it("creates a USD budget when the user can't access any", async () => {
+  it("creates a USD budget, audited and seeded with the default categories, when the user can't access any", async () => {
     setup({ defaultBudgetId: "lost-default" });
-    mockCreate.mockResolvedValue(budget("new-budget") as never);
+    mockTransaction.mockImplementation(((fn: (t: typeof tx) => unknown) => fn(tx)) as never);
+    tx.budget.create.mockResolvedValue(budget("new-budget"));
 
     await expect(getCurrentBudget()).resolves.toMatchObject({ id: "new-budget" });
-    expect(mockCreate).toHaveBeenCalledWith({
+    expect(tx.budget.create).toHaveBeenCalledWith({
       data: { name: "My Budget", currency: "USD", ownerId: USER_ID },
     });
+    expect(tx.auditEntry.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        budgetId: "new-budget",
+        entityType: "BUDGET",
+        action: "created",
+        actorId: USER_ID,
+      }),
+    });
+    expect(mockSeed).toHaveBeenCalledWith(tx, { budgetId: "new-budget", actorId: USER_ID });
+  });
+
+  it("uses the budget a concurrent first visit just created when its own create loses the race", async () => {
+    setup({});
+    mockTransaction.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "test",
+      }) as never,
+    );
+    mockFindFirst
+      .mockResolvedValueOnce(null as never)
+      .mockResolvedValueOnce(budget("raced-budget") as never);
+
+    await expect(getCurrentBudget()).resolves.toMatchObject({ id: "raced-budget" });
   });
 });

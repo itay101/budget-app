@@ -89,7 +89,7 @@ export function DeactivateAccountControl({
       <button
         type="button"
         onClick={() => setConfirming(true)}
-        className="w-full rounded px-3 py-1.5 text-left text-small text-neutral-600 hover:bg-danger/10 hover:text-danger"
+        className="w-full rounded-sm px-3 py-1.5 text-left text-small text-neutral-600 hover:bg-danger/10 hover:text-danger"
       >
         Delete account
       </button>
@@ -97,7 +97,7 @@ export function DeactivateAccountControl({
   }
 
   return (
-    <div className="space-y-1.5 rounded border border-danger/40 bg-danger/5 p-2">
+    <div className="space-y-1.5 rounded-sm border border-danger/40 bg-danger/5 p-2">
       <p className="text-small text-neutral-800">
         This permanently deletes your sign-in credentials — you won&apos;t be
         able to sign in again. Type{" "}
@@ -109,14 +109,14 @@ export function DeactivateAccountControl({
         autoFocus
         placeholder={email}
         aria-label={`Type "${email}" to confirm account deletion`}
-        className="w-full rounded border border-neutral-200 px-2 py-1 text-small focus:border-danger focus:outline-none focus:ring-1 focus:ring-danger"
+        className="w-full rounded-sm border border-neutral-200 px-2 py-1 text-small focus:border-danger focus:outline-hidden focus:ring-1 focus:ring-danger"
       />
       {error && <p className="text-small text-danger">{error}</p>}
       <div className="flex justify-end gap-2">
         <button
           type="button"
           onClick={cancel}
-          className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+          className="rounded-sm px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
         >
           Cancel
         </button>
@@ -124,7 +124,7 @@ export function DeactivateAccountControl({
           type="button"
           disabled={confirmText !== email || pending}
           onClick={handleDeactivate}
-          className="rounded bg-danger px-2 py-1 text-small font-medium text-white hover:bg-danger/90 disabled:opacity-50"
+          className="rounded-sm bg-danger px-2 py-1 text-small font-medium text-white hover:bg-danger/90 disabled:opacity-50"
         >
           {pending ? "Deleting…" : "Delete account"}
         </button>

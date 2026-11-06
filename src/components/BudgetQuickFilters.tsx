@@ -71,7 +71,7 @@ export function UnderfundedBanner({
       {counts.count > 0 && (
         <Link
           href={budgetHref(month, showingUnderfunded ? "all" : "underfunded")}
-          className="rounded border border-current px-3 py-1 text-body font-medium hover:bg-neutral-0/50"
+          className="rounded-sm border border-current px-3 py-1 text-body font-medium hover:bg-neutral-0/50"
         >
           {showingUnderfunded ? "Show all" : "Show only these"}
         </Link>

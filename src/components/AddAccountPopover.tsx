@@ -19,7 +19,7 @@ export function AddAccountPopover({
   return (
     <AddFormPopover
       triggerLabel="Add account"
-      triggerClassName="mt-1 flex w-full items-center gap-0.5 rounded px-3 py-1.5 text-left text-small font-medium text-brand-700 hover:bg-brand-700/10"
+      triggerClassName="mt-1 flex w-full items-center gap-0.5 rounded-sm px-3 py-1.5 text-left text-small font-medium text-brand-700 hover:bg-brand-700/10"
       title="Add account"
       submitLabel="Add account"
       onSubmit={createAccount}
@@ -36,7 +36,7 @@ export function AddAccountPopover({
           name="name"
           required
           autoFocus
-          className="mt-1 w-full rounded border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+          className="mt-1 w-full rounded-sm border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-hidden focus:ring-1 focus:ring-brand-700"
         />
       </div>
       <div>
@@ -50,7 +50,7 @@ export function AddAccountPopover({
           id="new-account-type"
           name="type"
           defaultValue="CHECKING"
-          className="mt-1 w-full rounded border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+          className="mt-1 w-full rounded-sm border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-hidden focus:ring-1 focus:ring-brand-700"
         >
           {ACCOUNT_TYPE_OPTIONS.map((t) => (
             <option key={t.value} value={t.value}>
@@ -71,7 +71,7 @@ export function AddAccountPopover({
           name="balance"
           currency={currency}
           defaultValue={0}
-          className="mt-1 w-full rounded border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+          className="mt-1 w-full rounded-sm border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-hidden focus:ring-1 focus:ring-brand-700"
         />
       </div>
     </AddFormPopover>

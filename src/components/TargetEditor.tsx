@@ -33,7 +33,7 @@ export type TargetActions = {
 };
 
 const fieldClass =
-  "w-full rounded border border-neutral-200 bg-neutral-0 px-2 py-1 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700";
+  "w-full rounded-sm border border-neutral-200 bg-neutral-0 px-2 py-1 text-body focus:border-brand-700 focus:outline-hidden focus:ring-1 focus:ring-brand-700";
 const labelClass = "mb-0.5 block text-small text-neutral-600";
 
 /**
@@ -94,7 +94,7 @@ export function TargetEditor({
         <KindPicker draft={draft} onChange={setDraft} />
         <ScheduleFields draft={draft} currency={currency} onChange={setDraft} />
         <EffectiveFromNote history={history} month={month} fmt={fmt} />
-        {error && <p className="rounded bg-danger/10 px-2 py-1 text-small text-danger">{error}</p>}
+        {error && <p className="rounded-sm bg-danger/10 px-2 py-1 text-small text-danger">{error}</p>}
         <EditorButtons
           hasTarget={row.target !== null}
           snoozed={snoozed}
@@ -136,7 +136,7 @@ function EditorButtons({
       <button
         type="submit"
         disabled={pending}
-        className="rounded bg-brand-700 px-3 py-1 text-body font-medium text-neutral-0 hover:bg-brand-800 disabled:opacity-50"
+        className="rounded-sm bg-brand-700 px-3 py-1 text-body font-medium text-neutral-0 hover:bg-brand-800 disabled:opacity-50"
       >
         Save target
       </button>
@@ -145,13 +145,13 @@ function EditorButtons({
           type="button"
           disabled={pending}
           onClick={onSnooze}
-          className="inline-flex items-center gap-1 rounded px-2 py-1 text-body text-target-snoozed-fg hover:bg-target-snoozed-bg disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-sm px-2 py-1 text-body text-target-snoozed-fg hover:bg-target-snoozed-bg disabled:opacity-50"
         >
           <Icon name="snooze" />
           {snoozed ? "Unsnooze" : `Snooze for ${monthName}`}
         </button>
       )}
-      <button type="button" onClick={onCancel} className="rounded px-2 py-1 text-body text-neutral-600 hover:bg-neutral-200">
+      <button type="button" onClick={onCancel} className="rounded-sm px-2 py-1 text-body text-neutral-600 hover:bg-neutral-200">
         Cancel
       </button>
       {hasTarget && (
@@ -159,7 +159,7 @@ function EditorButtons({
           type="button"
           disabled={pending}
           onClick={onRemove}
-          className="ms-auto inline-flex items-center gap-1 rounded px-2 py-1 text-body text-danger hover:bg-danger/10 disabled:opacity-50"
+          className="ms-auto inline-flex items-center gap-1 rounded-sm px-2 py-1 text-body text-danger hover:bg-danger/10 disabled:opacity-50"
         >
           <Icon name="delete" /> Remove
         </button>
@@ -180,7 +180,7 @@ function KindPicker({ draft, onChange }: DraftProps) {
           aria-pressed={draft.kind === kind}
           onClick={() => onChange((d) => ({ ...d, kind }))}
           className={
-            "rounded border bg-neutral-0 px-2 py-1 text-small " +
+            "rounded-sm border bg-neutral-0 px-2 py-1 text-small " +
             (draft.kind === kind
               ? "border-brand-700 font-semibold text-brand-700"
               : "border-neutral-200 text-neutral-600 hover:border-neutral-600")
@@ -280,7 +280,7 @@ function EffectiveFromNote({ history, month, fmt }: { history: TargetHistoryEntr
   const replacesThisMonth = history.some((entry) => entry.startMonth === formatBudgetMonth(month));
   const later = nextChangeAfter(history, formatBudgetMonth(month));
   return (
-    <div className="flex gap-2 rounded border-s-4 border-brand-700 bg-neutral-0 px-2 py-1.5 text-small text-neutral-600">
+    <div className="flex gap-2 rounded-sm border-s-4 border-brand-700 bg-neutral-0 px-2 py-1.5 text-small text-neutral-600">
       <Icon name="event_upcoming" />
       <div>
         <div className="text-neutral-800">

@@ -1,6 +1,126 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@theme {
+  --color-brand-700: #1868db;
+  --color-brand-800: #0055cc;
+  --color-brand-900: #09326c;
+
+  --color-neutral-0: #ffffff;
+  --color-neutral-100: #f7f8f9;
+  --color-neutral-200: #dcdfe4;
+  --color-neutral-600: #44546f;
+  --color-neutral-800: #172b4d;
+
+  --color-success: #22a06b;
+  --color-warning: #b38600;
+  --color-danger: #ca3521;
+  --color-discovery: #6e5dc6;
+  --color-info: #1d7f8c;
+
+  --color-target-funded: #22a06b;
+  --color-target-funded-bg: #dcfff1;
+  --color-target-funded-fg: #216e4e;
+
+  --color-target-overfunded: #1868db;
+  --color-target-overfunded-bg: #e9f2ff;
+  --color-target-overfunded-fg: #0055cc;
+
+  --color-target-ontrack: #1d7f8c;
+  --color-target-ontrack-bg: #e7f9ff;
+  --color-target-ontrack-fg: #206a83;
+
+  --color-target-underfunded: #b38600;
+  --color-target-underfunded-bg: #fff7d6;
+  --color-target-underfunded-fg: #7f5f01;
+
+  --color-target-overspent: #ca3521;
+  --color-target-overspent-bg: #ffeceb;
+  --color-target-overspent-fg: #ae2e24;
+
+  --color-target-snoozed: #6e5dc6;
+  --color-target-snoozed-bg: #f3f0ff;
+  --color-target-snoozed-fg: #5e4db2;
+
+  --color-target-none: #8590a2;
+  --color-target-none-bg: #f1f2f4;
+  --color-target-none-fg: #44546f;
+
+  --color-target-track: #ebecf0;
+
+  --text-display: 35px;
+  --text-display--line-height: 40px;
+  --text-display--font-weight: 500;
+  --text-h1: 29px;
+  --text-h1--line-height: 32px;
+  --text-h1--font-weight: 600;
+  --text-h2: 24px;
+  --text-h2--line-height: 28px;
+  --text-h2--font-weight: 500;
+  --text-h3: 20px;
+  --text-h3--line-height: 24px;
+  --text-h3--font-weight: 500;
+  --text-body: 14px;
+  --text-body--line-height: 20px;
+  --text-body--font-weight: 400;
+  --text-small: 12px;
+  --text-small--line-height: 16px;
+  --text-small--font-weight: 400;
+
+  --spacing-100: 8px;
+  --spacing-200: 16px;
+  --spacing-300: 24px;
+  --spacing-400: 32px;
+  --spacing-mobile-nav: 57px;
+
+  --grid-template-columns-budget: 1fr 120px 120px 120px;
+  --grid-template-columns-budget-targets: minmax(9rem, 1fr) minmax(0, 2fr) 128px
+    100px 112px;
+
+  --animate-mutation-bar: mutation-bar 1.1s ease-in-out infinite;
+
+  @keyframes mutation-bar {
+    0% {
+      transform: translateX(-100%);
+    }
+    50% {
+      transform: translateX(50%);
+    }
+    100% {
+      transform: translateX(200%);
+    }
+  }
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+
+  /* v4's Preflight also dropped v3's pointer cursor on buttons and its
+     gray-400 placeholder colour; keep both so controls look and feel the
+     same as before the upgrade. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-gray-400);
+  }
+}
 
 /* Fonts per design.md: Atlassian Sans is proprietary, so we fall back to
    the closest available system fonts. */
@@ -42,10 +162,10 @@ body {
 /* An overspent target bar's excess past 100% (#148): dashed and hatched,
    so it reads as "past the limit" without relying on colour. */
 .target-excess {
-  border: 1.5px dashed theme("colors.target.overspent.DEFAULT");
+  border: 1.5px dashed var(--color-target-overspent);
   background: repeating-linear-gradient(
     135deg,
-    theme("colors.target.overspent.DEFAULT") 0 3px,
+    var(--color-target-overspent) 0 3px,
     transparent 3px 7px
   );
 }

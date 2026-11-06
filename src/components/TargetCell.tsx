@@ -57,7 +57,7 @@ export function TargetCell({
           type="button"
           onClick={onToggle}
           aria-expanded={open}
-          className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-small text-neutral-600 hover:bg-neutral-100 hover:text-brand-700"
+          className="inline-flex items-center gap-1 rounded-sm px-1 py-0.5 text-small text-neutral-600 hover:bg-neutral-100 hover:text-brand-700"
         >
           <Icon name="add" /> Add target
         </button>
@@ -75,7 +75,7 @@ export function TargetCell({
         onClick={onToggle}
         aria-expanded={open}
         aria-label={`Edit target: ${TARGET_STATUS_STYLE[status].label}`}
-        className="flex w-full items-center gap-2 rounded text-start hover:bg-neutral-100/60"
+        className="flex w-full items-center gap-2 rounded-sm text-start hover:bg-neutral-100/60"
       >
         <span className="block min-w-0 flex-1">
           <TargetProgressBar status={status} fraction={progress?.fraction ?? 0} overspend={overspend} />

@@ -86,14 +86,14 @@ export function AddFormPopover({
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+                  className="rounded-sm px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={pending}
-                  className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+                  className="rounded-sm bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
                 >
                   {pending ? "Adding…" : submitLabel}
                 </button>
