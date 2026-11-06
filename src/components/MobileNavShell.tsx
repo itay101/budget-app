@@ -50,7 +50,7 @@ export function MobileNavShell({
           onClick={() => setOpen(true)}
           aria-label="Open menu"
           aria-expanded={open}
-          className="-ml-1 rounded p-1.5 text-neutral-600 hover:bg-neutral-100"
+          className="-ml-1 rounded-sm p-1.5 text-neutral-600 hover:bg-neutral-100"
         >
           <Icon name="menu" label="Open menu" />
         </button>

@@ -6,7 +6,7 @@ import { Icon } from "@/components/Icon";
 import { usePopover } from "@/components/usePopover";
 
 const fieldClass =
-  "mt-1 w-full rounded border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700";
+  "mt-1 w-full rounded-sm border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-hidden focus:ring-1 focus:ring-brand-700";
 
 // "2026-08-27" -> "Aug 27"
 function shortDate(iso: string): string {
@@ -67,7 +67,7 @@ export function DateRangeFilter({
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={
-          "flex items-center gap-1 rounded border px-2 py-1 text-small " +
+          "flex items-center gap-1 rounded-sm border px-2 py-1 text-small " +
           (hasFilter
             ? "border-brand-700 bg-brand-700/10 text-brand-700"
             : "border-neutral-200 text-neutral-600 hover:bg-neutral-100")
@@ -147,7 +147,7 @@ export function DateRangeFilter({
                 <button
                   type="button"
                   onClick={onClear}
-                  className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+                  className="rounded-sm px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
                 >
                   Clear
                 </button>
@@ -155,7 +155,7 @@ export function DateRangeFilter({
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800"
+                className="rounded-sm bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800"
               >
                 Done
               </button>

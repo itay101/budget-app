@@ -179,7 +179,7 @@ export function BudgetSwitcherList({
         title={label}
         aria-pressed={budget.isDefault}
         className={
-          "shrink-0 rounded p-1 hover:bg-neutral-100 " +
+          "shrink-0 rounded-sm p-1 hover:bg-neutral-100 " +
           (budget.isDefault ? "text-warning" : "text-neutral-400 hover:text-neutral-600")
         }
       >
@@ -245,13 +245,13 @@ export function BudgetSwitcherList({
               }}
               autoFocus
               aria-label="Budget name"
-              className="min-w-0 flex-1 rounded border border-neutral-200 px-2 py-1 text-small focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+              className="min-w-0 flex-1 rounded-sm border border-neutral-200 px-2 py-1 text-small focus:border-brand-700 focus:outline-hidden focus:ring-1 focus:ring-brand-700"
             />
             <button
               type="submit"
               disabled={pending}
               title="Save"
-              className="shrink-0 rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10"
+              className="shrink-0 rounded-sm px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10"
             >
               <Icon name="check" label="Save" />
             </button>
@@ -259,7 +259,7 @@ export function BudgetSwitcherList({
               type="button"
               onClick={cancelRename}
               title="Cancel"
-              className="shrink-0 rounded px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+              className="shrink-0 rounded-sm px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
             >
               <Icon name="close" label="Cancel" />
             </button>
@@ -274,7 +274,7 @@ export function BudgetSwitcherList({
             ref={triggerRef}
             type="button"
             onClick={() => setOpen((o) => !o)}
-            className="flex min-w-0 flex-1 items-center rounded border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-left text-small font-medium hover:bg-neutral-100"
+            className="flex min-w-0 flex-1 items-center rounded-sm border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-left text-small font-medium hover:bg-neutral-100"
           >
             <span className="truncate text-neutral-800">
               {currentBudget.name}{" "}
@@ -288,7 +288,7 @@ export function BudgetSwitcherList({
               setRenaming(true);
             }}
             title="Rename budget"
-            className="shrink-0 rounded p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+            className="shrink-0 rounded-sm p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
           >
             <Icon name="edit" label="Rename budget" />
           </button>
@@ -304,7 +304,7 @@ export function BudgetSwitcherList({
             className="z-50 w-64 max-w-[calc(100vw-1rem)] rounded-lg border border-neutral-200 bg-neutral-0 p-3 text-left shadow-lg"
           >
             {actionError && (
-              <p className="mb-2 rounded bg-danger/10 px-2 py-1 text-small text-danger">
+              <p className="mb-2 rounded-sm bg-danger/10 px-2 py-1 text-small text-danger">
                 {actionError}
               </p>
             )}
@@ -318,7 +318,7 @@ export function BudgetSwitcherList({
                 <button
                   type="button"
                   onClick={() => setAdding(true)}
-                  className="flex w-full items-center gap-1 rounded px-2 py-1 text-left text-small font-medium text-brand-700 hover:bg-brand-700/10"
+                  className="flex w-full items-center gap-1 rounded-sm px-2 py-1 text-left text-small font-medium text-brand-700 hover:bg-brand-700/10"
                 >
                   <Icon name="add" /> New budget
                 </button>
@@ -334,7 +334,7 @@ export function BudgetSwitcherList({
                 <form
                   ref={formRef}
                   onSubmit={handleCreate}
-                  className="space-y-2 rounded border border-neutral-200 p-2"
+                  className="space-y-2 rounded-sm border border-neutral-200 p-2"
                 >
                   <div>
                     <label
@@ -348,7 +348,7 @@ export function BudgetSwitcherList({
                       name="name"
                       required
                       autoFocus
-                      className="mt-1 w-full rounded border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                      className="mt-1 w-full rounded-sm border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-hidden focus:ring-1 focus:ring-brand-700"
                     />
                   </div>
                   <div>
@@ -362,7 +362,7 @@ export function BudgetSwitcherList({
                       id="new-budget-currency"
                       name="currency"
                       defaultValue={availableCurrencies[0]?.code}
-                      className="mt-1 w-full rounded border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                      className="mt-1 w-full rounded-sm border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-hidden focus:ring-1 focus:ring-brand-700"
                     >
                       {availableCurrencies.map((c) => (
                         <option key={c.code} value={c.code}>
@@ -375,14 +375,14 @@ export function BudgetSwitcherList({
                     <button
                       type="button"
                       onClick={() => setAdding(false)}
-                      className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+                      className="rounded-sm px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={pending}
-                      className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+                      className="rounded-sm bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
                     >
                       {pending ? "Creating…" : "Create"}
                     </button>
@@ -395,7 +395,7 @@ export function BudgetSwitcherList({
                   deletingId === b.id ? (
                     <li
                       key={b.id}
-                      className="space-y-1.5 rounded border border-danger/40 bg-danger/5 p-2"
+                      className="space-y-1.5 rounded-sm border border-danger/40 bg-danger/5 p-2"
                     >
                       <p className="text-small text-neutral-800">
                         Type <span className="font-semibold">{b.name}</span> to
@@ -408,7 +408,7 @@ export function BudgetSwitcherList({
                         autoFocus
                         placeholder={b.name}
                         aria-label={`Type "${b.name}" to confirm deletion`}
-                        className="w-full rounded border border-neutral-200 px-2 py-1 text-small focus:border-danger focus:outline-none focus:ring-1 focus:ring-danger"
+                        className="w-full rounded-sm border border-neutral-200 px-2 py-1 text-small focus:border-danger focus:outline-hidden focus:ring-1 focus:ring-danger"
                       />
                       <div className="flex justify-end gap-2">
                         <button
@@ -417,7 +417,7 @@ export function BudgetSwitcherList({
                             setDeletingId(null);
                             setConfirmText("");
                           }}
-                          className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+                          className="rounded-sm px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
                         >
                           Cancel
                         </button>
@@ -425,17 +425,17 @@ export function BudgetSwitcherList({
                           type="button"
                           disabled={confirmText !== b.name || pending}
                           onClick={() => handleDelete(b.id)}
-                          className="rounded bg-danger px-2 py-1 text-small font-medium text-white hover:bg-danger/90 disabled:opacity-50"
+                          className="rounded-sm bg-danger px-2 py-1 text-small font-medium text-white hover:bg-danger/90 disabled:opacity-50"
                         >
                           Delete
                         </button>
                       </div>
                     </li>
                   ) : (
-                    <li key={b.id} className="rounded">
+                    <li key={b.id} className="rounded-sm">
                       <div
                         className={
-                          "flex items-center gap-1 rounded px-2 py-1 text-small " +
+                          "flex items-center gap-1 rounded-sm px-2 py-1 text-small " +
                           (b.id === currentBudget.id
                             ? "bg-brand-700/10 font-medium text-brand-700"
                             : "text-neutral-800 hover:bg-neutral-100")
@@ -468,7 +468,7 @@ export function BudgetSwitcherList({
                           type="button"
                           onClick={() => toggleExpanded(b.id)}
                           title="Manage collaborators"
-                          className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+                          className="shrink-0 rounded-sm p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
                         >
                           <Icon
                             name={expandedId === b.id ? "expand_less" : "person_add"}
@@ -482,7 +482,7 @@ export function BudgetSwitcherList({
                             setConfirmText("");
                           }}
                           title="Delete budget"
-                          className="shrink-0 rounded p-1 text-neutral-400 hover:bg-danger/10 hover:text-danger"
+                          className="shrink-0 rounded-sm p-1 text-neutral-400 hover:bg-danger/10 hover:text-danger"
                         >
                           <Icon name="delete" label="Delete budget" />
                         </button>
@@ -516,7 +516,7 @@ export function BudgetSwitcherList({
                     <li
                       key={b.id}
                       className={
-                        "group flex items-center gap-1 rounded px-2 py-1 text-small " +
+                        "group flex items-center gap-1 rounded-sm px-2 py-1 text-small " +
                         (b.id === currentBudget.id
                           ? "bg-brand-700/10 font-medium text-brand-700"
                           : "text-neutral-800 hover:bg-neutral-100")
@@ -540,7 +540,7 @@ export function BudgetSwitcherList({
                         type="button"
                         disabled={pending}
                         onClick={() => handleLeave(b.id)}
-                        className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-danger hover:bg-danger/10"
+                        className="shrink-0 rounded-sm px-1.5 py-0.5 text-[11px] font-medium text-danger hover:bg-danger/10"
                       >
                         Leave
                       </button>

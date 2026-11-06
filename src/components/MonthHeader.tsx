@@ -63,7 +63,7 @@ export function MonthHeader({
         }}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className="flex items-center gap-1 rounded px-2 py-1 text-h3 text-neutral-800 hover:bg-neutral-100"
+        className="flex items-center gap-1 rounded-sm px-2 py-1 text-h3 text-neutral-800 hover:bg-neutral-100"
       >
         {monthLabel(month, "short")}
         <Icon name="arrow_drop_down" />
@@ -72,7 +72,7 @@ export function MonthHeader({
       {monthKey !== currentKey && (
         <Link
           href={hrefFor(current)}
-          className="ms-2 whitespace-nowrap rounded px-2 py-1 text-small font-medium text-brand-700 hover:bg-brand-700/10"
+          className="ms-2 whitespace-nowrap rounded-sm px-2 py-1 text-small font-medium text-brand-700 hover:bg-brand-700/10"
         >
           Back to {monthLabel(current, "short")}
         </Link>
@@ -94,7 +94,7 @@ export function MonthHeader({
                 onClick={() => setGridYear((y) => y - 1)}
                 disabled={gridYear <= range.first.getUTCFullYear()}
                 aria-label="Previous year"
-                className="rounded p-1 text-neutral-600 hover:bg-neutral-100 disabled:opacity-40"
+                className="rounded-sm p-1 text-neutral-600 hover:bg-neutral-100 disabled:opacity-40"
               >
                 <Icon name="chevron_left" />
               </button>
@@ -104,7 +104,7 @@ export function MonthHeader({
                 onClick={() => setGridYear((y) => y + 1)}
                 disabled={gridYear >= range.last.getUTCFullYear()}
                 aria-label="Next year"
-                className="rounded p-1 text-neutral-600 hover:bg-neutral-100 disabled:opacity-40"
+                className="rounded-sm p-1 text-neutral-600 hover:bg-neutral-100 disabled:opacity-40"
               >
                 <Icon name="chevron_right" />
               </button>
@@ -147,7 +147,7 @@ function StepLink({
       aria-label={label}
       aria-disabled={!enabled}
       tabIndex={enabled ? undefined : -1}
-      className="flex h-8 w-8 items-center justify-center rounded text-neutral-600 hover:bg-neutral-100 aria-disabled:pointer-events-none aria-disabled:opacity-40"
+      className="flex h-8 w-8 items-center justify-center rounded-sm text-neutral-600 hover:bg-neutral-100 aria-disabled:pointer-events-none aria-disabled:opacity-40"
     >
       <Icon name={icon} />
     </Link>
@@ -195,7 +195,7 @@ function MonthCell({
   // The current month always has a ring (#136); on the filled viewed cell it
   // sits outside the fill so it stays visible.
   const ring = key === currentKey ? CURRENT_RING[state] : "";
-  const className = `rounded py-1.5 text-center text-body ${CELL_LOOK[state]}${ring}`;
+  const className = `rounded-sm py-1.5 text-center text-body ${CELL_LOOK[state]}${ring}`;
   if (state === "disabled") {
     return (
       <span aria-disabled="true" className={className}>

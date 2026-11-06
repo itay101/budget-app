@@ -402,7 +402,7 @@ export function ImportTransactionsModal({
           onChange={(e) =>
             onChange(e.target.value === NONE ? null : Number(e.target.value))
           }
-          className="w-full rounded border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+          className="w-full rounded-sm border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-hidden focus:ring-1 focus:ring-brand-700"
         >
           <option value={NONE}>{required ? "Choose a column…" : "None"}</option>
           {headers.map((h, i) => (
@@ -426,7 +426,7 @@ export function ImportTransactionsModal({
             type="button"
             onClick={onClose}
             title="Close"
-            className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+            className="rounded-sm p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
           >
             <Icon name="close" label="Close" className="text-[1.2em]" />
           </button>
@@ -447,7 +447,7 @@ export function ImportTransactionsModal({
                   const file = e.target.files?.[0];
                   if (file) handleFile(file);
                 }}
-                className="block w-full text-body file:mr-3 file:rounded file:border-0 file:bg-brand-700 file:px-3 file:py-1.5 file:text-small file:font-medium file:text-white hover:file:bg-brand-800"
+                className="block w-full text-body file:mr-3 file:rounded-sm file:border-0 file:bg-brand-700 file:px-3 file:py-1.5 file:text-small file:font-medium file:text-white hover:file:bg-brand-800"
               />
               <p className="text-small text-neutral-600">
                 Legacy .xls files aren&#39;t supported yet - re-save as .xlsx or
@@ -478,7 +478,7 @@ export function ImportTransactionsModal({
                     them if the highlighted guess below is wrong. Rows above
                     it are ignored.
                   </p>
-                  <div className="overflow-x-auto rounded border border-neutral-200">
+                  <div className="overflow-x-auto rounded-sm border border-neutral-200">
                     <table className="w-full text-small">
                       <tbody>
                         {rawTable.slice(0, 8).map((row, i) => (
@@ -503,7 +503,7 @@ export function ImportTransactionsModal({
                             {row.map((cell, ci) => (
                               <td
                                 key={ci}
-                                className="max-w-[8rem] truncate px-2 py-1"
+                                className="max-w-32 truncate px-2 py-1"
                               >
                                 {cell || (
                                   <span className="text-neutral-400">—</span>
@@ -554,7 +554,7 @@ export function ImportTransactionsModal({
                         type="button"
                         onClick={() => setDateOrder(value)}
                         className={
-                          "rounded border px-2 py-1 " +
+                          "rounded-sm border px-2 py-1 " +
                           (dateOrder === value
                             ? "border-brand-700 bg-brand-700/10 text-brand-700"
                             : "border-neutral-200 text-neutral-600 hover:bg-neutral-100")
@@ -578,7 +578,7 @@ export function ImportTransactionsModal({
                       setMapping((m) => ({ ...m, amountMode: "single" }))
                     }
                     className={
-                      "rounded border px-2 py-1 " +
+                      "rounded-sm border px-2 py-1 " +
                       (mapping.amountMode === "single"
                         ? "border-brand-700 bg-brand-700/10 text-brand-700"
                         : "border-neutral-200 text-neutral-600 hover:bg-neutral-100")
@@ -592,7 +592,7 @@ export function ImportTransactionsModal({
                       setMapping((m) => ({ ...m, amountMode: "split" }))
                     }
                     className={
-                      "rounded border px-2 py-1 " +
+                      "rounded-sm border px-2 py-1 " +
                       (mapping.amountMode === "split"
                         ? "border-brand-700 bg-brand-700/10 text-brand-700"
                         : "border-neutral-200 text-neutral-600 hover:bg-neutral-100")
@@ -666,7 +666,7 @@ export function ImportTransactionsModal({
                 </div>
               </div>
 
-              <div className="overflow-x-auto rounded border border-neutral-200">
+              <div className="overflow-x-auto rounded-sm border border-neutral-200">
                 <table className="w-full text-small">
                   <thead className="bg-neutral-100 text-neutral-600">
                     <tr>
@@ -706,10 +706,10 @@ export function ImportTransactionsModal({
                           />
                         </td>
                         <td className="px-2 py-1">{r.date || "—"}</td>
-                        <td className="max-w-[10rem] truncate px-2 py-1">
+                        <td className="max-w-40 truncate px-2 py-1">
                           {r.payeeName || "—"}
                         </td>
-                        <td className="max-w-[10rem] truncate px-2 py-1">
+                        <td className="max-w-40 truncate px-2 py-1">
                           {r.memo || "—"}
                         </td>
                         <td
@@ -744,7 +744,7 @@ export function ImportTransactionsModal({
               else onClose();
             }}
             disabled={pending}
-            className="rounded px-3 py-1.5 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
+            className="rounded-sm px-3 py-1.5 text-small text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
           >
             {step === "select" ? "Cancel" : "Back"}
           </button>
@@ -754,7 +754,7 @@ export function ImportTransactionsModal({
               type="button"
               onClick={goToPreview}
               disabled={!mappingValid}
-              className="rounded bg-brand-700 px-3 py-1.5 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+              className="rounded-sm bg-brand-700 px-3 py-1.5 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
             >
               Continue to preview
             </button>
@@ -765,7 +765,7 @@ export function ImportTransactionsModal({
               type="button"
               onClick={handleImport}
               disabled={pending || includedCount === 0}
-              className="rounded bg-brand-700 px-3 py-1.5 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+              className="rounded-sm bg-brand-700 px-3 py-1.5 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
             >
               {pending
                 ? "Importing…"

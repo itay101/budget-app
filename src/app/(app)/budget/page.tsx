@@ -83,7 +83,7 @@ export default async function BudgetPage({
 
       {/* Sticky month toolbar (#136): under the mobile top bar on phones,
           edge to edge there; at the top of the page from md up. */}
-      <div className="sticky top-mobile-nav z-10 -mx-200 border-y border-neutral-200 bg-neutral-100/95 px-200 py-1 backdrop-blur md:top-0 md:mx-0 md:rounded-lg md:border md:bg-neutral-0/95 md:px-2">
+      <div className="sticky top-mobile-nav z-10 -mx-200 border-y border-neutral-200 bg-neutral-100/95 px-200 py-1 backdrop-blur-sm md:top-0 md:mx-0 md:rounded-lg md:border md:bg-neutral-0/95 md:px-2">
         <MonthHeader
           month={monthKey}
           current={formatBudgetMonth(current)}

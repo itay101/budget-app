@@ -60,7 +60,7 @@ export function MoveMoneyPopover({
         onClick={() => setOpen((o) => !o)}
         title={hasOtherCategories ? "Move money" : undefined}
         className={
-          "w-full rounded px-1 py-0.5 text-right font-medium " +
+          "w-full rounded-sm px-1 py-0.5 text-right font-medium " +
           (available < 0 ? "text-danger" : "text-success") +
           (hasOtherCategories ? " hover:bg-neutral-100" : " cursor-default")
         }
@@ -97,7 +97,7 @@ export function MoveMoneyPopover({
                   min="0.01"
                   required
                   autoFocus
-                  className="mt-1 w-full rounded border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                  className="mt-1 w-full rounded-sm border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-hidden focus:ring-1 focus:ring-brand-700"
                 />
               </div>
               <div>
@@ -111,7 +111,7 @@ export function MoveMoneyPopover({
                   id={`to-${categoryId}`}
                   name="toCategoryId"
                   required
-                  className="mt-1 w-full rounded border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                  className="mt-1 w-full rounded-sm border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-hidden focus:ring-1 focus:ring-brand-700"
                 >
                   {groups.map((group) => {
                     const options = group.categories.filter(
@@ -134,14 +134,14 @@ export function MoveMoneyPopover({
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+                  className="rounded-sm px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={pending}
-                  className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+                  className="rounded-sm bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
                 >
                   {pending ? "Moving…" : "Move"}
                 </button>

@@ -45,11 +45,11 @@ export function CategoryAmountCells({
             name="amount"
             currency={currency}
             defaultValue={milliunitsToNumber(category.budgeted)}
-            className="w-full rounded border border-neutral-200 px-2 py-1 text-right text-body focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700 sm:w-24"
+            className="w-full rounded-sm border border-neutral-200 px-2 py-1 text-right text-body focus:border-brand-700 focus:outline-hidden focus:ring-1 focus:ring-brand-700 sm:w-24"
           />
           <button
             type="submit"
-            className="rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10"
+            className="rounded-sm px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10"
             title="Save"
           >
             <Icon name="check" label="Save" />
