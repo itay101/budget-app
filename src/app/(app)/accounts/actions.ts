@@ -47,9 +47,9 @@ function revalidateAccountPaths(
 }
 
 /**
- * Creates a new account, optionally seeding it with a Starting Balance
- * transaction (see the note below) so a nonzero opening balance isn't just
- * a bare number with no transaction behind it.
+ * Creates a new account, always seeding it with a Starting Balance
+ * transaction (amount 0 by default, dated today) so the opening balance is
+ * never just a bare number with no transaction behind it.
  */
 export async function createAccount(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
@@ -83,44 +83,42 @@ export async function createAccount(formData: FormData) {
       fields: () => ({ name, type, balance, onBudget }),
     });
 
-    if (balance !== 0) {
-      // A nonzero starting balance is recorded as a real transaction (the
-      // same "Starting Balance" convention YNAB itself uses) so the
-      // account's transaction list always sums to its balance, instead of
-      // showing a balance with nothing behind it.
-      const payeeId = await findOrCreatePayee(
-        tx,
-        budget.id,
-        STARTING_BALANCE_PAYEE,
-        user.id,
-      );
+    // The starting balance (even 0) is recorded as a real transaction (the
+    // same "Starting Balance" convention YNAB itself uses) so the
+    // account's transaction list always sums to its balance, and a new
+    // account always has a row whose amount and date can be edited.
+    const payeeId = await findOrCreatePayee(
+      tx,
+      budget.id,
+      STARTING_BALANCE_PAYEE,
+      user.id,
+    );
 
-      await auditedCreate({
-        tx,
-        budgetId: budget.id,
-        entityType: "TRANSACTION",
-        actorId: user.id,
-        apply: () =>
-          tx.transaction.create({
-            data: {
-              accountId: account.id,
-              payeeId,
-              date: new Date(),
-              amount: balance,
-              memo: "Starting balance",
-              cleared: "RECONCILED",
-            },
-          }),
-        entityId: (t) => t.id,
-        fields: (t) => ({
-          accountId: account.id,
-          payeeId,
-          date: t.date,
-          amount: balance,
-          memo: "Starting balance",
+    await auditedCreate({
+      tx,
+      budgetId: budget.id,
+      entityType: "TRANSACTION",
+      actorId: user.id,
+      apply: () =>
+        tx.transaction.create({
+          data: {
+            accountId: account.id,
+            payeeId,
+            date: new Date(),
+            amount: balance,
+            memo: "Starting balance",
+            cleared: "RECONCILED",
+          },
         }),
-      });
-    }
+      entityId: (t) => t.id,
+      fields: (t) => ({
+        accountId: account.id,
+        payeeId,
+        date: t.date,
+        amount: balance,
+        memo: "Starting balance",
+      }),
+    });
   });
 
   revalidateAccountPaths();
