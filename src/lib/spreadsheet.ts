@@ -49,7 +49,7 @@ export async function readImportFile(file: File): Promise<string[][]> {
 }
 
 async function readXlsxTable(file: File): Promise<string[][]> {
-  const buffer = await file.arrayBuffer();
+  const buffer = await unprefixXlsxParts(await file.arrayBuffer());
   // Dynamically imported - exceljs is only needed for .xlsx uploads, so a
   // CSV-only import never pays for its (much larger) bundle.
   const ExcelJS = await import("exceljs");
@@ -72,6 +72,74 @@ async function readXlsxTable(file: File): Promise<string[][]> {
     if (cells.some((c) => c.trim() !== "")) rows.push(cells);
   });
   return rows;
+}
+
+/**
+ * #194: some bank exports (e.g. Cal's credit card statement, written by
+ * .NET's System.IO.Packaging / Open XML SDK) put every element of a part
+ * under a namespace prefix - `<x:workbook xmlns:x="...">`, `<x:sheets>`,
+ * `<ap:Properties>` - instead of declaring it as the default namespace.
+ * That's valid OOXML and Excel opens it fine, but ExcelJS matches on bare
+ * tag names, so it never recognises the workbook and load() throws
+ * "Cannot read properties of undefined (reading 'sheets')".
+ *
+ * This rewrites any XML part whose root element is prefixed so that
+ * prefix's namespace becomes the default and its element tags lose the
+ * prefix. The prefixed declaration is kept alongside, so any attribute
+ * still using the prefix stays bound. Files that don't need it (every
+ * export ExcelJS already reads) are returned untouched, without a re-zip.
+ */
+async function unprefixXlsxParts(buffer: ArrayBuffer): Promise<ArrayBuffer> {
+  const { default: JSZip } = await import("jszip");
+  const zip = await JSZip.loadAsync(buffer);
+  let changed = false;
+  for (const entry of Object.values(zip.files)) {
+    if (entry.dir || !/\.(xml|rels)$/i.test(entry.name)) continue;
+    const xml = await entry.async("string");
+    const rewritten = unprefixRootNamespace(xml);
+    if (rewritten !== xml) {
+      zip.file(entry.name, rewritten);
+      changed = true;
+    }
+  }
+  return changed ? zip.generateAsync({ type: "arraybuffer" }) : buffer;
+}
+
+/**
+ * The string-level rewrite behind unprefixXlsxParts, for one XML part:
+ * `<x:a xmlns:x="NS"><x:b/></x:a>` becomes
+ * `<a xmlns="NS" xmlns:x="NS"><b/></a>`. Leaves the part unchanged if its
+ * root isn't prefixed, or already declares a default namespace (stripping
+ * the prefix then would move elements into the wrong namespace).
+ */
+export function unprefixRootNamespace(xml: string): string {
+  return unprefixRoot(xml, UNPREFIXED_NAMESPACES);
+}
+
+// Namespaces whose parts ExcelJS reads by bare element names. Deliberately
+// not every namespace: ExcelJS's docProps/core.xml reader matches on the
+// conventional `cp:`/`dc:` prefixes, so stripping those would break the
+// ordinary files it already reads.
+const UNPREFIXED_NAMESPACES = new Set([
+  "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+  "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties",
+  "http://schemas.openxmlformats.org/package/2006/relationships",
+  "http://schemas.openxmlformats.org/package/2006/content-types",
+]);
+
+function unprefixRoot(xml: string, namespaces: Set<string>): string {
+  // The first tag that isn't a declaration/PI/comment is the root element.
+  const root = xml.match(/<(?:([A-Za-z_][\w.-]*):)?[A-Za-z_][\w.-]*(?=[\s/>])[^>]*>/);
+  if (!root || !root[1] || /\sxmlns\s*=/.test(root[0])) return xml;
+  // A prefix may contain "." or "-", so escape it before building patterns.
+  const prefix = root[1].replace(/[.-]/g, "\\$&");
+  const decl = new RegExp(`\\sxmlns:${prefix}\\s*=\\s*("[^"]*"|'[^']*')`);
+  const ns = root[0].match(decl);
+  if (!ns || !namespaces.has(ns[1].slice(1, -1))) return xml;
+
+  const newRoot = root[0].replace(decl, ` xmlns=${ns[1]}$&`);
+  const body = xml.slice(0, root.index) + newRoot + xml.slice(root.index! + root[0].length);
+  return body.replace(new RegExp(`<(/?)${prefix}:`, "g"), "<$1");
 }
 
 // ExcelJS represents a cell's value as a plain primitive for ordinary
