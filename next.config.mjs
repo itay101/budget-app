@@ -5,7 +5,7 @@ const nextConfig = {
     serverActions: {
       // File Import failure reports (#194) send the unreadable bank export
       // itself to a server action; the 1 MB default rejects many of them.
-      // Matches MAX_IMPORT_FAILURE_BYTES in src/lib/importFailureReport.ts.
+      // MAX_IMPORT_FAILURE_BYTES (src/lib/importFailureLimits.ts) stays under it.
       bodySizeLimit: "10mb",
     },
   },

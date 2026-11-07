@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { reportImportFailure } from "@/app/(app)/accounts/importFailureActions";
+import { MAX_IMPORT_FAILURE_BYTES } from "@/lib/importFailureLimits";
 
 /**
  * File Import's read error plus its failure reporting (#194,
@@ -33,8 +34,13 @@ export function useImportFileError(accountId: string) {
     setError(errorMessage);
     const formData = new FormData();
     formData.set("accountId", accountId);
-    formData.set("file", file);
     formData.set("errorMessage", errorMessage);
+    formData.set("fileName", file.name);
+    formData.set("fileType", file.type);
+    formData.set("fileSize", String(file.size));
+    // Past the server-action body limit the report would be rejected
+    // outright, so a big file is reported by its metadata alone.
+    if (file.size <= MAX_IMPORT_FAILURE_BYTES) formData.set("file", file);
     reportImportFailure(formData)
       .then((result) => {
         if (currentFile.current === file) setReported(result.reported);

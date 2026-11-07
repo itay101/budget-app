@@ -57,7 +57,7 @@ export async function reportImportFailure(
 ): Promise<{ reported: boolean }> {
   const request = parseImportFailureRequest(formData, process.env);
   if (!request) return { reported: false };
-  const { token, accountId, file, errorMessage } = request;
+  const { token, accountId, errorMessage, meta, file } = request;
 
   try {
     await requireAccountAccess(accountId);
@@ -66,8 +66,8 @@ export async function reportImportFailure(
       select: { type: true },
     });
     const github: GitHubIssuesConfig = { token, ...ISSUE_REPO };
-    await fileImportFailure(file, errorMessage, account.type, {
-      keepFile: (path) => keepFile(file, path),
+    await fileImportFailure(meta, errorMessage, account.type, {
+      keepFile: async (path) => (file ? keepFile(file, path) : null),
       issues: {
         findOpenIssueWithMarker: (marker) => findOpenIssueWithMarker(github, marker),
         createIssue: (issue) => createIssue(github, issue),

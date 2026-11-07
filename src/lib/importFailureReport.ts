@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { MAX_IMPORT_FAILURE_BYTES } from "@/lib/importFailureLimits";
 
 /**
  * Pure helpers for File Import failure reports (#194): when File Import
@@ -18,8 +19,18 @@ export const IMPORT_FAILURES_BUCKET = "import-failures";
 /** How long a kept file stays in the bucket before the purge cron drops it. */
 const IMPORT_FAILURE_RETENTION_DAYS = 30;
 
-/** Largest file the server action accepts (matches next.config's body limit). */
-const MAX_IMPORT_FAILURE_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Failures that aren't bugs: legacy .xls is a documented "not supported"
+ * case (src/lib/spreadsheet.ts), so it's neither kept nor filed.
+ */
+const UNREPORTED_EXTENSIONS = new Set(["xls"]);
+
+// MIME types are client-supplied and go into a markdown table: keep only
+// well-formed ones.
+function safeMimeType(type: string): string {
+  return /^[\w.+-]{1,64}\/[\w.+-]{1,128}$/.test(type) ? type : "";
+}
 
 export type ImportFailure = {
   errorMessage: string;
@@ -190,7 +201,8 @@ export type FileImportFailureDeps = {
 /**
  * Keeps an unreadable import file and reports it: a comment on the open
  * issue for the same error and file type, or a new `bug` issue. Files over
- * MAX_IMPORT_FAILURE_BYTES are reported without being stored.
+ * MAX_IMPORT_FAILURE_BYTES arrive without their bytes (see
+ * parseImportFailureRequest) and are reported without being stored.
  */
 export async function fileImportFailure(
   file: FailedFile,
@@ -208,7 +220,7 @@ export async function fileImportFailure(
   const failure: ImportFailure = {
     errorMessage,
     extension,
-    mimeType: file.type,
+    mimeType: safeMimeType(file.type),
     sizeBytes: file.size,
     accountType,
     commitSha: deps.commitSha,
@@ -261,20 +273,36 @@ export async function purgeExpiredImportFailures(bucket: PurgeableBucket, now: D
 }
 
 /**
- * What `reportImportFailure` needs to file a report: the GitHub token and
- * the form fields. Null when reporting isn't configured (no
- * `GITHUB_ISSUES_TOKEN` or service-role key, e.g. local dev and e2e) or a
- * field is missing - either way there's nothing to do.
+ * What `reportImportFailure` needs to file a report: the GitHub token, the
+ * form fields, and the file's metadata. `file` is null when the client
+ * left the bytes out because the file was over MAX_IMPORT_FAILURE_BYTES.
+ * Null overall when reporting isn't configured (no `GITHUB_ISSUES_TOKEN`
+ * or service-role key, e.g. local dev and e2e), a field is missing, or the
+ * failure isn't a bug (UNREPORTED_EXTENSIONS) - nothing to do.
  */
 export function parseImportFailureRequest(
   formData: FormData,
   env: Record<string, string | undefined>,
-): { token: string; accountId: string; file: File; errorMessage: string } | null {
+): {
+  token: string;
+  accountId: string;
+  errorMessage: string;
+  meta: FailedFile;
+  file: File | null;
+} | null {
   const token = env.GITHUB_ISSUES_TOKEN;
-  const accountId = String(formData.get("accountId") ?? "");
-  const file = formData.get("file");
-  const errorMessage = String(formData.get("errorMessage") ?? "").trim();
   if (!token || !env.SUPABASE_SERVICE_ROLE_KEY) return null;
-  if (!accountId || !(file instanceof File) || !errorMessage) return null;
-  return { token, accountId, file, errorMessage };
+
+  const accountId = String(formData.get("accountId") ?? "");
+  const errorMessage = String(formData.get("errorMessage") ?? "").trim();
+  const sent = formData.get("file");
+  const file = sent instanceof File && sent.size <= MAX_IMPORT_FAILURE_BYTES ? sent : null;
+  const meta: FailedFile = {
+    name: String(formData.get("fileName") ?? ""),
+    type: String(formData.get("fileType") ?? ""),
+    size: Number(formData.get("fileSize")) || 0,
+  };
+  if (!accountId || !errorMessage || !meta.name) return null;
+  if (UNREPORTED_EXTENSIONS.has(fileExtension(meta.name))) return null;
+  return { token, accountId, errorMessage, meta, file };
 }

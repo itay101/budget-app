@@ -9,9 +9,10 @@ Each unreadable bank export then becomes a reproducible report.
   only the server's service-role client reads or writes. The server
   creates it the first time it uploads. Objects go under
   `YYYY-MM-DD/<fingerprint>-<uuid>.<ext>`, and the original file name is
-  kept only as the object's metadata. Files over 10 MB aren't stored, but
-  they are still reported. The server-action body limit was raised to
-  10 MB to match.
+  kept only as the object's metadata. Files over 9 MB aren't sent or
+  stored, but they are still reported from their metadata. The
+  server-action body limit was raised to 10 MB, which leaves room for the
+  multipart overhead.
 - **Retention:** 30 days. A daily cron, `/api/cron/purge-import-failures`,
   deletes whole date folders once they're older than that.
 - **The issue is public**, because the repo is. It shows the error text,
@@ -33,6 +34,13 @@ Each unreadable bank export then becomes a reproducible report.
 - **The user is told, with no opt-out.** Once the report has gone
   through, the modal shows "We kept a copy of this file and reported the
   problem so it can be fixed." under the error.
+- **Not a bug, not reported:** a legacy `.xls` upload is a documented
+  "not supported" case, so it's neither kept nor filed.
+- **The MIME type and error text come from the client.** The MIME type is
+  dropped unless it's well-formed. The error is fenced in the issue body
+  with its backticks stripped. The issue text depends on parser error
+  messages staying structural. If a library starts quoting cell content
+  in its errors, that content would reach the public issue.
 - **Best-effort:** without `GITHUB_ISSUES_TOKEN` or the service-role key
   (local dev, e2e), reporting is a no-op. Any failure while reporting is
   logged and swallowed, so the import modal's own error is unaffected.
