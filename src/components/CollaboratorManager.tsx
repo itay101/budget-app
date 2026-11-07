@@ -97,7 +97,7 @@ function PendingInviteRow({
         disabled={disabled}
         onClick={() => onResend(invite.id)}
         title="Resend invite"
-        className="shrink-0 rounded p-0.5 text-neutral-400 hover:bg-brand-700/10 hover:text-brand-700"
+        className="shrink-0 rounded-sm p-0.5 text-neutral-400 hover:bg-brand-700/10 hover:text-brand-700"
       >
         <Icon name="send" className="text-[16px]" label="Resend invite" />
       </button>
@@ -106,7 +106,7 @@ function PendingInviteRow({
         disabled={disabled}
         onClick={() => onCancel(invite.id)}
         title="Cancel invite"
-        className="shrink-0 rounded p-0.5 text-neutral-400 hover:bg-danger/10 hover:text-danger"
+        className="shrink-0 rounded-sm p-0.5 text-neutral-400 hover:bg-danger/10 hover:text-danger"
       >
         <Icon name="close" className="text-[16px]" label="Cancel invite" />
       </button>
@@ -136,7 +136,7 @@ function CollaboratorRow({
 
   if (confirming) {
     return (
-      <div className="space-y-1.5 rounded border border-brand-700/30 bg-brand-700/5 p-1.5">
+      <div className="space-y-1.5 rounded-sm border border-brand-700/30 bg-brand-700/5 p-1.5">
         <p className="text-small text-neutral-800">
           Make <span className="font-semibold">{collaborator.email}</span>{" "}
           the owner? They&apos;ll be able to manage collaborators and delete
@@ -146,7 +146,7 @@ function CollaboratorRow({
           <button
             type="button"
             onClick={() => setConfirming(false)}
-            className="rounded px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+            className="rounded-sm px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
           >
             Cancel
           </button>
@@ -154,7 +154,7 @@ function CollaboratorRow({
             type="button"
             disabled={disabled}
             onClick={() => onTransferOwnership(collaborator.userId)}
-            className="rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+            className="rounded-sm bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
           >
             Make owner
           </button>
@@ -173,7 +173,7 @@ function CollaboratorRow({
         disabled={disabled}
         onClick={() => setConfirming(true)}
         title="Transfer ownership"
-        className="shrink-0 rounded p-0.5 text-neutral-400 hover:bg-brand-700/10 hover:text-brand-700"
+        className="shrink-0 rounded-sm p-0.5 text-neutral-400 hover:bg-brand-700/10 hover:text-brand-700"
       >
         <Icon name="swap_horiz" className="text-[16px]" label="Transfer ownership" />
       </button>
@@ -182,7 +182,7 @@ function CollaboratorRow({
         disabled={disabled}
         onClick={() => onRemove(collaborator.userId)}
         title="Remove collaborator"
-        className="shrink-0 rounded p-0.5 text-neutral-400 hover:bg-danger/10 hover:text-danger"
+        className="shrink-0 rounded-sm p-0.5 text-neutral-400 hover:bg-danger/10 hover:text-danger"
       >
         <Icon name="close" className="text-[16px]" label="Remove collaborator" />
       </button>
@@ -256,9 +256,9 @@ export function CollaboratorManager({
   }
 
   return (
-    <div className="ml-2 mt-1 space-y-1.5 rounded border border-neutral-200 bg-neutral-100 p-2">
+    <div className="ml-2 mt-1 space-y-1.5 rounded-sm border border-neutral-200 bg-neutral-100 p-2">
       {actionError && (
-        <p className="rounded bg-danger/10 px-2 py-1 text-small text-danger">
+        <p className="rounded-sm bg-danger/10 px-2 py-1 text-small text-danger">
           {actionError}
         </p>
       )}
@@ -291,12 +291,12 @@ export function CollaboratorManager({
           required
           placeholder="Invite by email…"
           aria-label="Invite by email"
-          className="min-w-0 flex-1 rounded border border-neutral-200 bg-neutral-0 px-2 py-1 text-small focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700"
+          className="min-w-0 flex-1 rounded-sm border border-neutral-200 bg-neutral-0 px-2 py-1 text-small focus:border-brand-700 focus:outline-hidden focus:ring-1 focus:ring-brand-700"
         />
         <button
           type="submit"
           disabled={pending}
-          className="shrink-0 rounded bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+          className="shrink-0 rounded-sm bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
         >
           Invite
         </button>

@@ -54,14 +54,14 @@ export function SignInForm({ next }: { next?: string }) {
             name="email"
             required
             autoFocus
-            className="rounded border border-neutral-300 px-3 py-2 text-body"
+            className="rounded-sm border border-neutral-300 px-3 py-2 text-body"
           />
         </label>
         {error && <p className="text-small text-danger">{error}</p>}
         <button
           type="submit"
           disabled={isPending}
-          className="rounded bg-brand px-3 py-2 text-body font-medium text-neutral-0 disabled:opacity-60"
+          className="rounded-sm bg-brand px-3 py-2 text-body font-medium text-neutral-0 disabled:opacity-60"
         >
           {isPending ? "Sending…" : "Send sign-in link"}
         </button>
@@ -78,7 +78,7 @@ export function SignInForm({ next }: { next?: string }) {
         <button
           type="submit"
           disabled={isGooglePending}
-          className="w-full rounded border border-neutral-300 px-3 py-2 text-body font-medium text-neutral-800 disabled:opacity-60"
+          className="w-full rounded-sm border border-neutral-300 px-3 py-2 text-body font-medium text-neutral-800 disabled:opacity-60"
         >
           {isGooglePending ? "Redirecting…" : "Continue with Google"}
         </button>

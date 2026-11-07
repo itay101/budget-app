@@ -30,7 +30,7 @@ export function ActivityLink({
     <Link
       href={`/accounts/all?${params.toString()}`}
       title="Show this month's transactions"
-      className="rounded px-1 py-0.5 hover:bg-neutral-100 hover:underline"
+      className="rounded-sm px-1 py-0.5 hover:bg-neutral-100 hover:underline"
     >
       {formatMilliunits(amount, currency)}
     </Link>

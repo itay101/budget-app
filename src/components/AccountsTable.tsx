@@ -16,7 +16,7 @@ type AccountRowData = {
 };
 
 const inputClass =
-  "w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-body hover:border-neutral-200 focus:border-brand-700 focus:bg-neutral-0 focus:outline-none focus:ring-1 focus:ring-brand-700";
+  "w-full rounded-sm border border-transparent bg-transparent px-1 py-0.5 text-body hover:border-neutral-200 focus:border-brand-700 focus:bg-neutral-0 focus:outline-hidden focus:ring-1 focus:ring-brand-700";
 
 const GRID_COLS = "md:grid-cols-[1fr_160px_90px_90px_120px]";
 
@@ -83,7 +83,7 @@ function AccountRow({
       className={`grid grid-cols-2 items-start gap-x-3 gap-y-2 border-b border-neutral-100 px-200 py-3 text-body last:border-b-0 md:items-center md:gap-2 md:py-1 ${GRID_COLS} ${account.closed ? "opacity-60" : ""}`}
     >
       {error && (
-        <p className="col-span-2 rounded bg-danger/10 px-2 py-1 text-small text-danger md:col-span-full">
+        <p className="col-span-2 rounded-sm bg-danger/10 px-2 py-1 text-small text-danger md:col-span-full">
           {error}
         </p>
       )}
@@ -120,7 +120,7 @@ function AccountRow({
           type="checkbox"
           defaultChecked={account.onBudget}
           onChange={(e) => commit("onBudget", String(e.target.checked))}
-          className="h-4 w-4 rounded border-neutral-200 text-brand-700 focus:ring-1 focus:ring-brand-700"
+          className="h-4 w-4 rounded-sm border-neutral-200 text-brand-700 focus:ring-1 focus:ring-brand-700"
         />
         <span className="text-small text-neutral-600 md:hidden">
           On budget
@@ -132,7 +132,7 @@ function AccountRow({
           type="checkbox"
           defaultChecked={account.closed}
           onChange={(e) => commit("closed", String(e.target.checked))}
-          className="h-4 w-4 rounded border-neutral-200 text-brand-700 focus:ring-1 focus:ring-brand-700"
+          className="h-4 w-4 rounded-sm border-neutral-200 text-brand-700 focus:ring-1 focus:ring-brand-700"
         />
         <span className="text-small text-neutral-600 md:hidden">Closed</span>
       </div>

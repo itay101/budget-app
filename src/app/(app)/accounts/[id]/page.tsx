@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { prisma } from "@/lib/prisma";
 import { getCurrentBudget } from "@/lib/budget";
 import { getCurrentUser } from "@/lib/auth";
-import { accessibleBudgetWhere } from "@/lib/authorization";
+import { lookupAccountForPage } from "@/lib/accountLookup";
 import { formatMilliunits } from "@/lib/money";
 import { getTransactionEditOptions } from "@/lib/transactionOptions";
 import { parseTransactionFilters } from "@/lib/transactionFilters";
@@ -34,28 +33,19 @@ export default async function AccountPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const [{ id }, resolvedSearchParams] = await Promise.all([params, searchParams]);
-  const budget = await getCurrentBudget();
+  const [budget, user] = await Promise.all([getCurrentBudget(), getCurrentUser()]);
 
-  const account = await prisma.account.findFirst({
-    where: { id, budgetId: budget.id },
-  });
-
-  if (!account) {
-    // #204: the current budget is a cookie, not part of the URL, so
-    // switching or creating a budget while on an account page re-renders
-    // this same URL against the new budget. An account the user can still
-    // reach in another budget isn't "missing", so send them to the new
-    // budget's accounts list instead of a 404 (which Next keeps on screen
-    // until the path changes, even after switching back). An id that
-    // doesn't exist, or that they can't access, still 404s.
-    const user = await getCurrentUser();
-    const elsewhere = await prisma.account.findFirst({
-      where: { id, budget: { deleted: false, ...accessibleBudgetWhere(user.id) } },
-      select: { id: true },
-    });
-    if (elsewhere) redirect("/accounts");
+  // An account from another of this user's budgets means the current
+  // budget changed under this URL (switch/create/delete, #204): land on
+  // the current budget's accounts list instead of a 404.
+  const lookup = await lookupAccountForPage(id, budget.id, user.id);
+  if (lookup.kind === "otherBudget") {
+    redirect("/accounts");
+  }
+  if (lookup.kind === "notFound") {
     notFound();
   }
+  const { account } = lookup;
 
   // The four transactions-list filters (#19-#22) are pushed down into this
   // `where` clause instead of being applied client-side (#24), so only the

@@ -63,7 +63,7 @@ export function ReconcileButton({ balance }: { balance: number }) {
         type="button"
         onClick={handleClick}
         disabled={pending}
-        className="rounded border border-neutral-200 px-2 py-1 text-small font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-50"
+        className="rounded-sm border border-neutral-200 px-2 py-1 text-small font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-50"
       >
         {pending ? "Reconciling…" : "Reconcile"}
       </button>

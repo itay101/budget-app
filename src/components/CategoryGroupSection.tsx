@@ -20,7 +20,7 @@ type GroupOption = { id: string; name: string; categories: CategoryOption[] };
 const DRAG_TYPE = "application/x-category-id";
 
 const nameInputClass =
-  "min-w-0 flex-1 rounded border border-neutral-200 px-2 py-1 text-small focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700";
+  "min-w-0 flex-1 rounded-sm border border-neutral-200 px-2 py-1 text-small focus:border-brand-700 focus:outline-hidden focus:ring-1 focus:ring-brand-700";
 
 /**
  * One category group's header + category rows on the budget page.
@@ -198,7 +198,7 @@ export function CategoryGroupSection({
           type="button"
           onClick={() => setRenamingCategoryId(category.id)}
           title="Rename or hide category"
-          className="shrink-0 rounded p-1 text-neutral-400 opacity-0 hover:bg-neutral-100 hover:text-neutral-600 focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+          className="shrink-0 rounded-sm p-1 text-neutral-400 opacity-0 hover:bg-neutral-100 hover:text-neutral-600 focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
         >
           <Icon name="edit" label="Rename or hide category" />
         </button>
@@ -248,7 +248,7 @@ export function CategoryGroupSection({
               type="submit"
               disabled={pending}
               title="Save"
-              className="shrink-0 rounded px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
+              className="shrink-0 rounded-sm px-1.5 py-1 text-small text-brand-700 hover:bg-brand-700/10 disabled:opacity-50"
             >
               <Icon name="check" label="Save" />
             </button>
@@ -256,7 +256,7 @@ export function CategoryGroupSection({
               type="button"
               onClick={cancelGroupRename}
               title="Cancel"
-              className="shrink-0 rounded px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
+              className="shrink-0 rounded-sm px-1.5 py-1 text-small text-neutral-600 hover:bg-neutral-100"
             >
               <Icon name="close" label="Cancel" />
             </button>
@@ -273,7 +273,7 @@ export function CategoryGroupSection({
                 setGroupRenaming(true);
               }}
               title="Rename category group"
-              className="rounded p-1 text-neutral-400 normal-case tracking-normal hover:bg-neutral-200 hover:text-neutral-600"
+              className="rounded-sm p-1 text-neutral-400 normal-case tracking-normal hover:bg-neutral-200 hover:text-neutral-600"
             >
               <Icon name="edit" label="Rename category group" />
             </button>
@@ -287,7 +287,7 @@ export function CategoryGroupSection({
                 onClick={handleDeleteGroup}
                 disabled={pending}
                 title="Delete empty category group"
-                className="rounded p-1 text-neutral-400 normal-case tracking-normal hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+                className="rounded-sm p-1 text-neutral-400 normal-case tracking-normal hover:bg-danger/10 hover:text-danger disabled:opacity-50"
               >
                 <Icon name="delete" label="Delete empty category group" />
               </button>
@@ -344,7 +344,7 @@ function HideToggleButton({ hidden, disabled, onClick }: { hidden: boolean; disa
       onClick={onClick}
       disabled={disabled}
       title={label}
-      className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 disabled:opacity-50"
+      className="shrink-0 rounded-sm p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 disabled:opacity-50"
     >
       <Icon name={hidden ? "visibility" : "visibility_off"} label={label} />
     </button>
