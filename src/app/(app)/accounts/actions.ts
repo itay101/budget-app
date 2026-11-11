@@ -50,8 +50,13 @@ function revalidateAccountPaths(
  * Creates a new account, always seeding it with a Starting Balance
  * transaction (amount 0 by default, dated today) so the opening balance is
  * never just a bare number with no transaction behind it.
+ *
+ * Returns the new account's id so the caller can navigate to it (#195).
+ * Validation errors still throw, before anything is written.
  */
-export async function createAccount(formData: FormData) {
+export async function createAccount(
+  formData: FormData,
+): Promise<{ id: string }> {
   const name = String(formData.get("name") ?? "").trim();
   const typeInput = String(formData.get("type") ?? "CHECKING");
   const balanceInput = String(formData.get("balance") ?? "0");
@@ -69,7 +74,7 @@ export async function createAccount(formData: FormData) {
   const user = await getCurrentUser();
   const onBudget = !isDebtAccountType(type);
 
-  await prisma.$transaction(async (tx) => {
+  const accountId = await prisma.$transaction(async (tx) => {
     const account = await auditedCreate({
       tx,
       budgetId: budget.id,
@@ -119,9 +124,12 @@ export async function createAccount(formData: FormData) {
         memo: "Starting balance",
       }),
     });
+
+    return account.id;
   });
 
   revalidateAccountPaths();
+  return { id: accountId };
 }
 
 /**
