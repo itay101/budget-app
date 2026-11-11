@@ -22,7 +22,10 @@ afterEach(() => {
   container.remove();
 });
 
-function render(onSubmit: (formData: FormData) => Promise<void>) {
+function render<T>(
+  onSubmit: (formData: FormData) => Promise<T>,
+  onSuccess?: (result: T) => void,
+) {
   container = document.createElement("div");
   document.body.appendChild(container);
   act(() => {
@@ -34,6 +37,7 @@ function render(onSubmit: (formData: FormData) => Promise<void>) {
         title="Add a thing"
         submitLabel="Create thing"
         onSubmit={onSubmit}
+        onSuccess={onSuccess}
       >
         <input name="name" />
       </AddFormPopover>,
@@ -149,5 +153,36 @@ describe("AddFormPopover", () => {
     )!;
     expect(submit.disabled).toBe(false);
     expect(submit.textContent).toBe("Create thing");
+  });
+
+  it("hands the action's result to onSuccess after closing", async () => {
+    const onSuccess = jest.fn();
+    render(jest.fn(async () => ({ id: "acc-1" })), onSuccess);
+
+    act(() => trigger().click());
+    await act(async () => {
+      panelForm()!.requestSubmit();
+    });
+
+    expect(onSuccess).toHaveBeenCalledWith({ id: "acc-1" });
+    expect(panelForm()).toBeNull();
+  });
+
+  it("doesn't call onSuccess when the action throws", async () => {
+    const onSuccess = jest.fn();
+    render(
+      jest.fn(async () => {
+        throw new Error("Account name is required");
+      }),
+      onSuccess,
+    );
+
+    act(() => trigger().click());
+    await act(async () => {
+      panelForm()!.requestSubmit();
+    });
+
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(panelForm()!.textContent).toContain("Account name is required");
   });
 });
