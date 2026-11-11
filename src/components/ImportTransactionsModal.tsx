@@ -15,6 +15,7 @@ import {
 } from "@/lib/importParsing";
 import { formatMilliunits, numberToMilliunits } from "@/lib/money";
 import { Icon } from "@/components/Icon";
+import { ImportFileError, useImportFileError } from "@/components/ImportFailureReport";
 import type { ImportRow } from "@/app/(app)/accounts/actions";
 import { isDebtAccountType, type AccountType } from "@/lib/accountTypes";
 import {
@@ -99,7 +100,7 @@ export function ImportTransactionsModal({
 }) {
   const [step, setStep] = useState<Step>("select");
   const [fileName, setFileName] = useState("");
-  const [fileError, setFileError] = useState<string | null>(null);
+  const fileError = useImportFileError(accountId);
   // The full parsed file, header row and all - which row is actually "the
   // header row" is a guess (see guessHeaderRowIndex) the user can correct,
   // so this is kept whole rather than immediately split into header/data.
@@ -180,20 +181,19 @@ export function ImportTransactionsModal({
   }
 
   async function handleFile(file: File) {
-    setFileError(null);
+    fileError.start(file);
     setFileName(file.name);
     let table: string[][];
     try {
       table = await readImportFile(file);
     } catch (err) {
-      setFileError(
-        err instanceof Error ? err.message : "Couldn't read that file.",
-      );
+      fileError.fail(file, err);
       return;
     }
 
     if (table.length < 2) {
-      setFileError(
+      fileError.fail(
+        file,
         "That file doesn't look like it has a header row and at least one transaction.",
       );
       return;
@@ -453,8 +453,8 @@ export function ImportTransactionsModal({
                 Legacy .xls files aren&#39;t supported yet - re-save as .xlsx or
                 CSV first.
               </p>
-              {fileError && (
-                <p className="text-small text-danger">{fileError}</p>
+              {fileError.error && (
+                <ImportFileError message={fileError.error} reported={fileError.reported} />
               )}
             </div>
           )}
