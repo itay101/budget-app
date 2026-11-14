@@ -44,6 +44,7 @@ const categoryOptions = [
   },
 ];
 const transferAvailable = jest.fn((_formData: FormData) => Promise.resolve());
+const autoAssignAction = jest.fn((_formData: FormData) => Promise.resolve({ applied: [], skipped: [] }));
 
 function render(value: ReadyToAssignBreakdown, isPast = false) {
   container = document.createElement("div");
@@ -60,6 +61,9 @@ function render(value: ReadyToAssignBreakdown, isPast = false) {
         isPast={isPast}
         categoryOptions={categoryOptions}
         transferAvailable={transferAvailable}
+        autoAssignCategories={[]}
+        autoAssign={autoAssignAction}
+        undoAutoAssign={autoAssignAction}
       />,
     ),
   );

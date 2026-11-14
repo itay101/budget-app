@@ -5,6 +5,9 @@ import { createPortal } from "react-dom";
 import { Icon } from "@/components/Icon";
 import { MoneyInput } from "@/components/MoneyInput";
 import { AvailableOptions } from "@/components/AvailableOptions";
+import { AutoAssignMenu, type AutoAssignAction, type AutoAssignDone } from "@/components/AutoAssignMenu";
+import { Toast } from "@/components/Toast";
+import type { AutoAssignCategory } from "@/lib/autoAssign";
 import { formatMilliunits, milliunitsToNumber, numberToMilliunits } from "@/lib/money";
 import {
   READY_TO_ASSIGN,
@@ -98,6 +101,9 @@ export function ReadyToAssignPill({
   isPast,
   categoryOptions,
   transferAvailable,
+  autoAssignCategories,
+  autoAssign,
+  undoAutoAssign,
 }: {
   breakdown: ReadyToAssignBreakdown;
   currency: string;
@@ -106,6 +112,11 @@ export function ReadyToAssignPill({
   /** Every category money can be assigned to, grouped, with its Available. */
   categoryOptions: GroupOption[];
   transferAvailable: (formData: FormData) => Promise<void>;
+  /** Every category's Auto-Assign inputs: the drawer's run covers the whole
+   * Budget (#219). */
+  autoAssignCategories: AutoAssignCategory[];
+  autoAssign: AutoAssignAction;
+  undoAutoAssign: AutoAssignAction;
   /** The viewed month, e.g. "November 2026". */
   monthName: string;
   /** The month before it, e.g. "October 2026". */
@@ -114,6 +125,7 @@ export function ReadyToAssignPill({
   isPast: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [lastRun, setLastRun] = useState<AutoAssignDone | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const style = READY_TO_ASSIGN_STYLE[breakdown.state];
@@ -234,6 +246,21 @@ export function ReadyToAssignPill({
                 </div>
               </dl>
 
+              <div className="mt-300">
+                <AutoAssignMenu
+                  categories={autoAssignCategories}
+                  readyToAssign={breakdown.total}
+                  month={month}
+                  currency={currency}
+                  isPast={isPast}
+                  autoAssign={autoAssign}
+                  onDone={(done) => {
+                    setOpen(false);
+                    setLastRun(done);
+                  }}
+                />
+              </div>
+
               <AssignMoneyForm
                 total={breakdown.total}
                 currency={currency}
@@ -246,8 +273,35 @@ export function ReadyToAssignPill({
           </div>,
           document.body,
         )}
+
+      {lastRun && (
+        <Toast
+          message={autoAssignMessage(lastRun, currency)}
+          actionLabel={lastRun.applied.length > 0 ? "Undo" : undefined}
+          onAction={() => {
+            const run = lastRun;
+            setLastRun(null);
+            const formData = new FormData();
+            formData.set("option", run.option);
+            formData.set("month", run.month);
+            formData.set("rows", JSON.stringify(run.applied));
+            void undoAutoAssign(formData);
+          }}
+          onClose={() => setLastRun(null)}
+        />
+      )}
     </>
   );
+}
+
+/** The toast after an Auto-Assign run, e.g. "Assigned $40.00 to 3
+ * categories" (#147), noting any rows that had changed and were skipped. */
+export function autoAssignMessage(run: AutoAssignDone, currency: string): string {
+  const count = run.applied.length;
+  const categories = `${count} ${count === 1 ? "category" : "categories"}`;
+  const amount = formatMilliunits(Math.abs(run.total), currency);
+  const done = run.total >= 0 ? `Assigned ${amount} to ${categories}` : `Freed ${amount} from ${categories}`;
+  return run.skipped > 0 ? `${done} (${run.skipped} changed since the preview, skipped)` : done;
 }
 
 /**
