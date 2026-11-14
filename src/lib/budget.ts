@@ -17,6 +17,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { accessibleBudgetWhere } from "@/lib/authorization";
 import { auditedUpdate, diffFields, recordAuditEntry } from "@/lib/audit";
 import { seedDefaultCategories } from "@/lib/defaultCategories";
+import { seedSystemCategories } from "@/lib/systemCategories";
 import {
   addMonths,
   currentBudgetMonth,
@@ -92,7 +93,8 @@ export async function getCurrentBudget() {
 
 /**
  * Creates a Budget with its creation AuditEntry (ADR 0002) and seeds it
- * with DEFAULT_CATEGORY_GROUPS (#196), all on the caller's `tx` so they
+ * with its system Inflow: Ready to Assign category (ADR 0008) and
+ * DEFAULT_CATEGORY_GROUPS (#196), all on the caller's `tx` so they
  * commit or roll back together. Every path that opens a new budget goes
  * through here: createBudget and getCurrentBudget's first-visit fallback.
  */
@@ -109,6 +111,7 @@ export async function createBudgetWithDefaults(
     actorId: ownerId,
     changes: diffFields({}, { name, currency, ownerId }),
   });
+  await seedSystemCategories(tx, { budgetId: created.id, actorId: ownerId });
   await seedDefaultCategories(tx, { budgetId: created.id, actorId: ownerId });
   return created;
 }

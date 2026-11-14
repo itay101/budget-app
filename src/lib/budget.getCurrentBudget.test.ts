@@ -5,6 +5,7 @@ import { accessibleBudgetWhere } from "@/lib/authorization";
 import { getCurrentBudget } from "@/lib/budget";
 import { prisma } from "@/lib/prisma";
 import { seedDefaultCategories } from "@/lib/defaultCategories";
+import { seedSystemCategories } from "@/lib/systemCategories";
 
 jest.mock("next/headers", () => ({ cookies: jest.fn() }));
 
@@ -25,11 +26,16 @@ jest.mock("@/lib/defaultCategories", () => ({
   seedDefaultCategories: jest.fn(),
 }));
 
+jest.mock("@/lib/systemCategories", () => ({
+  seedSystemCategories: jest.fn(),
+}));
+
 const mockCookies = jest.mocked(cookies);
 const mockGetCurrentUser = jest.mocked(getCurrentUser);
 const mockFindFirst = jest.mocked(prisma.budget.findFirst);
 const mockTransaction = jest.mocked(prisma.$transaction);
 const mockSeed = jest.mocked(seedDefaultCategories);
+const mockSeedSystem = jest.mocked(seedSystemCategories);
 
 /** The stub client the mocked $transaction hands its callback. */
 const tx = {
@@ -121,7 +127,7 @@ describe("getCurrentBudget", () => {
     expect(mockFindFirst).toHaveBeenCalledTimes(2);
   });
 
-  it("creates a USD budget, audited and seeded with the default categories, when the user can't access any", async () => {
+  it("creates a USD budget, audited and seeded with the system and default categories, when the user can't access any", async () => {
     setup({ defaultBudgetId: "lost-default" });
     mockTransaction.mockImplementation(((fn: (t: typeof tx) => unknown) => fn(tx)) as never);
     tx.budget.create.mockResolvedValue(budget("new-budget"));
@@ -138,6 +144,7 @@ describe("getCurrentBudget", () => {
         actorId: USER_ID,
       }),
     });
+    expect(mockSeedSystem).toHaveBeenCalledWith(tx, { budgetId: "new-budget", actorId: USER_ID });
     expect(mockSeed).toHaveBeenCalledWith(tx, { budgetId: "new-budget", actorId: USER_ID });
   });
 
