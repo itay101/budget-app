@@ -84,10 +84,23 @@ describe("autoAssign (#147, #219)", () => {
     expect(auditCreate).toHaveBeenCalledTimes(1);
   });
 
-  it("refuses a run that would overdraw Ready to Assign, before writing", async () => {
+  it("refuses a run that would overdraw Ready to Assign, writing nothing", async () => {
     jest.mocked(getBudgetMonthRows).mockResolvedValue({ readyToAssign: { total: 10_000 } } as never);
     await expect(autoAssign(form([{ categoryId: "rent", from: 0, to: 30_000 }]))).rejects.toThrow("Not enough Ready to Assign");
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(upsert).not.toHaveBeenCalled();
+    expect(auditCreate).not.toHaveBeenCalled();
+  });
+
+  it("counts only rows that still apply against Ready to Assign, so an edited row is skipped, not fatal", async () => {
+    // The preview wanted $250 for rent and $40 for food, with $290 to spare.
+    // Food was raised by hand since, so Ready to Assign is now $280 and the
+    // whole run no longer fits; but food is skipped, and rent alone does.
+    stored.food = 9_000;
+    jest.mocked(getBudgetMonthRows).mockResolvedValue({ readyToAssign: { total: 280_000 } } as never);
+    const result = await autoAssign(
+      form([{ categoryId: "rent", from: 0, to: 250_000 }, { categoryId: "food", from: 5_000, to: 45_000 }]),
+    );
+    expect(result).toEqual({ applied: [{ categoryId: "rent", from: 0, to: 250_000 }], skipped: ["food"] });
   });
 
   it("refuses to add money in a past month for now", async () => {

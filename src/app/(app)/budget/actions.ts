@@ -678,20 +678,33 @@ async function requireAutoAssignContext(formData: FormData) {
  * Applies each row only if the category's Assigned still equals `from`, so
  * an edit made since the preview is never overwritten (#147), and writes
  * one CATEGORY_MONTH audit entry per applied row, all in one transaction.
+ * `maxNet`, when given, caps what the rows that do apply may add in total;
+ * going over rolls the whole run back.
  */
 async function applyAssignedRows(
   { option, rows, budgetId, month, actorId }: Awaited<ReturnType<typeof requireAutoAssignContext>>,
   action: string,
+  maxNet?: number,
 ): Promise<AutoAssignResult> {
   const result: AutoAssignResult = { applied: [], skipped: [] };
   await prisma.$transaction(async (tx) => {
+    const applicable: AssignedRow[] = [];
     for (const row of rows) {
+      const current = await tx.categoryMonth.findUnique({
+        where: { categoryId_month: { categoryId: row.categoryId, month } },
+        select: { budgeted: true },
+      });
+      if ((current?.budgeted ?? 0) === row.from) applicable.push(row);
+      else result.skipped.push(row.categoryId);
+    }
+    // Only rows that will actually change count against Ready to Assign: an
+    // edited row is skipped, not a reason to refuse the rest (#219).
+    const net = applicable.reduce((sum, row) => sum + row.to - row.from, 0);
+    if (maxNet !== undefined && net > 0 && net > maxNet) {
+      throw new Error("Not enough Ready to Assign for this Auto-Assign. Refresh and try again");
+    }
+    for (const row of applicable) {
       const where = { categoryId_month: { categoryId: row.categoryId, month } };
-      const current = await tx.categoryMonth.findUnique({ where, select: { budgeted: true } });
-      if ((current?.budgeted ?? 0) !== row.from) {
-        result.skipped.push(row.categoryId);
-        continue;
-      }
       const saved = await tx.categoryMonth.upsert({
         where,
         create: { categoryId: row.categoryId, month, budgeted: row.to },
@@ -722,17 +735,14 @@ async function applyAssignedRows(
  */
 export async function autoAssign(formData: FormData): Promise<AutoAssignResult> {
   const context = await requireAutoAssignContext(formData);
-  const net = context.rows.reduce((sum, row) => sum + row.to - row.from, 0);
-  if (net > 0) {
-    if (context.month.getTime() < currentBudgetMonth().getTime()) {
-      throw new Error("Auto-Assign can't add money in a past month yet");
-    }
-    const { readyToAssign } = await getBudgetMonthRows(context.budgetId, context.month);
-    if (net > readyToAssign.total) {
-      throw new Error("Not enough Ready to Assign for this Auto-Assign. Refresh and try again");
-    }
+  if (!context.rows.some((row) => row.to > row.from)) return applyAssignedRows(context, "auto-assigned");
+  if (context.month.getTime() < currentBudgetMonth().getTime()) {
+    throw new Error("Auto-Assign can't add money in a past month yet");
   }
-  return applyAssignedRows(context, "auto-assigned");
+  // Ready to Assign as it is now, edits since the preview included; the
+  // transaction then checks only the rows that still apply against it.
+  const { readyToAssign } = await getBudgetMonthRows(context.budgetId, context.month);
+  return applyAssignedRows(context, "auto-assigned", readyToAssign.total);
 }
 
 /** Undoes a confirmed run: the same rows, back from `to` to `from`, each
