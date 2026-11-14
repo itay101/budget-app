@@ -18,6 +18,7 @@ import {
 import { numberToMilliunits } from "@/lib/money";
 import { effectiveTarget, parseTargetInput, type Target } from "@/lib/targets";
 import { assertNotSystem } from "@/lib/systemCategories";
+import { moveLegs } from "@/lib/readyToAssign";
 
 /**
  * Creates a new category group, appended after every existing group in
@@ -357,76 +358,55 @@ export async function transferAvailable(formData: FormData) {
   if (!fromCategoryId || !toCategoryId || !monthInput) {
     throw new Error("fromCategoryId, toCategoryId, and month are required");
   }
-  if (fromCategoryId === toCategoryId) {
-    throw new Error("Cannot move money to the same category");
-  }
-
-  const [
-    { user, budgetId: fromBudgetId, systemKind: fromKind },
-    { budgetId: toBudgetId, systemKind: toKind },
-  ] = await Promise.all([
-    requireCategoryAccess(fromCategoryId),
-    requireCategoryAccess(toCategoryId),
-  ]);
-  // Inflow: Ready to Assign is never assigned to. Moving money to or from
-  // Ready to Assign itself is a separate sentinel (#134), not this row.
-  assertNotSystem(fromKind);
-  assertNotSystem(toKind);
-  if (fromBudgetId !== toBudgetId) {
-    throw new Error("Cannot move money between different budgets");
-  }
-
-  const month = await requireNavigableMonth(fromBudgetId, monthInput);
   const amount = numberToMilliunits(Number(amountInput) || 0);
-
   if (amount <= 0) {
     throw new Error("Amount must be greater than zero");
   }
+  // Either side may be READY_TO_ASSIGN (#134, #217). Ready to Assign is
+  // derived, so a move to or from it changes only the other category.
+  const legs = moveLegs(fromCategoryId, toCategoryId, amount);
 
-  const [fromBefore, toBefore] = await Promise.all([
-    prisma.categoryMonth.findUnique({
-      where: { categoryId_month: { categoryId: fromCategoryId, month } },
-      select: { budgeted: true },
-    }),
-    prisma.categoryMonth.findUnique({
-      where: { categoryId_month: { categoryId: toCategoryId, month } },
-      select: { budgeted: true },
-    }),
-  ]);
+  const access = await Promise.all(legs.map((leg) => requireCategoryAccess(leg.categoryId)));
+  // Inflow: Ready to Assign is never assigned to. Ready to Assign itself is
+  // the sentinel, never that category's row.
+  for (const { systemKind } of access) assertNotSystem(systemKind);
+  const budgetId = access[0].budgetId;
+  if (access.some((a) => a.budgetId !== budgetId)) {
+    throw new Error("Cannot move money between different budgets");
+  }
+  const actorId = access[0].user.id;
+  const month = await requireNavigableMonth(budgetId, monthInput);
 
-  // A transfer just shifts `budgeted` between the two categories for this
-  // month — activity is untouched, so the two "available" figures move by
-  // the same amount in opposite directions. Deliberately unguarded against
-  // the source going negative: moving money out of an already-overspent
-  // category (or past zero into one) is a normal, allowed move here, not
-  // an error.
+  const before = await Promise.all(
+    legs.map((leg) =>
+      prisma.categoryMonth.findUnique({
+        where: { categoryId_month: { categoryId: leg.categoryId, month } },
+        select: { budgeted: true },
+      }),
+    ),
+  );
+
+  // A move only shifts `budgeted` for this month: activity is untouched,
+  // so the Available figures (and Ready to Assign) move by the same amount
+  // in opposite directions. Deliberately unguarded against a category or
+  // Ready to Assign going negative: that's a normal, allowed move here
+  // (#134), shown in red rather than refused.
   await prisma.$transaction(async (tx) => {
-    const from = await tx.categoryMonth.upsert({
-      where: { categoryId_month: { categoryId: fromCategoryId, month } },
-      create: { categoryId: fromCategoryId, month, budgeted: -amount },
-      update: { budgeted: { decrement: amount } },
-    });
-    const to = await tx.categoryMonth.upsert({
-      where: { categoryId_month: { categoryId: toCategoryId, month } },
-      create: { categoryId: toCategoryId, month, budgeted: amount },
-      update: { budgeted: { increment: amount } },
-    });
-    await recordAuditEntry(tx, {
-      budgetId: fromBudgetId,
-      entityType: "CATEGORY_MONTH",
-      entityId: from.id,
-      action: "updated",
-      actorId: user.id,
-      changes: diffFields({ budgeted: fromBefore?.budgeted ?? 0 }, { budgeted: from.budgeted }),
-    });
-    await recordAuditEntry(tx, {
-      budgetId: fromBudgetId,
-      entityType: "CATEGORY_MONTH",
-      entityId: to.id,
-      action: "updated",
-      actorId: user.id,
-      changes: diffFields({ budgeted: toBefore?.budgeted ?? 0 }, { budgeted: to.budgeted }),
-    });
+    for (const [i, { categoryId, delta }] of legs.entries()) {
+      const row = await tx.categoryMonth.upsert({
+        where: { categoryId_month: { categoryId, month } },
+        create: { categoryId, month, budgeted: delta },
+        update: { budgeted: { increment: delta } },
+      });
+      await recordAuditEntry(tx, {
+        budgetId,
+        entityType: "CATEGORY_MONTH",
+        entityId: row.id,
+        action: "updated",
+        actorId,
+        changes: diffFields({ budgeted: before[i]?.budgeted ?? 0 }, { budgeted: row.budgeted }),
+      });
+    }
   });
 
   revalidatePath("/budget");
