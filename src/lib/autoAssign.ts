@@ -85,11 +85,17 @@ export interface AutoAssignHistory {
   firstActive: number | null;
 }
 
-/** `sum / count` milliunits, rounded half up to whole cents (#147). Exact
- * integer arithmetic, so there's no float drift on money. */
+/** Integer floor division: subtracts the remainder first, so the `/` only
+ * ever divides an exact multiple and no fraction is produced. */
+function floorDiv(n: number, d: number): number {
+  const remainder = ((n % d) + d) % d;
+  return (n - remainder) / d;
+}
+
+/** `sum / count` milliunits, rounded half up to whole cents (#147), in
+ * integer arithmetic only (money never goes through a fraction). */
 function averageToCent(sum: number, count: number): number {
-  const cents = Math.floor((2 * sum + 10 * count) / (20 * count));
-  return cents * 10;
+  return floorDiv(2 * sum + 10 * count, 20 * count) * 10;
 }
 
 function averageFrom(values: number[], start: number | null): number | null {

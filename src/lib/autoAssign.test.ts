@@ -174,6 +174,12 @@ describe("proposedAssigned: the other seven options (#147)", () => {
     ).toBe(1_000);
   });
 
+  it("rounds a negative average half up too", () => {
+    // −$10.005 → −$10.00 (half up is toward +∞); −$10.006 → −$10.01.
+    expect(proposedAssigned("average-assigned", category({ id: "n1", assigned: 5, history: history([-10_005, -10_005]) }))).toBe(-10_000);
+    expect(proposedAssigned("average-assigned", category({ id: "n2", assigned: 5, history: history([-10_006, -10_006]) }))).toBe(-10_010);
+  });
+
   it("the averages leave a category with no history alone", () => {
     expect(proposedAssigned("average-assigned", category({ id: "new", assigned: 7_000 }))).toBeNull();
     expect(proposedAssigned("average-spent", category({ id: "new", assigned: 7_000 }))).toBeNull();
