@@ -12,26 +12,30 @@ import { useServerAction } from "@/components/useServerAction";
  * button that opens a w-64 panel holding a titled create form with
  * Cancel / submit buttons. On submit it runs `onSubmit` via
  * useServerAction (so the submit button shows "Adding…" for as long as
- * the action is actually in flight), then resets the form and closes the
- * popover; if the action throws, the popover stays open with the error.
+ * the action is actually in flight), then resets the form, closes the
+ * popover and hands the action's result to `onSuccess` (e.g. to navigate
+ * to what was just created); if the action throws, the popover stays open
+ * with the error and `onSuccess` isn't called.
  *
  * Callers supply only what differs - the trigger's label and classes, the
  * panel title, the submit label, the action, and the form's fields as
  * `children`.
  */
-export function AddFormPopover({
+export function AddFormPopover<T = void>({
   triggerLabel,
   triggerClassName,
   title,
   submitLabel,
   onSubmit,
+  onSuccess,
   children,
 }: {
   triggerLabel: string;
   triggerClassName: string;
   title: string;
   submitLabel: string;
-  onSubmit: (formData: FormData) => Promise<void>;
+  onSubmit: (formData: FormData) => Promise<T>;
+  onSuccess?: (result: T) => void;
   children: React.ReactNode;
 }) {
   const { run, pending, error } = useServerAction(onSubmit);
@@ -47,9 +51,10 @@ export function AddFormPopover({
       if (typeof value === "string") fields[key] = value;
     }
     run(fields).then(
-      () => {
+      (result) => {
         formRef.current?.reset();
         setOpen(false);
+        onSuccess?.(result as T);
       },
       () => {
         // error is surfaced via `error`

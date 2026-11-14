@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { accessibleBudgetWhere } from "@/lib/authorization";
 import { getCurrentBudget } from "@/lib/budget";
 import { prisma } from "@/lib/prisma";
-import { seedDefaultCategories } from "@/lib/defaultCategories";
+import { DEFAULT_CATEGORY_GROUPS, seedCategoryGroups } from "@/lib/defaultCategories";
 import { seedSystemCategories } from "@/lib/systemCategories";
 
 jest.mock("next/headers", () => ({ cookies: jest.fn() }));
@@ -23,7 +23,8 @@ jest.mock("@/lib/prisma", () => ({
 }));
 
 jest.mock("@/lib/defaultCategories", () => ({
-  seedDefaultCategories: jest.fn(),
+  ...jest.requireActual("@/lib/defaultCategories"),
+  seedCategoryGroups: jest.fn(),
 }));
 
 jest.mock("@/lib/systemCategories", () => ({
@@ -34,7 +35,7 @@ const mockCookies = jest.mocked(cookies);
 const mockGetCurrentUser = jest.mocked(getCurrentUser);
 const mockFindFirst = jest.mocked(prisma.budget.findFirst);
 const mockTransaction = jest.mocked(prisma.$transaction);
-const mockSeed = jest.mocked(seedDefaultCategories);
+const mockSeed = jest.mocked(seedCategoryGroups);
 const mockSeedSystem = jest.mocked(seedSystemCategories);
 
 /** The stub client the mocked $transaction hands its callback. */
@@ -145,7 +146,11 @@ describe("getCurrentBudget", () => {
       }),
     });
     expect(mockSeedSystem).toHaveBeenCalledWith(tx, { budgetId: "new-budget", actorId: USER_ID });
-    expect(mockSeed).toHaveBeenCalledWith(tx, { budgetId: "new-budget", actorId: USER_ID });
+    expect(mockSeed).toHaveBeenCalledWith(tx, {
+      budgetId: "new-budget",
+      actorId: USER_ID,
+      groups: DEFAULT_CATEGORY_GROUPS,
+    });
   });
 
   it("uses the budget a concurrent first visit just created when its own create loses the race", async () => {

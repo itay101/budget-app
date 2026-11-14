@@ -1,18 +1,20 @@
 import type { Prisma } from "@prisma/client";
 import { diffFields, recordAuditEntries } from "./audit";
 
-export interface DefaultCategoryGroup {
+export interface CategoryGroupSeed {
   name: string;
   categories: readonly string[];
 }
 
 /**
- * The category groups (and their categories) every new budget starts with
- * (#196), in display order — array position becomes `sortOrder`. Copied
- * from the owner's household-budget sheet; Hebrew only, since the app has
- * no i18n yet (#199). Existing budgets are never seeded.
+ * The owner's household category groups (and their categories), which
+ * every new budget started with (#196) before templates (#212) — now the
+ * "Household" BudgetTemplate and the first-visit fallback. In display
+ * order — array position becomes `sortOrder`. Copied from the owner's
+ * household-budget sheet; Hebrew only, since the app has no i18n yet
+ * (#199). Existing budgets are never seeded.
  */
-export const DEFAULT_CATEGORY_GROUPS: readonly DefaultCategoryGroup[] = [
+export const DEFAULT_CATEGORY_GROUPS: readonly CategoryGroupSeed[] = [
   {
     name: "מזון ופארמה",
     categories: [
@@ -164,18 +166,25 @@ export const DEFAULT_CATEGORY_GROUPS: readonly DefaultCategoryGroup[] = [
 ];
 
 /**
- * Creates DEFAULT_CATEGORY_GROUPS in a freshly created budget on the
- * caller's `tx`, so the seed commits or rolls back together with the
- * budget itself. Batched — one insert for the groups, one for the
- * categories, one for their audit entries (ADR 0002) — rather than ~200
- * per-row round trips inside the interactive transaction.
+ * Creates `groups` (and their categories) in a freshly created budget on
+ * the caller's `tx`, so the seed commits or rolls back together with the
+ * budget itself. Array position becomes `sortOrder`. Batched — one insert
+ * for the groups, one for the categories, one for their audit entries
+ * (ADR 0002) — rather than ~200 per-row round trips inside the
+ * interactive transaction. An empty list (a Blank budget) writes nothing.
  */
-export async function seedDefaultCategories(
+export async function seedCategoryGroups(
   tx: Prisma.TransactionClient,
-  { budgetId, actorId }: { budgetId: string; actorId: string },
+  {
+    budgetId,
+    actorId,
+    groups: seed,
+  }: { budgetId: string; actorId: string; groups: readonly CategoryGroupSeed[] },
 ): Promise<void> {
+  if (seed.length === 0) return;
+
   const groups = await tx.categoryGroup.createManyAndReturn({
-    data: DEFAULT_CATEGORY_GROUPS.map((group, sortOrder) => ({
+    data: seed.map((group, sortOrder) => ({
       budgetId,
       name: group.name,
       sortOrder,
@@ -185,15 +194,17 @@ export async function seedDefaultCategories(
   // order RETURNING hands rows back in.
   const groupIdBySortOrder = new Map(groups.map((g) => [g.sortOrder, g.id]));
 
-  const categories = await tx.category.createManyAndReturn({
-    data: DEFAULT_CATEGORY_GROUPS.flatMap((group, groupSortOrder) =>
-      group.categories.map((name, sortOrder) => ({
-        categoryGroupId: groupIdBySortOrder.get(groupSortOrder)!,
-        name,
-        sortOrder,
-      })),
-    ),
-  });
+  const categoryRows = seed.flatMap((group, groupSortOrder) =>
+    group.categories.map((name, sortOrder) => ({
+      categoryGroupId: groupIdBySortOrder.get(groupSortOrder)!,
+      name,
+      sortOrder,
+    })),
+  );
+  const categories =
+    categoryRows.length > 0
+      ? await tx.category.createManyAndReturn({ data: categoryRows })
+      : [];
 
   await recordAuditEntries(tx, [
     ...groups.map((g) => ({
