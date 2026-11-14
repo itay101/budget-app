@@ -1,8 +1,10 @@
 import { cookies } from "next/headers";
 import { Prisma } from "@prisma/client";
+import type { AutoAssignCategory } from "@/lib/autoAssign";
 import {
   effectiveTarget,
   needFor,
+  nextDue,
   planTotals,
   targetStatus,
   type PlanTotals,
@@ -371,6 +373,8 @@ export type BudgetMonthRows = {
   totals: PlanTotals;
   /** The viewed month's Ready to Assign and its Breakdown (ADR 0009). */
   readyToAssign: ReadyToAssignBreakdown;
+  /** Every category's Auto-Assign inputs, in display order (#219). */
+  autoAssignCategories: AutoAssignCategory[];
 };
 
 /** Works out a row's Target state from its stored target rows, whether this month is snoozed, and its
@@ -595,11 +599,32 @@ export async function getBudgetMonthRows(
   }));
   const visibleRows = visibleGroups.flatMap((group) => group.categories);
 
+  // Auto-Assign's inputs (#219): every ordinary category, hidden ones in
+  // their real group, in display order.
+  const rowsById = new Map([...visibleRows, ...hiddenCategories].map((row) => [row.id, row]));
+  const autoAssignCategories: AutoAssignCategory[] = groups.flatMap((group, groupIndex) =>
+    group.categories.map((category, categoryIndex) => {
+      const row = rowsById.get(category.id)!;
+      return {
+        id: row.id,
+        name: row.name,
+        groupId: group.id,
+        hidden: row.hidden,
+        order: groupIndex * 10_000 + categoryIndex,
+        assigned: row.budgeted,
+        available: row.available,
+        needed: row.need?.needed ?? 0,
+        due: nextDue(row.target, month),
+      };
+    }),
+  );
+
   return {
     groups: visibleGroups,
     categoryOptions,
     hiddenCategories,
     totals: planTotals([...visibleRows, ...hiddenCategories]),
+    autoAssignCategories,
     // Every ordinary category counts, hidden ones included (ADR 0009).
     readyToAssign: readyToAssignFor({
       month,
