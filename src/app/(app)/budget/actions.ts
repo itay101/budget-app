@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { getCurrentBudget, requireNavigableMonth } from "@/lib/budget";
+import { getBudgetMonthRows, getCurrentBudget, requireNavigableMonth } from "@/lib/budget";
 import { getCurrentUser } from "@/lib/auth";
 import {
   requireCategoryAccess,
@@ -19,6 +19,8 @@ import { numberToMilliunits } from "@/lib/money";
 import { effectiveTarget, parseTargetInput, type Target } from "@/lib/targets";
 import { assertNotSystem } from "@/lib/systemCategories";
 import { moveLegs } from "@/lib/readyToAssign";
+import { isAutoAssignOption } from "@/lib/autoAssign";
+import { currentBudgetMonth } from "@/lib/budgetMonth";
 
 /**
  * Creates a new category group, appended after every existing group in
@@ -366,15 +368,11 @@ export async function transferAvailable(formData: FormData) {
   // derived, so a move to or from it changes only the other category.
   const legs = moveLegs(fromCategoryId, toCategoryId, amount);
 
-  const access = await Promise.all(legs.map((leg) => requireCategoryAccess(leg.categoryId)));
-  // Inflow: Ready to Assign is never assigned to. Ready to Assign itself is
-  // the sentinel, never that category's row.
-  for (const { systemKind } of access) assertNotSystem(systemKind);
-  const budgetId = access[0].budgetId;
-  if (access.some((a) => a.budgetId !== budgetId)) {
-    throw new Error("Cannot move money between different budgets");
-  }
-  const actorId = access[0].user.id;
+  // Ready to Assign itself is the sentinel, never the Inflow category's row.
+  const { budgetId, actorId } = await requireAssignableCategories(
+    legs.map((leg) => leg.categoryId),
+    "Cannot move money between different budgets",
+  );
   const month = await requireNavigableMonth(budgetId, monthInput);
 
   const before = await Promise.all(
@@ -621,3 +619,129 @@ export async function unsnoozeTarget(formData: FormData) {
 
   revalidatePath("/budget");
 }
+
+/**
+ * Authorizes every category money is assigned to or from: each must be
+ * accessible, never the system Inflow: Ready to Assign category, and all
+ * in one budget. Shared by Move Money and Auto-Assign.
+ */
+async function requireAssignableCategories(categoryIds: string[], acrossBudgets: string) {
+  const access = await Promise.all(categoryIds.map((id) => requireCategoryAccess(id)));
+  for (const { systemKind } of access) assertNotSystem(systemKind);
+  const budgetId = access[0].budgetId;
+  if (access.some((a) => a.budgetId !== budgetId)) throw new Error(acrossBudgets);
+  return { budgetId, actorId: access[0].user.id };
+}
+
+/** One previewed Auto-Assign change, as the client sends it back. */
+interface AssignedRow {
+  categoryId: string;
+  from: number;
+  to: number;
+}
+
+export interface AutoAssignResult {
+  /** The rows applied, so the run can be undone. */
+  applied: AssignedRow[];
+  /** Rows whose Assigned had changed since the preview, left alone. */
+  skipped: string[];
+}
+
+/** Reads and checks `rows` (JSON of AssignedRow[]) from the form. */
+function parseAssignedRows(formData: FormData): AssignedRow[] {
+  const raw: unknown = JSON.parse(String(formData.get("rows") ?? "[]"));
+  if (!Array.isArray(raw) || raw.length === 0) throw new Error("rows are required");
+  return raw.map((row) => {
+    const { categoryId, from, to } = row as Record<string, unknown>;
+    if (typeof categoryId !== "string" || !Number.isInteger(from) || !Number.isInteger(to)) {
+      throw new Error("Each row needs a categoryId and integer from/to amounts");
+    }
+    return { categoryId, from: from as number, to: to as number };
+  });
+}
+
+/** The option, month and rows an Auto-Assign or its undo acts on, with
+ * every category authorized, never a system one, all in one budget. */
+async function requireAutoAssignContext(formData: FormData) {
+  const optionInput = String(formData.get("option") ?? "");
+  if (!isAutoAssignOption(optionInput)) throw new Error("Unknown Auto-Assign option");
+  const rows = parseAssignedRows(formData);
+  const { budgetId, actorId } = await requireAssignableCategories(
+    rows.map((row) => row.categoryId),
+    "Cannot Auto-Assign across different budgets",
+  );
+  const month = await requireNavigableMonth(budgetId, String(formData.get("month") ?? ""));
+  return { option: optionInput, rows, budgetId, month, actorId };
+}
+
+/**
+ * Applies each row only if the category's Assigned still equals `from`, so
+ * an edit made since the preview is never overwritten (#147), and writes
+ * one CATEGORY_MONTH audit entry per applied row, all in one transaction.
+ */
+async function applyAssignedRows(
+  { option, rows, budgetId, month, actorId }: Awaited<ReturnType<typeof requireAutoAssignContext>>,
+  action: string,
+): Promise<AutoAssignResult> {
+  const result: AutoAssignResult = { applied: [], skipped: [] };
+  await prisma.$transaction(async (tx) => {
+    for (const row of rows) {
+      const where = { categoryId_month: { categoryId: row.categoryId, month } };
+      const current = await tx.categoryMonth.findUnique({ where, select: { budgeted: true } });
+      if ((current?.budgeted ?? 0) !== row.from) {
+        result.skipped.push(row.categoryId);
+        continue;
+      }
+      const saved = await tx.categoryMonth.upsert({
+        where,
+        create: { categoryId: row.categoryId, month, budgeted: row.to },
+        update: { budgeted: row.to },
+      });
+      await recordAuditEntry(tx, {
+        budgetId,
+        entityType: "CATEGORY_MONTH",
+        entityId: saved.id,
+        action,
+        actorId,
+        changes: { budgeted: [row.from, row.to], option: [null, option] },
+      });
+      result.applied.push(row);
+    }
+  });
+  revalidatePath("/budget");
+  return result;
+}
+
+/**
+ * Confirms an Auto-Assign run (#147, #219): the previewed `rows` for one
+ * option in the viewed month. A run that adds money is re-checked against
+ * Ready to Assign, which it may use up but never overdraw. A past month
+ * only takes runs that add nothing for now; adding money there, which must
+ * keep every later month at $0 or more (#163), comes with the remaining
+ * options.
+ */
+export async function autoAssign(formData: FormData): Promise<AutoAssignResult> {
+  const context = await requireAutoAssignContext(formData);
+  const net = context.rows.reduce((sum, row) => sum + row.to - row.from, 0);
+  if (net > 0) {
+    if (context.month.getTime() < currentBudgetMonth().getTime()) {
+      throw new Error("Auto-Assign can't add money in a past month yet");
+    }
+    const { readyToAssign } = await getBudgetMonthRows(context.budgetId, context.month);
+    if (net > readyToAssign.total) {
+      throw new Error("Not enough Ready to Assign for this Auto-Assign. Refresh and try again");
+    }
+  }
+  return applyAssignedRows(context, "auto-assigned");
+}
+
+/** Undoes a confirmed run: the same rows, back from `to` to `from`, each
+ * only if it still holds what the run set (#147). Like Move Money, an undo
+ * may leave Ready to Assign negative. */
+export async function undoAutoAssign(formData: FormData): Promise<AutoAssignResult> {
+  const context = await requireAutoAssignContext(formData);
+  const reversed = context.rows.map((row) => ({ categoryId: row.categoryId, from: row.to, to: row.from }));
+  const result = await applyAssignedRows({ ...context, rows: reversed }, "auto-assign undone");
+  return { ...result, applied: result.applied.map((row) => ({ ...row, from: row.to, to: row.from })) };
+}
+
