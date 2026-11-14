@@ -5,8 +5,10 @@ import { E2E_TEST_USER_ID } from "../src/lib/e2eTestAuth";
 
 /**
  * #212: a new budget starts from a template (seeded with its groups and
- * categories, in order) or blank (nothing seeded), picked in the sidebar's
- * new-budget form, which previews the template before committing.
+ * categories, in order) or blank (nothing seeded). The sidebar's
+ * new-budget form collects the name and currency, then a dialog shows a
+ * gallery of template tiles with the selected one's categories previewed,
+ * and "Pick <template>" / "Start Blank" create the budget.
  *
  * Uses its own NZD/SEK budgets so other specs' currencies stay free, and
  * deletes them afterwards (groups/categories cascade).
@@ -25,11 +27,15 @@ const SIMPLE_LIFE = [
   "💰 Savings",
 ];
 
-/** Opens the switcher (whatever budget is current) and its new-budget form. */
-async function openNewBudgetForm(page: Page) {
+/** Fills the switcher's new-budget form and opens the template dialog. */
+async function openTemplateDialog(page: Page, name: string, currency: string) {
   await page.goto("/budget");
   await page.getByRole("button", { name: / \(.+\)$/ }).first().click();
   await page.getByRole("button", { name: "New budget" }).click();
+  await page.getByRole("textbox", { name: "Name", exact: true }).fill(name);
+  await page.getByRole("combobox", { name: "Currency" }).selectOption(currency);
+  await page.getByRole("button", { name: "Choose template" }).click();
+  return page.getByRole("dialog", { name: `How should “${name}” start?` });
 }
 
 async function seededGroups(budgetName: string) {
@@ -52,19 +58,17 @@ test.describe("new budget templates", () => {
   test("creating a budget from a template seeds its groups and categories in order", async ({
     page,
   }) => {
-    await openNewBudgetForm(page);
-    await page.getByRole("textbox", { name: "Name", exact: true }).fill(TEMPLATE_BUDGET);
-    await page.getByRole("combobox", { name: "Currency" }).selectOption("NZD");
+    const dialog = await openTemplateDialog(page, TEMPLATE_BUDGET, "NZD");
+    await expect(dialog.getByRole("radio", { name: /^Beginner/ })).toBeChecked();
+    await expect(dialog.getByRole("button", { name: "Pick Beginner" })).toBeVisible();
 
-    const startWith = page.getByRole("combobox", { name: "Start with" });
-    await expect(startWith).toHaveValue("beginner");
-    await startWith.selectOption({ label: "Minimalist" });
-
-    const preview = page.getByRole("region", { name: "Minimalist categories" });
+    await dialog.getByRole("radio", { name: /^Minimalist/ }).click();
+    const preview = dialog.getByRole("region", { name: "Minimalist categories" });
     await expect(preview.getByText("The Simple Life")).toBeVisible();
     await expect(preview.getByRole("listitem")).toHaveText(SIMPLE_LIFE);
 
-    await page.getByRole("button", { name: "Create" }).click();
+    await dialog.getByRole("button", { name: "Pick Minimalist" }).click();
+    await expect(dialog).toBeHidden();
     await expect(
       page.getByRole("button", { name: new RegExp(`^${TEMPLATE_BUDGET} \\(`) }),
     ).toBeVisible();
@@ -76,15 +80,11 @@ test.describe("new budget templates", () => {
   });
 
   test("creating a blank budget seeds no categories", async ({ page }) => {
-    await openNewBudgetForm(page);
-    await page.getByRole("textbox", { name: "Name", exact: true }).fill(BLANK_BUDGET);
-    await page.getByRole("combobox", { name: "Currency" }).selectOption("SEK");
-    await page.getByRole("combobox", { name: "Start with" }).selectOption({ label: "Blank" });
-    await expect(page.getByRole("region", { name: "Blank categories" })).toHaveText(
-      "No categories — start from scratch.",
-    );
+    const dialog = await openTemplateDialog(page, BLANK_BUDGET, "SEK");
+    await expect(dialog.getByRole("radio", { name: /^Blank/ })).toHaveCount(0);
 
-    await page.getByRole("button", { name: "Create" }).click();
+    await dialog.getByRole("button", { name: "Start Blank" }).click();
+    await expect(dialog).toBeHidden();
     await expect(
       page.getByRole("button", { name: new RegExp(`^${BLANK_BUDGET} \\(`) }),
     ).toBeVisible();
