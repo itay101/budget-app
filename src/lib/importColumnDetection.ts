@@ -84,6 +84,19 @@ export function buildDetectionSample(table: string[][]): string[][] {
  * deployment's OIDC token, so `VERCEL` alone turns it on; elsewhere it needs
  * `AI_GATEWAY_API_KEY`. Local dev and e2e normally have neither.
  */
+/** Used when IMPORT_DETECTION_MODEL isn't set. */
+export const DEFAULT_DETECTION_MODEL = "anthropic/claude-haiku-5.5";
+
+/**
+ * The AI Gateway model id to ask, e.g. "google/gemini-2.5-flash-lite".
+ * Overridable with IMPORT_DETECTION_MODEL so the model can follow what the
+ * team's Gateway plan allows (the free tier only serves some models)
+ * without a code change - only a redeploy, for the new value to apply.
+ */
+export function detectionModel(env: Record<string, string | undefined>): string {
+  return env.IMPORT_DETECTION_MODEL?.trim() || DEFAULT_DETECTION_MODEL;
+}
+
 export function isColumnDetectionEnabled(env: Record<string, string | undefined>): boolean {
   return Boolean(env.AI_GATEWAY_API_KEY || env.VERCEL);
 }

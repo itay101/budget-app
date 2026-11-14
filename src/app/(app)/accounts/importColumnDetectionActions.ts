@@ -7,13 +7,10 @@ import {
   DETECTION_INSTRUCTIONS,
   DETECTION_TIMEOUT_MS,
   buildDetectionPrompt,
+  detectionModel,
   parseDetectionRequest,
   type RawColumnDetection,
 } from "@/lib/importColumnDetection";
-
-// Small and fast: the whole call has DETECTION_TIMEOUT_MS before File
-// Import falls back to its header heuristics.
-const MODEL = "anthropic/claude-haiku-5.5";
 
 const field = z.object({
   column: z.number().int().nullable(),
@@ -56,7 +53,9 @@ export async function detectImportColumns(input: {
   await requireAccountAccess(request.accountId);
   try {
     const { output } = await generateText({
-      model: MODEL,
+      // Small and fast: the whole call has DETECTION_TIMEOUT_MS before File
+      // Import falls back to its header heuristics.
+      model: detectionModel(process.env),
       output: Output.object({ schema: detectionSchema }),
       system: DETECTION_INSTRUCTIONS,
       prompt: buildDetectionPrompt(request.sample),
