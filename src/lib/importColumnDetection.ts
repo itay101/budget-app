@@ -84,8 +84,12 @@ export function buildDetectionSample(table: string[][]): string[][] {
  * deployment's OIDC token, so `VERCEL` alone turns it on; elsewhere it needs
  * `AI_GATEWAY_API_KEY`. Local dev and e2e normally have neither.
  */
-/** Used when IMPORT_DETECTION_MODEL isn't set. */
-export const DEFAULT_DETECTION_MODEL = "anthropic/claude-haiku-5.5";
+/**
+ * Used when IMPORT_DETECTION_MODEL isn't set. Small and fast (no thinking
+ * by default), reliable at structured output, handles Hebrew headers, and
+ * served on the Gateway's free tier, which refuses Anthropic models.
+ */
+export const DEFAULT_DETECTION_MODEL = "google/gemini-2.5-flash-lite";
 
 /**
  * The AI Gateway model id to ask, e.g. "google/gemini-2.5-flash-lite".
