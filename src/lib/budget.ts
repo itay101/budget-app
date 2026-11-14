@@ -1,10 +1,11 @@
 import { cookies } from "next/headers";
 import { Prisma } from "@prisma/client";
-import type { AutoAssignCategory } from "@/lib/autoAssign";
+import type { AutoAssignCategory, AutoAssignHistory } from "@/lib/autoAssign";
 import {
   effectiveTarget,
   needFor,
   nextDue,
+  overfundedBy,
   planTotals,
   targetStatus,
   type PlanTotals,
@@ -375,6 +376,9 @@ export type BudgetMonthRows = {
   readyToAssign: ReadyToAssignBreakdown;
   /** Every category's Auto-Assign inputs, in display order (#219). */
   autoAssignCategories: AutoAssignCategory[];
+  /** The most an Auto-Assign run may add: Ready to Assign, or in an earlier
+   * month the lowest figure from it through the current month (#163). */
+  autoAssignLimit: number;
 };
 
 /** Works out a row's Target state from its stored target rows, whether this month is snoozed, and its
@@ -538,10 +542,16 @@ export async function getBudgetMonthRows(
   const categoryIds = groups.flatMap((g) => g.categories.map((c) => c.id));
 
   // Available rolls over month by month (ADR 0009, see balanceFor), so it
-  // needs every earlier month's assigned and activity per category.
+  // needs every earlier month's assigned and activity per category. An
+  // earlier month also loads through the current one: Auto-Assign there may
+  // only add what keeps every month up to now at $0 or more (#163). The
+  // extra months don't change this month's figures, which only read up to
+  // the month itself.
+  const isPast = month.getTime() < current.getTime();
+  const totalsBound = isPast ? startOfNextMonth(current) : nextMonth;
   const [{ assignedByMonth, activityByMonth }, readyToAssignTotals] = await Promise.all([
-    loadMonthlyTotals(categoryIds, nextMonth),
-    loadReadyToAssignTotals(budgetId, categoryIds, nextMonth),
+    loadMonthlyTotals(categoryIds, totalsBound),
+    loadReadyToAssignTotals(budgetId, categoryIds, totalsBound),
   ]);
 
   function categoryRow(category: (typeof groups)[number]["categories"][number]): BudgetCategoryRow {
@@ -615,9 +625,29 @@ export async function getBudgetMonthRows(
         available: row.available,
         needed: row.need?.needed ?? 0,
         due: nextDue(row.target, month),
+        overfunded: overfundedBy(row.target, row.need, { carriedIn: row.carriedIn, assigned: row.budgeted }, month),
+        history: autoAssignHistory(assignedByMonth.get(row.id), activityByMonth.get(row.id), month),
       };
     }),
   );
+
+  // Every ordinary category counts, hidden ones included (ADR 0009).
+  const readyToAssignIn = (m: Date) =>
+    readyToAssignFor({
+      month: m,
+      current,
+      incomeByMonth: readyToAssignTotals.incomeByMonth,
+      assignedByMonth,
+      assignedAfter: readyToAssignTotals.assignedAfter,
+      activityByMonth: new Map([...activityByMonth, [UNCATEGORIZED, readyToAssignTotals.uncategorizedByMonth]]),
+    });
+  const readyToAssign = readyToAssignIn(month);
+  // Adding money in an earlier month lowers it and every month after it, so
+  // Auto-Assign there may add only the lowest of those figures (#163).
+  let autoAssignLimit = readyToAssign.total;
+  for (let m = addMonths(month, 1); isPast && m.getTime() <= current.getTime(); m = addMonths(m, 1)) {
+    autoAssignLimit = Math.min(autoAssignLimit, readyToAssignIn(m).total);
+  }
 
   return {
     groups: visibleGroups,
@@ -625,18 +655,35 @@ export async function getBudgetMonthRows(
     hiddenCategories,
     totals: planTotals([...visibleRows, ...hiddenCategories]),
     autoAssignCategories,
-    // Every ordinary category counts, hidden ones included (ADR 0009).
-    readyToAssign: readyToAssignFor({
-      month,
-      current,
-      incomeByMonth: readyToAssignTotals.incomeByMonth,
-      assignedByMonth,
-      assignedAfter: readyToAssignTotals.assignedAfter,
-      activityByMonth: new Map([
-        ...activityByMonth,
-        [UNCATEGORIZED, readyToAssignTotals.uncategorizedByMonth],
-      ]),
-    }),
+    autoAssignLimit,
+    readyToAssign,
+  };
+}
+
+/**
+ * A category's Auto-Assign history (#147): the 12 months before `month`,
+ * oldest first, with where its Assigned and its Assigned-or-Activity start.
+ */
+function autoAssignHistory(
+  assigned: Map<string, number> | undefined,
+  activity: Map<string, number> | undefined,
+  month: Date,
+): AutoAssignHistory {
+  const keys = Array.from({ length: 12 }, (_, i) => formatBudgetMonth(addMonths(month, i - 12)));
+  const target = formatBudgetMonth(month);
+  const firstIndex = (months: (Map<string, number> | undefined)[]) => {
+    const earliest = months
+      .flatMap((m) => [...(m ?? [])].filter(([key, amount]) => key < target && amount !== 0).map(([key]) => key))
+      .sort()[0];
+    if (earliest === undefined) return null;
+    // Before the window counts from its start; inside it, from that month.
+    return earliest < keys[0] ? 0 : keys.indexOf(earliest);
+  };
+  return {
+    assigned: keys.map((key) => assigned?.get(key) ?? 0),
+    spent: keys.map((key) => Math.max(0, -(activity?.get(key) ?? 0))),
+    firstAssigned: firstIndex([assigned]),
+    firstActive: firstIndex([assigned, activity]),
   };
 }
 
