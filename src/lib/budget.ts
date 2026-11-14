@@ -16,7 +16,8 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { accessibleBudgetWhere } from "@/lib/authorization";
 import { auditedUpdate, diffFields, recordAuditEntry } from "@/lib/audit";
-import { DEFAULT_CATEGORY_GROUPS, seedCategoryGroups } from "@/lib/defaultCategories";
+import { seedCategoryGroups } from "@/lib/defaultCategories";
+import { FALLBACK_TEMPLATE_ID, getBudgetTemplate } from "@/lib/budgetTemplates";
 import {
   addMonths,
   currentBudgetMonth,
@@ -73,7 +74,12 @@ export async function getCurrentBudget() {
 
   try {
     return await prisma.$transaction((tx) =>
-      createBudgetWithDefaults(tx, { name: "My Budget", currency: "USD", ownerId: user.id }),
+      createBudgetFromTemplate(tx, {
+        name: "My Budget",
+        currency: "USD",
+        ownerId: user.id,
+        templateId: FALLBACK_TEMPLATE_ID,
+      }),
     );
   } catch (err) {
     // The layout and the page both resolve the current budget, so a new
@@ -92,14 +98,25 @@ export async function getCurrentBudget() {
 
 /**
  * Creates a Budget with its creation AuditEntry (ADR 0002) and seeds it
- * with DEFAULT_CATEGORY_GROUPS (#196), all on the caller's `tx` so they
- * commit or roll back together. Every path that opens a new budget goes
- * through here: createBudget and getCurrentBudget's first-visit fallback.
+ * with the chosen BudgetTemplate's category groups (#212), all on the
+ * caller's `tx` so they commit or roll back together. Every path that
+ * opens a new budget goes through here: createBudget and
+ * getCurrentBudget's first-visit fallback. Throws on an unknown
+ * `templateId` before writing anything.
  */
-export async function createBudgetWithDefaults(
+export async function createBudgetFromTemplate(
   tx: Prisma.TransactionClient,
-  { name, currency, ownerId }: { name: string; currency: string; ownerId: string },
+  {
+    name,
+    currency,
+    ownerId,
+    templateId,
+  }: { name: string; currency: string; ownerId: string; templateId: string },
 ) {
+  const template = getBudgetTemplate(templateId);
+  if (!template) {
+    throw new Error(`Unknown budget template: ${templateId}`);
+  }
   const created = await tx.budget.create({ data: { name, currency, ownerId } });
   await recordAuditEntry(tx, {
     budgetId: created.id,
@@ -112,7 +129,7 @@ export async function createBudgetWithDefaults(
   await seedCategoryGroups(tx, {
     budgetId: created.id,
     actorId: ownerId,
-    groups: DEFAULT_CATEGORY_GROUPS,
+    groups: template.groups,
   });
   return created;
 }

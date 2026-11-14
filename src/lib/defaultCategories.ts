@@ -7,10 +7,12 @@ export interface CategoryGroupSeed {
 }
 
 /**
- * The category groups (and their categories) every new budget starts with
- * (#196), in display order — array position becomes `sortOrder`. Copied
- * from the owner's household-budget sheet; Hebrew only, since the app has
- * no i18n yet (#199). Existing budgets are never seeded.
+ * The owner's household category groups (and their categories), which
+ * every new budget started with (#196) before templates (#212) — now the
+ * "Household" BudgetTemplate and the first-visit fallback. In display
+ * order — array position becomes `sortOrder`. Copied from the owner's
+ * household-budget sheet; Hebrew only, since the app has no i18n yet
+ * (#199). Existing budgets are never seeded.
  */
 export const DEFAULT_CATEGORY_GROUPS: readonly CategoryGroupSeed[] = [
   {
