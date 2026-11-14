@@ -16,7 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { accessibleBudgetWhere } from "@/lib/authorization";
 import { auditedUpdate, diffFields, recordAuditEntry } from "@/lib/audit";
-import { seedDefaultCategories } from "@/lib/defaultCategories";
+import { DEFAULT_CATEGORY_GROUPS, seedCategoryGroups } from "@/lib/defaultCategories";
 import {
   addMonths,
   currentBudgetMonth,
@@ -109,7 +109,11 @@ export async function createBudgetWithDefaults(
     actorId: ownerId,
     changes: diffFields({}, { name, currency, ownerId }),
   });
-  await seedDefaultCategories(tx, { budgetId: created.id, actorId: ownerId });
+  await seedCategoryGroups(tx, {
+    budgetId: created.id,
+    actorId: ownerId,
+    groups: DEFAULT_CATEGORY_GROUPS,
+  });
   return created;
 }
 
