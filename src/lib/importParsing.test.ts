@@ -259,6 +259,15 @@ describe("guessHeaderRowIndex", () => {
     expect(guessHeaderRowIndex(table)).toBe(3);
   });
 
+  it("recognizes day-first dates (day over 12) as data rows", () => {
+    const table = [
+      ["Account: Checking"],
+      ["Date", "Payee", "Amount"],
+      ["21/08/2026", "Coffee Shop", "-4.50"],
+    ];
+    expect(guessHeaderRowIndex(table)).toBe(1);
+  });
+
   it("falls back to row 0 when nothing in the scan window looks like data", () => {
     const table = [
       ["Some", "Header"],
