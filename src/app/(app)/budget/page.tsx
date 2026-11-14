@@ -5,6 +5,7 @@ import {
   getCurrentBudget,
 } from "@/lib/budget";
 import {
+  addMonths,
   currentBudgetMonth,
   formatBudgetMonth,
   monthLabel,
@@ -17,6 +18,7 @@ import {
   underfundedBanner,
 } from "@/lib/targetDisplay";
 import { MonthHeader } from "@/components/MonthHeader";
+import { ReadyToAssignPill } from "@/components/ReadyToAssignPill";
 import { AddCategoryGroupPopover } from "@/components/AddCategoryGroupPopover";
 import { CategoryGroupSection } from "@/components/CategoryGroupSection";
 import { HiddenCategoriesSection } from "@/components/HiddenCategoriesSection";
@@ -68,10 +70,8 @@ export default async function BudgetPage({
   const { month } = viewed;
   const monthKey = formatBudgetMonth(month);
 
-  const { groups, categoryOptions, hiddenCategories, totals } = await getBudgetMonthRows(
-    budget.id,
-    month,
-  );
+  const { groups, categoryOptions, hiddenCategories, totals, readyToAssign } =
+    await getBudgetMonthRows(budget.id, month, current);
 
   const filter = parseQuickFilter(params.filter);
   const allRows = [...groups.flatMap((group) => group.categories), ...hiddenCategories];
@@ -82,14 +82,24 @@ export default async function BudgetPage({
       <h1 className="text-h2 text-neutral-800 sm:text-h1">Budget</h1>
 
       {/* Sticky month toolbar (#136): under the mobile top bar on phones,
-          edge to edge there; at the top of the page from md up. */}
-      <div className="sticky top-mobile-nav z-10 -mx-200 border-y border-neutral-200 bg-neutral-100/95 px-200 py-1 backdrop-blur-sm md:top-0 md:mx-0 md:rounded-lg md:border md:bg-neutral-0/95 md:px-2">
+          edge to edge there; at the top of the page from md up. The Ready
+          to Assign pill sits at its end, wrapping to the right on phones. */}
+      <div className="sticky top-mobile-nav z-10 -mx-200 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-y border-neutral-200 bg-neutral-100/95 px-200 py-1 backdrop-blur-sm md:top-0 md:mx-0 md:rounded-lg md:border md:bg-neutral-0/95 md:px-2">
         <MonthHeader
           month={monthKey}
           current={formatBudgetMonth(current)}
           first={formatBudgetMonth(range.first)}
           last={formatBudgetMonth(range.last)}
         />
+        <div className="ms-auto">
+          <ReadyToAssignPill
+            breakdown={readyToAssign}
+            currency={budget.currency}
+            monthName={monthLabel(month)}
+            previousMonthName={monthLabel(addMonths(month, -1))}
+            isPast={month.getTime() < current.getTime()}
+          />
+        </div>
       </div>
 
       <div className="space-y-200">

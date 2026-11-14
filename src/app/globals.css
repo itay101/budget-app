@@ -71,6 +71,8 @@
   --spacing-300: 24px;
   --spacing-400: 32px;
   --spacing-mobile-nav: 57px;
+  /* The tallest a phone bottom sheet gets (#136). */
+  --spacing-sheet: 85vh;
 
   --grid-template-columns-budget: 1fr 120px 120px 120px;
   --grid-template-columns-budget-targets: minmax(9rem, 1fr) minmax(0, 2fr) 128px
