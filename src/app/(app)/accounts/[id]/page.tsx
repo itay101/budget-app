@@ -22,6 +22,7 @@ import {
   checkImportDuplicates,
   importTransactions,
 } from "../actions";
+import { isColumnDetectionEnabled } from "@/lib/importColumnDetection";
 
 export const dynamic = "force-dynamic";
 
@@ -121,6 +122,7 @@ export default async function AccountPage({
           accountBalance={account.balance}
           accountId={account.id}
           accountType={account.type}
+          columnDetection={isColumnDetectionEnabled(process.env)}
         />
       </div>
     </ReconciliationProvider>
