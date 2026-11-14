@@ -1,10 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "@/components/Icon";
-import { formatMilliunits } from "@/lib/money";
-import type { ReadyToAssignBreakdown, ReadyToAssignState } from "@/lib/readyToAssign";
+import { MoneyInput } from "@/components/MoneyInput";
+import { AvailableOptions } from "@/components/AvailableOptions";
+import { formatMilliunits, milliunitsToNumber, numberToMilliunits } from "@/lib/money";
+import {
+  READY_TO_ASSIGN,
+  type ReadyToAssignBreakdown,
+  type ReadyToAssignState,
+} from "@/lib/readyToAssign";
+
+type CategoryOption = { id: string; name: string; available: number };
+type GroupOption = { id: string; name: string; categories: CategoryOption[] };
 
 /**
  * Each Ready to Assign state's copy and colours (#136, variant B). Every
@@ -76,18 +85,27 @@ function BreakdownLine({
  * (ADR 0009). An earlier month shows its own figure, so it has no
  * "Assigned in future months" line.
  *
- * Assigning from Ready to Assign (#134), the Month summary (#181) and the
- * next-month warning (#183) aren't part of this yet.
+ * Below the Breakdown, Assign money moves money from Ready to Assign into
+ * a category (#217, #136). The Month summary (#181) and the next-month
+ * warning (#183) aren't part of this yet.
  */
 export function ReadyToAssignPill({
   breakdown,
   currency,
+  month,
   monthName,
   previousMonthName,
   isPast,
+  categoryOptions,
+  transferAvailable,
 }: {
   breakdown: ReadyToAssignBreakdown;
   currency: string;
+  /** The viewed Budget Month, `YYYY-MM`. */
+  month: string;
+  /** Every category money can be assigned to, grouped, with its Available. */
+  categoryOptions: GroupOption[];
+  transferAvailable: (formData: FormData) => Promise<void>;
   /** The viewed month, e.g. "November 2026". */
   monthName: string;
   /** The month before it, e.g. "October 2026". */
@@ -215,10 +233,173 @@ export function ReadyToAssignPill({
                   </dd>
                 </div>
               </dl>
+
+              <AssignMoneyForm
+                total={breakdown.total}
+                currency={currency}
+                month={month}
+                groups={categoryOptions}
+                transferAvailable={transferAvailable}
+                onDone={() => setOpen(false)}
+              />
             </div>
           </div>,
           document.body,
         )}
     </>
+  );
+}
+
+/**
+ * The drawer's Assign money form (#136): an amount, prefilled with all of
+ * Ready to Assign when it's positive, and a category, with a preview of
+ * both figures afterwards. Assigning more than there is turns the preview
+ * red but stays allowed (#134). All arithmetic is in milliunits.
+ */
+function AssignMoneyForm({
+  total,
+  currency,
+  month,
+  groups,
+  transferAvailable,
+  onDone,
+}: {
+  total: number;
+  currency: string;
+  month: string;
+  groups: GroupOption[];
+  transferAvailable: (formData: FormData) => Promise<void>;
+  onDone: () => void;
+}) {
+  const categories = groups.flatMap((group) => group.categories);
+  const [amountInput, setAmountInput] = useState(() => prefillAmount(total));
+  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? "");
+  const [pending, startTransition] = useTransition();
+
+  if (categories.length === 0) return null;
+
+  const amount = Math.max(0, numberToMilliunits(Number(amountInput) || 0));
+  const category = categories.find((c) => c.id === categoryId) ?? categories[0];
+  const readyAfter = total - amount;
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    startTransition(async () => {
+      await transferAvailable(formData);
+      onDone();
+    });
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-300 space-y-2" aria-label="Assign money">
+      <h3 className="text-small font-medium uppercase tracking-wide text-neutral-600">
+        Assign money
+      </h3>
+      <input type="hidden" name="fromCategoryId" value={READY_TO_ASSIGN} />
+      <input type="hidden" name="month" value={month} />
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-small text-neutral-600" htmlFor="assign-amount">
+            Amount
+          </label>
+          <MoneyInput
+            id="assign-amount"
+            name="amount"
+            currency={currency}
+            min="0.01"
+            required
+            value={amountInput}
+            onChange={(e) => setAmountInput(e.target.value)}
+            className="mt-1 w-full rounded-sm border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-hidden focus:ring-1 focus:ring-brand-700"
+          />
+        </div>
+        <div>
+          <label className="block text-small text-neutral-600" htmlFor="assign-to">
+            To
+          </label>
+          <select
+            id="assign-to"
+            name="toCategoryId"
+            required
+            value={category.id}
+            onChange={(e) => setCategoryId(e.target.value)}
+            className="mt-1 w-full rounded-sm border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-hidden focus:ring-1 focus:ring-brand-700"
+          >
+            <AvailableOptions groups={groups} currency={currency} />
+          </select>
+        </div>
+      </div>
+
+      <AssignPreview
+        readyAfter={readyAfter}
+        categoryName={category.name}
+        categoryAfter={category.available + amount}
+        currency={currency}
+      />
+      <AssignButton pending={pending} disabled={amount <= 0} />
+    </form>
+  );
+}
+
+/** What Ready to Assign and the chosen category will be after assigning.
+ * Not a <dl>: the drawer's only description list is the Breakdown. */
+function AssignPreview({
+  readyAfter,
+  categoryName,
+  categoryAfter,
+  currency,
+}: {
+  readyAfter: number;
+  categoryName: string;
+  categoryAfter: number;
+  currency: string;
+}) {
+  const overAssigned = readyAfter < 0;
+  const readyClass = overAssigned ? "font-semibold text-target-overspent-fg" : "text-neutral-800";
+  return (
+    <>
+      <div aria-label="After assigning" className="rounded-sm bg-neutral-100 px-2 py-1 text-small">
+        <p className="flex justify-between gap-2">
+          <span className="text-neutral-600">Ready to Assign after</span>
+          <span className={`tabular-nums ${readyClass}`}>
+            <Amount milliunits={readyAfter} currency={currency} />
+          </span>
+        </p>
+        <p className="flex justify-between gap-2">
+          <span className="text-neutral-600">
+            <bdi>{categoryName}</bdi> after
+          </span>
+          <span className="tabular-nums text-neutral-800">
+            <Amount milliunits={categoryAfter} currency={currency} />
+          </span>
+        </p>
+      </div>
+      {overAssigned && (
+        <p role="status" className="text-small text-target-overspent-fg">
+          This assigns more than you have. You can still do it.
+        </p>
+      )}
+    </>
+  );
+}
+
+/** The amount Assign money starts with: all of Ready to Assign when it's
+ * positive, otherwise empty. */
+function prefillAmount(total: number): string {
+  return total > 0 ? String(milliunitsToNumber(total)) : "";
+}
+
+function AssignButton({ pending, disabled }: { pending: boolean; disabled: boolean }) {
+  return (
+    <div className="flex justify-end">
+      <button
+        type="submit"
+        disabled={pending || disabled}
+        className="rounded-sm bg-brand-700 px-3 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+      >
+        {pending ? "Assigning…" : "Assign"}
+      </button>
+    </div>
   );
 }

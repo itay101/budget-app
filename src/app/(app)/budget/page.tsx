@@ -96,6 +96,9 @@ export default async function BudgetPage({
           <ReadyToAssignPill
             breakdown={readyToAssign}
             currency={budget.currency}
+            month={monthKey}
+            categoryOptions={categoryOptions}
+            transferAvailable={transferAvailable}
             monthName={monthLabel(month)}
             previousMonthName={monthLabel(addMonths(month, -1))}
             isPast={month.getTime() < current.getTime()}
