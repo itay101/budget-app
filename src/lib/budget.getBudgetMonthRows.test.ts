@@ -8,6 +8,7 @@ jest.mock("@/lib/prisma", () => ({
     },
     categoryMonth: {
       findMany: jest.fn(),
+      aggregate: jest.fn(),
     },
     $queryRaw: jest.fn(),
   },
@@ -15,24 +16,38 @@ jest.mock("@/lib/prisma", () => ({
 
 const mockFindMany = jest.mocked(prisma.categoryGroup.findMany);
 const mockAssignments = jest.mocked(prisma.categoryMonth.findMany);
-const mockActivityByMonth = jest.mocked(prisma.$queryRaw);
+const mockAssignedLater = jest.mocked(prisma.categoryMonth.aggregate);
+// Two raw queries run: the categories' per-month activity, and Ready to
+// Assign's on-budget income and Uncategorized totals (its SQL selects a
+// "kind" column). $queryRaw hands each call to its own stub.
+const mockActivityByMonth = jest.fn();
+const mockReadyToAssignRows = jest.fn();
 
 // Budget Months are UTC firsts-of-month (#124); Jest's TZ=Asia/Jerusalem
 // would expose any local-time month math.
 const month = new Date(Date.UTC(2026, 2, 1)); // Mar 1, 2026 UTC
 const nextMonth = new Date(Date.UTC(2026, 3, 1)); // Apr 1, 2026 UTC
+// The current Budget Month, passed explicitly so the tests don't depend on
+// today's date.
+const current = month;
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockAssignments.mockResolvedValue([]);
-  mockActivityByMonth.mockResolvedValue([] as never);
+  mockAssignedLater.mockResolvedValue({ _sum: { budgeted: null } } as never);
+  mockActivityByMonth.mockResolvedValue([]);
+  mockReadyToAssignRows.mockResolvedValue([]);
+  jest.mocked(prisma.$queryRaw).mockImplementation(((sql: TemplateStringsArray, ...values: unknown[]) =>
+    sql.join("").includes('"kind"')
+      ? mockReadyToAssignRows(sql, ...values)
+      : mockActivityByMonth(sql, ...values)) as never);
 });
 
 describe("getBudgetMonthRows", () => {
   it("scopes the category-group query to the given budget and the month boundary to lt nextMonth", async () => {
     mockFindMany.mockResolvedValue([]);
 
-    await getBudgetMonthRows("budget-1", month);
+    await getBudgetMonthRows("budget-1", month, current);
 
     expect(mockFindMany).toHaveBeenCalledWith({
       // The system Inflow group is never a section of the page (ADR 0008).
@@ -67,7 +82,7 @@ describe("getBudgetMonthRows", () => {
       },
     ] as never);
 
-    await getBudgetMonthRows("budget-1", month);
+    await getBudgetMonthRows("budget-1", month, current);
 
     expect(mockAssignments).toHaveBeenCalledWith({
       where: { categoryId: { in: ["cat-1"] }, month: { lt: nextMonth }, budgeted: { not: 0 } },
@@ -107,7 +122,7 @@ describe("getBudgetMonthRows", () => {
       { categoryId: "cat-1", month: "2026-03", amount: BigInt(-2000) },
     ] as never);
 
-    const result = await getBudgetMonthRows("budget-1", month);
+    const result = await getBudgetMonthRows("budget-1", month, current);
 
     expect(result.groups).toEqual([
       {
@@ -140,7 +155,7 @@ describe("getBudgetMonthRows", () => {
       { id: "group-1", name: "Empty Group", categories: [] },
     ] as never);
 
-    const result = await getBudgetMonthRows("budget-1", month);
+    const result = await getBudgetMonthRows("budget-1", month, current);
 
     expect(result.groups).toEqual([
       { id: "group-1", name: "Empty Group", isEmpty: true, categories: [] },
@@ -164,7 +179,7 @@ describe("getBudgetMonthRows", () => {
       },
     ] as never);
 
-    const result = await getBudgetMonthRows("budget-1", month);
+    const result = await getBudgetMonthRows("budget-1", month, current);
 
     expect(result.groups).toEqual([
       { id: "group-1", name: "Mixed", isEmpty: false, categories: [] },
@@ -195,7 +210,7 @@ describe("getBudgetMonthRows", () => {
       },
     ] as never);
 
-    const result = await getBudgetMonthRows("budget-1", month);
+    const result = await getBudgetMonthRows("budget-1", month, current);
 
     expect(result.groups[0].categories).toEqual([
       expect.objectContaining({ id: "cat-visible" }),
@@ -222,7 +237,7 @@ describe("getBudgetMonthRows", () => {
       },
     ] as never);
 
-    const result = await getBudgetMonthRows("budget-1", month);
+    const result = await getBudgetMonthRows("budget-1", month, current);
 
     expect(result.categoryOptions).toEqual([
       {
@@ -252,7 +267,7 @@ describe("getBudgetMonthRows", () => {
       { categoryId: "cat-1", month: "2026-02", amount: BigInt(-5000) },
     ] as never);
 
-    const result = await getBudgetMonthRows("budget-1", month);
+    const result = await getBudgetMonthRows("budget-1", month, current);
 
     expect(result.groups[0].categories[0]).toMatchObject({ carriedIn: 0, available: 1000 });
     expect(result.categoryOptions[0].categories[0].available).toBe(1000);
@@ -270,7 +285,7 @@ describe("getBudgetMonthRows", () => {
       { categoryId: "cat-hidden", month: "2026-02", amount: BigInt(-3000) },
     ] as never);
 
-    const result = await getBudgetMonthRows("budget-1", month);
+    const result = await getBudgetMonthRows("budget-1", month, current);
 
     expect(result.hiddenCategories[0]).toMatchObject({ carriedIn: 0, available: 0 });
   });
@@ -300,7 +315,7 @@ describe("getBudgetMonthRows", () => {
     ] as never);
     mockAssignments.mockResolvedValue([{ categoryId: "rent", month, budgeted: 1000 }] as never);
 
-    const result = await getBudgetMonthRows("budget-1", month);
+    const result = await getBudgetMonthRows("budget-1", month, current);
 
     expect(result.groups[0].categories).toEqual([
       expect.objectContaining({ id: "rent", status: "underfunded", snoozed: false, need: { ask: 4000, needed: 3000 } }),
@@ -351,7 +366,7 @@ describe("getBudgetMonthRows", () => {
     mockAssignments.mockResolvedValue([{ categoryId: "food", month, budgeted: 5000 }] as never);
     mockActivityByMonth.mockResolvedValue([{ categoryId: "power", month: "2026-03", amount: BigInt(-4000) }] as never);
 
-    const result = await getBudgetMonthRows("budget-1", month);
+    const result = await getBudgetMonthRows("budget-1", month, current);
 
     expect(result.groups[0].categories[0]).toMatchObject({ available: -4000, overspending: 4000, status: "overspent" });
     expect(result.hiddenCategories[0]).toMatchObject({ available: 5000, overspending: 0 });
@@ -377,7 +392,7 @@ describe("getBudgetMonthRows", () => {
       },
     ] as never);
 
-    const result = await getBudgetMonthRows("budget-1", month);
+    const result = await getBudgetMonthRows("budget-1", month, current);
 
     expect(result.groups[0].categories[0]).toMatchObject({ target: null, need: null, status: "none" });
   });
@@ -419,7 +434,7 @@ describe("getBudgetMonthRows", () => {
       { categoryId: "insurance", month: "2026-01", amount: BigInt(-600000) },
     ] as never);
 
-    const result = await getBudgetMonthRows("budget-1", month);
+    const result = await getBudgetMonthRows("budget-1", month, current);
 
     // ($1,200 - $600 set aside this cycle) / Mar..Jun (4 months) = $150.
     expect(result.groups[0].categories[0]).toMatchObject({
