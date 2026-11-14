@@ -75,7 +75,9 @@ assigned, never any transaction. Moving money to Ready to Assign un-assigns
 it, and it can leave the category's assigned amount below zero. Moving
 money from Ready to Assign assigns it, even when that leaves Ready to
 Assign negative. That includes a Budget Month before the current one,
-where it also lowers Ready to Assign in every later month.
+where it also lowers Ready to Assign in every later month. It starts from
+a category, moving money out of it or into it, or from the Ready to
+Assign drawer's Assign money form (#217).
 _Avoid_: Transfer (that's money between Accounts), reallocate
 
 **Delete Category**:
