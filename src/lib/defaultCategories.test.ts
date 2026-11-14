@@ -128,3 +128,31 @@ describe("seedCategoryGroups", () => {
     });
   });
 });
+
+describe("seedCategoryGroups edge cases", () => {
+  it("writes nothing for an empty list (a Blank budget)", async () => {
+    const tx = mockTx();
+    await seedCategoryGroups(tx as never, { budgetId: "b-1", actorId: "u-1", groups: [] });
+
+    expect(tx.categoryGroup.createManyAndReturn).not.toHaveBeenCalled();
+    expect(tx.category.createManyAndReturn).not.toHaveBeenCalled();
+    expect(tx.auditEntry.create).not.toHaveBeenCalled();
+    expect(tx.auditEntry.createMany).not.toHaveBeenCalled();
+  });
+
+  it("seeds any given list, skipping the category insert when no group has categories", async () => {
+    const tx = mockTx();
+    await seedCategoryGroups(tx as never, {
+      budgetId: "b-1",
+      actorId: "u-1",
+      groups: [{ name: "Empty", categories: [] }],
+    });
+
+    expect(tx.categoryGroup.createManyAndReturn).toHaveBeenCalledWith({
+      data: [{ budgetId: "b-1", name: "Empty", sortOrder: 0 }],
+    });
+    expect(tx.category.createManyAndReturn).not.toHaveBeenCalled();
+    const { data } = tx.auditEntry.createMany.mock.calls[0][0];
+    expect(data).toHaveLength(1);
+  });
+});
