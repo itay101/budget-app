@@ -1,19 +1,30 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { formatMilliunits } from "@/lib/money";
+import { READY_TO_ASSIGN } from "@/lib/readyToAssign";
 import { MoneyInput } from "@/components/MoneyInput";
+import { AvailableOptions } from "@/components/AvailableOptions";
+import { useReadyToAssign } from "@/components/ReadyToAssignContext";
 import { usePopover } from "@/components/usePopover";
 
 type CategoryOption = { id: string; name: string; available: number };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
 
+type Direction = "out" | "in";
+
 /**
  * The "Available" figure for a category, rendered as a button that opens a
- * small popover (YNAB-style) for moving that money into another category —
- * click the amount, enter how much and where, done. No restriction on the
- * source going negative; see the `transferAvailable` action.
+ * small popover (YNAB-style) for Move Money: click the amount, enter how
+ * much and where, done.
+ *
+ * "Out of" (the default) moves money from this category to another one or
+ * back to Ready to Assign. "Into" pulls money into this category from Ready
+ * to Assign or another category (#217, amending #134). Ready to Assign, the
+ * viewed month's figure, is always the first option, so the button is
+ * always enabled. Nothing stops either side going negative; see the
+ * `transferAvailable` action.
  */
 export function MoveMoneyPopover({
   categoryId,
@@ -33,55 +44,80 @@ export function MoveMoneyPopover({
   transferAvailable: (formData: FormData) => Promise<void>;
 }) {
   const [pending, startTransition] = useTransition();
+  const readyToAssign = useReadyToAssign();
+  const [direction, setDirection] = useState<Direction>("out");
   const { open, setOpen, position, triggerRef, panelRef } = usePopover({
     width: 256, // matches the popover's w-64
     align: "right",
+    onDismiss: () => setDirection("out"),
   });
-
-  const hasOtherCategories = groups.some((group) =>
-    group.categories.some((c) => c.id !== categoryId),
-  );
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    // The select picks the other side; the switch decides which side it is.
+    const other = String(formData.get("other") ?? "");
+    formData.delete("other");
+    formData.set("fromCategoryId", direction === "out" ? categoryId : other);
+    formData.set("toCategoryId", direction === "out" ? other : categoryId);
     startTransition(async () => {
       await transferAvailable(formData);
       setOpen(false);
+      setDirection("out");
     });
   }
+
+  const selectLabel = direction === "out" ? "To" : "From";
 
   return (
     <>
       <button
         ref={triggerRef}
         type="button"
-        disabled={!hasOtherCategories}
         onClick={() => setOpen((o) => !o)}
-        title={hasOtherCategories ? "Move money" : undefined}
+        title="Move money"
         className={
-          "w-full rounded-sm px-1 py-0.5 text-right font-medium " +
-          (available < 0 ? "text-danger" : "text-success") +
-          (hasOtherCategories ? " hover:bg-neutral-100" : " cursor-default")
+          "w-full rounded-sm px-1 py-0.5 text-right font-medium hover:bg-neutral-100 " +
+          (available < 0 ? "text-danger" : "text-success")
         }
       >
         {formatMilliunits(available, currency)}
       </button>
 
       {open &&
-        hasOtherCategories &&
         position &&
         createPortal(
           <div
             ref={panelRef}
+            role="dialog"
+            aria-label={`Move money for ${categoryName}`}
             style={{ position: "fixed", top: position.top, left: position.left }}
             className="z-50 w-64 max-w-[calc(100vw-1rem)] rounded-lg border border-neutral-200 bg-neutral-0 p-3 text-left shadow-lg"
           >
-            <p className="mb-2 text-small font-medium text-neutral-800">
-              Move money from {categoryName}
-            </p>
+            <div
+              role="radiogroup"
+              aria-label="Direction"
+              className="mb-2 grid grid-cols-2 gap-1 rounded-sm bg-neutral-100 p-0.5 text-small"
+            >
+              {(["out", "in"] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={direction === value}
+                  onClick={() => setDirection(value)}
+                  className={
+                    "truncate rounded-sm px-2 py-1 font-medium " +
+                    (direction === value
+                      ? "bg-neutral-0 text-neutral-800 shadow-sm"
+                      : "text-neutral-600 hover:text-neutral-800")
+                  }
+                >
+                  {value === "out" ? "Out of" : "Into"} <bdi>{categoryName}</bdi>
+                </button>
+              ))}
+            </div>
             <form onSubmit={handleSubmit} className="space-y-2">
-              <input type="hidden" name="fromCategoryId" value={categoryId} />
               <input type="hidden" name="month" value={month} />
               <div>
                 <label
@@ -103,37 +139,31 @@ export function MoveMoneyPopover({
               <div>
                 <label
                   className="block text-small text-neutral-600"
-                  htmlFor={`to-${categoryId}`}
+                  htmlFor={`other-${categoryId}`}
                 >
-                  To
+                  {selectLabel}
                 </label>
                 <select
-                  id={`to-${categoryId}`}
-                  name="toCategoryId"
+                  id={`other-${categoryId}`}
+                  name="other"
                   required
                   className="mt-1 w-full rounded-sm border border-neutral-200 px-2 py-1 text-body focus:border-brand-700 focus:outline-hidden focus:ring-1 focus:ring-brand-700"
                 >
-                  {groups.map((group) => {
-                    const options = group.categories.filter(
-                      (c) => c.id !== categoryId,
-                    );
-                    if (options.length === 0) return null;
-                    return (
-                      <optgroup key={group.id} label={group.name}>
-                        {options.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name} — {formatMilliunits(c.available, currency)}
-                          </option>
-                        ))}
-                      </optgroup>
-                    );
-                  })}
+                  {readyToAssign !== null && (
+                    <option value={READY_TO_ASSIGN}>
+                      Ready to Assign: {formatMilliunits(readyToAssign, currency)}
+                    </option>
+                  )}
+                  <AvailableOptions groups={groups} currency={currency} exclude={categoryId} />
                 </select>
               </div>
               <div className="flex justify-end gap-2 pt-1">
                 <button
                   type="button"
-                  onClick={() => setOpen(false)}
+                  onClick={() => {
+                    setOpen(false);
+                    setDirection("out");
+                  }}
                   className="rounded-sm px-2 py-1 text-small text-neutral-600 hover:bg-neutral-100"
                 >
                   Cancel

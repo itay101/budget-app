@@ -19,6 +19,7 @@ import {
 } from "@/lib/targetDisplay";
 import { MonthHeader } from "@/components/MonthHeader";
 import { ReadyToAssignPill } from "@/components/ReadyToAssignPill";
+import { ReadyToAssignProvider } from "@/components/ReadyToAssignContext";
 import { AddCategoryGroupPopover } from "@/components/AddCategoryGroupPopover";
 import { CategoryGroupSection } from "@/components/CategoryGroupSection";
 import { HiddenCategoriesSection } from "@/components/HiddenCategoriesSection";
@@ -95,6 +96,9 @@ export default async function BudgetPage({
           <ReadyToAssignPill
             breakdown={readyToAssign}
             currency={budget.currency}
+            month={monthKey}
+            categoryOptions={categoryOptions}
+            transferAvailable={transferAvailable}
             monthName={monthLabel(month)}
             previousMonthName={monthLabel(addMonths(month, -1))}
             isPast={month.getTime() < current.getTime()}
@@ -113,58 +117,60 @@ export default async function BudgetPage({
         <QuickFilterBar counts={quickFilterCounts(allRows)} month={monthKey} filter={filter} />
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-0">
-        <div className="flex items-center justify-between gap-2 border-b border-neutral-200 bg-neutral-100 px-200 py-2 text-small font-medium uppercase tracking-wide text-neutral-600 sm:grid sm:grid-cols-budget lg:grid-cols-budget-targets lg:gap-x-4">
-          <div className="flex items-center gap-2">
-            <span>Category</span>
-            <AddCategoryGroupPopover createCategoryGroup={createCategoryGroup} />
+      <ReadyToAssignProvider total={readyToAssign.total}>
+        <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-0">
+          <div className="flex items-center justify-between gap-2 border-b border-neutral-200 bg-neutral-100 px-200 py-2 text-small font-medium uppercase tracking-wide text-neutral-600 sm:grid sm:grid-cols-budget lg:grid-cols-budget-targets lg:gap-x-4">
+            <div className="flex items-center gap-2">
+              <span>Category</span>
+              <AddCategoryGroupPopover createCategoryGroup={createCategoryGroup} />
+            </div>
+            <div className="hidden lg:block">Target · {monthLabel(month, "short")}</div>
+            <div className="hidden text-right sm:block">Budgeted</div>
+            <div className="hidden text-right sm:block">Activity</div>
+            <div className="hidden text-right sm:block">Available</div>
           </div>
-          <div className="hidden lg:block">Target · {monthLabel(month, "short")}</div>
-          <div className="hidden text-right sm:block">Budgeted</div>
-          <div className="hidden text-right sm:block">Activity</div>
-          <div className="hidden text-right sm:block">Available</div>
+
+          {table.groups.map((group) => (
+            <CategoryGroupSection
+              key={group.id}
+              groupId={group.id}
+              groupName={group.name}
+              month={monthKey}
+              currency={budget.currency}
+              isEmpty={group.isEmpty}
+              createCategory={createCategory}
+              renameCategoryGroup={renameCategoryGroup}
+              renameCategory={renameCategory}
+              deleteCategoryGroup={deleteCategoryGroup}
+              moveCategory={moveCategory}
+              setBudgeted={setBudgeted}
+              setCategoryHidden={setCategoryHidden}
+              transferAvailable={transferAvailable}
+              targetActions={targetActions}
+              categoryOptions={categoryOptions}
+              categories={group.categories}
+            />
+          ))}
+
+          {table.emptyMessage && (
+            <div className="px-200 py-300 text-body text-neutral-600">{table.emptyMessage}</div>
+          )}
+
+          {table.hiddenSection.length > 0 && (
+            <HiddenCategoriesSection
+              month={monthKey}
+              currency={budget.currency}
+              renameCategory={renameCategory}
+              setBudgeted={setBudgeted}
+              setCategoryHidden={setCategoryHidden}
+              transferAvailable={transferAvailable}
+              targetActions={targetActions}
+              categoryOptions={categoryOptions}
+              categories={table.hiddenSection}
+            />
+          )}
         </div>
-
-        {table.groups.map((group) => (
-          <CategoryGroupSection
-            key={group.id}
-            groupId={group.id}
-            groupName={group.name}
-            month={monthKey}
-            currency={budget.currency}
-            isEmpty={group.isEmpty}
-            createCategory={createCategory}
-            renameCategoryGroup={renameCategoryGroup}
-            renameCategory={renameCategory}
-            deleteCategoryGroup={deleteCategoryGroup}
-            moveCategory={moveCategory}
-            setBudgeted={setBudgeted}
-            setCategoryHidden={setCategoryHidden}
-            transferAvailable={transferAvailable}
-            targetActions={targetActions}
-            categoryOptions={categoryOptions}
-            categories={group.categories}
-          />
-        ))}
-
-        {table.emptyMessage && (
-          <div className="px-200 py-300 text-body text-neutral-600">{table.emptyMessage}</div>
-        )}
-
-        {table.hiddenSection.length > 0 && (
-          <HiddenCategoriesSection
-            month={monthKey}
-            currency={budget.currency}
-            renameCategory={renameCategory}
-            setBudgeted={setBudgeted}
-            setCategoryHidden={setCategoryHidden}
-            transferAvailable={transferAvailable}
-            targetActions={targetActions}
-            categoryOptions={categoryOptions}
-            categories={table.hiddenSection}
-          />
-        )}
-      </div>
+      </ReadyToAssignProvider>
     </div>
   );
 }

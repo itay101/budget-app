@@ -148,3 +148,37 @@ export function readyToAssignFor({
     state: total > 0 ? "positive" : total < 0 ? "negative" : "zero",
   };
 }
+
+/**
+ * Stands in for Ready to Assign as either side of a Move Money
+ * (`transferAvailable`'s fromCategoryId/toCategoryId, #134). It's not a
+ * category id, and it can never be one: ids are cuids.
+ */
+export const READY_TO_ASSIGN = "READY_TO_ASSIGN";
+
+/** One category's change to its viewed month's `budgeted`, in milliunits. */
+export interface MoveLeg {
+  categoryId: string;
+  delta: number;
+}
+
+/**
+ * The `budgeted` changes a Move Money of `amount` makes. Ready to Assign
+ * is derived, so a move to or from it changes only the other category:
+ * moving from Ready to Assign assigns money (+amount), and moving to it
+ * un-assigns money (−amount), even below 0. Throws for a move with the
+ * same thing on both sides, Ready to Assign included.
+ */
+export function moveLegs(fromId: string, toId: string, amount: number): MoveLeg[] {
+  if (fromId === toId) {
+    throw new Error(
+      fromId === READY_TO_ASSIGN
+        ? "Cannot move money from Ready to Assign to Ready to Assign"
+        : "Cannot move money to the same category",
+    );
+  }
+  const legs: MoveLeg[] = [];
+  if (fromId !== READY_TO_ASSIGN) legs.push({ categoryId: fromId, delta: -amount });
+  if (toId !== READY_TO_ASSIGN) legs.push({ categoryId: toId, delta: amount });
+  return legs;
+}

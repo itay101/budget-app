@@ -33,6 +33,18 @@ function breakdown(overrides: Partial<ReadyToAssignBreakdown>): ReadyToAssignBre
   };
 }
 
+const categoryOptions = [
+  {
+    id: "g-1",
+    name: "Bills",
+    categories: [
+      { id: "rent", name: "Rent", available: 10_000 },
+      { id: "power", name: "Power", available: -5_000 },
+    ],
+  },
+];
+const transferAvailable = jest.fn((_formData: FormData) => Promise.resolve());
+
 function render(value: ReadyToAssignBreakdown, isPast = false) {
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -42,9 +54,12 @@ function render(value: ReadyToAssignBreakdown, isPast = false) {
       <ReadyToAssignPill
         breakdown={value}
         currency="USD"
+        month="2026-11"
         monthName="November 2026"
         previousMonthName="October 2026"
         isPast={isPast}
+        categoryOptions={categoryOptions}
+        transferAvailable={transferAvailable}
       />,
     ),
   );
@@ -106,5 +121,60 @@ describe("ReadyToAssignPill", () => {
     openDrawer(render(breakdown({})));
     act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
     expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+});
+
+describe("ReadyToAssignPill's Assign money form", () => {
+  function assignForm(total: number) {
+    const drawer = openDrawer(render(breakdown({ total, state: total > 0 ? "positive" : total < 0 ? "negative" : "zero" })));
+    return drawer.querySelector('form[aria-label="Assign money"]') as HTMLFormElement;
+  }
+
+  function setAmount(form: HTMLFormElement, value: string) {
+    const input = form.querySelector('input[name="amount"]') as HTMLInputElement;
+    // React tracks the value itself; go through the native setter so onChange fires.
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => {
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
+  it("prefills all of a positive Ready to Assign and previews both figures", () => {
+    const form = assignForm(15_000);
+    expect((form.querySelector('input[name="amount"]') as HTMLInputElement).value).toBe("15");
+
+    const preview = [...form.querySelectorAll('[aria-label="After assigning"] > p')].map((row) => row.textContent);
+    expect(preview).toEqual(["Ready to Assign after$0.00", "Rent after$25.00"]);
+    expect(form.textContent).not.toContain("assigns more than you have");
+  });
+
+  it("leaves the amount empty when there's nothing to assign", () => {
+    const form = assignForm(-5_000);
+    expect((form.querySelector('input[name="amount"]') as HTMLInputElement).value).toBe("");
+  });
+
+  it("turns the preview red when assigning more than there is, and still allows it", async () => {
+    const form = assignForm(15_000);
+    setAmount(form, "20");
+
+    expect(form.textContent).toContain("Ready to Assign after-$5.00");
+    expect(form.querySelector('[role="status"]')!.textContent).toBe(
+      "This assigns more than you have. You can still do it.",
+    );
+    const assign = form.querySelector('button[type="submit"]') as HTMLButtonElement;
+    expect(assign.disabled).toBe(false);
+
+    transferAvailable.mockClear();
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    const data = transferAvailable.mock.calls[0][0];
+    expect([data.get("fromCategoryId"), data.get("toCategoryId"), data.get("amount"), data.get("month")]).toEqual([
+      "READY_TO_ASSIGN",
+      "rent",
+      "20",
+      "2026-11",
+    ]);
   });
 });
