@@ -95,13 +95,10 @@ export async function createAccount(formData: FormData) {
       user.id,
     );
     // An on-budget cash account's Starting Balance is Ready to Assign
-    // income (ADR 0008). A credit or loan account's follows the
-    // credit-card rules instead (ADR 0010), so it stays uncategorized
-    // until those exist.
-    const categoryId =
-      onBudget && !isDebtAccountType(type)
-        ? await readyToAssignCategoryId(tx, budget.id)
-        : null;
+    // income (ADR 0008). `onBudget` is false exactly for credit and loan
+    // accounts, whose Starting Balance follows the credit-card rules
+    // instead (ADR 0010), so it stays uncategorized until those exist.
+    const categoryId = onBudget ? await readyToAssignCategoryId(tx, budget.id) : null;
 
     await auditedCreate({
       tx,
@@ -393,7 +390,10 @@ export async function updateTransaction(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
-    if (data.categoryId !== undefined) {
+    // Only a changed category is checked: the row editor resends the
+    // current one with every edit, and a row whose account later went
+    // off-budget must still be editable (and re-categorizable) there.
+    if (data.categoryId !== undefined && data.categoryId !== transaction.categoryId) {
       await assertCategoryUsable(tx, data.categoryId, {
         budgetId: transaction.account.budgetId,
         accountId: transaction.accountId,

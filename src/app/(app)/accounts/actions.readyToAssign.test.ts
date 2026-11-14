@@ -95,7 +95,7 @@ describe("transaction category checks", () => {
       amount: 1000,
       date: new Date(),
       payeeId: null,
-      categoryId: null,
+      categoryId: "category-old",
       memo: null,
       account: { budgetId: "budget-1" },
     } as never);
@@ -109,6 +109,10 @@ describe("transaction category checks", () => {
 
     jest.mocked(assertCategoryUsable).mockClear();
     await updateTransaction(form({ transactionId: "t-1", memo: "lunch" }));
+    // The row editor resends the unchanged category with every edit. That
+    // mustn't be re-checked, or a Ready to Assign row on an account that
+    // later went off-budget could never be edited again.
+    await updateTransaction(form({ transactionId: "t-1", categoryId: "category-old", memo: "lunch" }));
     expect(assertCategoryUsable).not.toHaveBeenCalled();
   });
 });
