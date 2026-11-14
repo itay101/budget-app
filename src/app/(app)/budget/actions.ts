@@ -17,6 +17,7 @@ import {
 } from "@/lib/audit";
 import { numberToMilliunits } from "@/lib/money";
 import { effectiveTarget, parseTargetInput, type Target } from "@/lib/targets";
+import { assertNotSystem } from "@/lib/systemCategories";
 
 /**
  * Creates a new category group, appended after every existing group in
@@ -67,7 +68,8 @@ export async function createCategory(formData: FormData) {
   if (!categoryGroupId || !name) {
     throw new Error("Category group and name are required");
   }
-  const { user, budgetId } = await requireCategoryGroupAccess(categoryGroupId);
+  const { user, budgetId, systemKind } = await requireCategoryGroupAccess(categoryGroupId);
+  assertNotSystem(systemKind);
 
   const last = await prisma.category.findFirst({
     where: { categoryGroupId },
@@ -107,7 +109,8 @@ export async function renameCategoryGroup(formData: FormData) {
   if (!name) {
     throw new Error("Category group name is required");
   }
-  const { user, budgetId } = await requireCategoryGroupAccess(categoryGroupId);
+  const { user, budgetId, systemKind } = await requireCategoryGroupAccess(categoryGroupId);
+  assertNotSystem(systemKind);
 
   const before = await prisma.categoryGroup.findUniqueOrThrow({
     where: { id: categoryGroupId },
@@ -147,7 +150,8 @@ export async function renameCategory(formData: FormData) {
   if (!name) {
     throw new Error("Category name is required");
   }
-  const { user, budgetId } = await requireCategoryAccess(categoryId);
+  const { user, budgetId, systemKind } = await requireCategoryAccess(categoryId);
+  assertNotSystem(systemKind);
 
   const before = await prisma.category.findUniqueOrThrow({
     where: { id: categoryId },
@@ -186,7 +190,8 @@ export async function setCategoryHidden(formData: FormData) {
   if (!categoryId) {
     throw new Error("categoryId is required");
   }
-  const { user, budgetId } = await requireCategoryAccess(categoryId);
+  const { user, budgetId, systemKind } = await requireCategoryAccess(categoryId);
+  assertNotSystem(systemKind);
 
   const before = await prisma.category.findUniqueOrThrow({
     where: { id: categoryId },
@@ -222,7 +227,8 @@ export async function deleteCategoryGroup(formData: FormData) {
   if (!categoryGroupId) {
     throw new Error("categoryGroupId is required");
   }
-  const { user, budgetId } = await requireCategoryGroupAccess(categoryGroupId);
+  const { user, budgetId, systemKind } = await requireCategoryGroupAccess(categoryGroupId);
+  assertNotSystem(systemKind);
 
   const categoryCount = await prisma.category.count({
     where: { categoryGroupId },
@@ -272,12 +278,15 @@ export async function moveCategory(formData: FormData) {
   }
 
   const [
-    { user, budgetId: sourceBudgetId },
-    { budgetId: targetBudgetId },
+    { user, budgetId: sourceBudgetId, systemKind: categoryKind },
+    { budgetId: targetBudgetId, systemKind: groupKind },
   ] = await Promise.all([
     requireCategoryAccess(categoryId),
     requireCategoryGroupAccess(targetGroupId),
   ]);
+  // Inflow: Ready to Assign can't leave its group, and nothing can join it.
+  assertNotSystem(categoryKind);
+  assertNotSystem(groupKind);
   // Both ids are independently authorized above, but a move across
   // budgets would still corrupt data (a Category's budget is implied by
   // its CategoryGroup) even between two budgets the same user can
@@ -352,11 +361,17 @@ export async function transferAvailable(formData: FormData) {
     throw new Error("Cannot move money to the same category");
   }
 
-  const [{ user, budgetId: fromBudgetId }, { budgetId: toBudgetId }] =
-    await Promise.all([
-      requireCategoryAccess(fromCategoryId),
-      requireCategoryAccess(toCategoryId),
-    ]);
+  const [
+    { user, budgetId: fromBudgetId, systemKind: fromKind },
+    { budgetId: toBudgetId, systemKind: toKind },
+  ] = await Promise.all([
+    requireCategoryAccess(fromCategoryId),
+    requireCategoryAccess(toCategoryId),
+  ]);
+  // Inflow: Ready to Assign is never assigned to. Moving money to or from
+  // Ready to Assign itself is a separate sentinel (#134), not this row.
+  assertNotSystem(fromKind);
+  assertNotSystem(toKind);
   if (fromBudgetId !== toBudgetId) {
     throw new Error("Cannot move money between different budgets");
   }
@@ -418,17 +433,8 @@ export async function transferAvailable(formData: FormData) {
 }
 
 export async function setBudgeted(formData: FormData) {
-  const categoryId = String(formData.get("categoryId") ?? "");
-  const monthInput = String(formData.get("month") ?? "");
-  const amountInput = String(formData.get("amount") ?? "0");
-
-  if (!categoryId || !monthInput) {
-    throw new Error("categoryId and month are required");
-  }
-  const { user, budgetId } = await requireCategoryAccess(categoryId);
-
-  const month = await requireNavigableMonth(budgetId, monthInput);
-  const budgeted = numberToMilliunits(Number(amountInput) || 0);
+  const { categoryId, month, actorId, budgetId } = await requireCategoryMonth(formData);
+  const budgeted = numberToMilliunits(Number(formData.get("amount") ?? "0") || 0);
 
   const before = await prisma.categoryMonth.findUnique({
     where: { categoryId_month: { categoryId, month } },
@@ -449,7 +455,7 @@ export async function setBudgeted(formData: FormData) {
       entityType: "CATEGORY_MONTH",
       entityId: categoryMonth.id,
       action: "updated",
-      actorId: user.id,
+      actorId,
       changes: diffFields({ budgeted: before?.budgeted ?? 0 }, { budgeted }),
     });
   });
@@ -457,21 +463,23 @@ export async function setBudgeted(formData: FormData) {
   revalidatePath("/budget");
 }
 
-/** The category and viewed month every target action starts from,
- * authorized the same way setBudgeted is. */
-async function requireTargetContext(formData: FormData) {
+/** The category and viewed month setBudgeted and every target action
+ * start from: authorized, refused for the system Inflow: Ready to Assign
+ * category, and the month checked to be navigable. */
+async function requireCategoryMonth(formData: FormData) {
   const categoryId = String(formData.get("categoryId") ?? "");
   const monthInput = String(formData.get("month") ?? "");
 
   if (!categoryId || !monthInput) {
     throw new Error("categoryId and month are required");
   }
-  const { user, budgetId } = await requireCategoryAccess(categoryId);
+  const { user, budgetId, systemKind } = await requireCategoryAccess(categoryId);
+  assertNotSystem(systemKind);
   const month = await requireNavigableMonth(budgetId, monthInput);
   return { categoryId, month, actorId: user.id, budgetId };
 }
 
-type TargetContext = Awaited<ReturnType<typeof requireTargetContext>>;
+type TargetContext = Awaited<ReturnType<typeof requireCategoryMonth>>;
 
 const TARGET_FIELDS = {
   kind: true,
@@ -544,7 +552,7 @@ async function targetInEffect({ categoryId, month }: TargetContext): Promise<Tar
  * rejects incomplete targets.
  */
 export async function setTarget(formData: FormData) {
-  const context = await requireTargetContext(formData);
+  const context = await requireCategoryMonth(formData);
   const fields = ["kind", "cadence", "amount", "weekday", "dueDay", "dueDate", "dated", "dueMonth"] as const;
   const target = parseTargetInput(
     Object.fromEntries(fields.map((field) => [field, String(formData.get(field) ?? "")])),
@@ -558,7 +566,7 @@ export async function setTarget(formData: FormData) {
  * applies in that month.
  */
 export async function removeTarget(formData: FormData) {
-  const context = await requireTargetContext(formData);
+  const context = await requireCategoryMonth(formData);
   if (!(await targetInEffect(context))) {
     return;
   }
@@ -577,7 +585,7 @@ export async function removeTarget(formData: FormData) {
  * wakes up on its own the next month, and doesn't start a new target row.
  */
 export async function snoozeTarget(formData: FormData) {
-  const context = await requireTargetContext(formData);
+  const context = await requireCategoryMonth(formData);
   const { categoryId, month, actorId, budgetId } = context;
 
   if (!(await targetInEffect(context))) {
@@ -609,7 +617,7 @@ export async function snoozeTarget(formData: FormData) {
 /** Wakes a snoozed target for the viewed month. A no-op when it isn't
  * snoozed. */
 export async function unsnoozeTarget(formData: FormData) {
-  const { categoryId, month, actorId, budgetId } = await requireTargetContext(formData);
+  const { categoryId, month, actorId, budgetId } = await requireCategoryMonth(formData);
 
   const existing = await prisma.categoryTargetSnooze.findUnique({
     where: { categoryId_month: { categoryId, month } },

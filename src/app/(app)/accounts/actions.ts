@@ -25,6 +25,7 @@ import {
 } from "@/lib/accountTypes";
 import { applyBalanceDelta, applyBalanceDeltas, findOrCreatePayee } from "./ledger";
 import { STARTING_BALANCE_PAYEE } from "@/lib/payees";
+import { assertCategoryUsable, readyToAssignCategoryId } from "@/lib/systemCategories";
 
 /**
  * The revalidatePath tail every account/transaction mutation below ends
@@ -98,6 +99,11 @@ export async function createAccount(
       STARTING_BALANCE_PAYEE,
       user.id,
     );
+    // An on-budget cash account's Starting Balance is Ready to Assign
+    // income (ADR 0008). `onBudget` is false exactly for credit and loan
+    // accounts, whose Starting Balance follows the credit-card rules
+    // instead (ADR 0010), so it stays uncategorized until those exist.
+    const categoryId = onBudget ? await readyToAssignCategoryId(tx, budget.id) : null;
 
     await auditedCreate({
       tx,
@@ -109,6 +115,7 @@ export async function createAccount(
           data: {
             accountId: account.id,
             payeeId,
+            categoryId,
             date: new Date(),
             amount: balance,
             memo: "Starting balance",
@@ -119,6 +126,7 @@ export async function createAccount(
       fields: (t) => ({
         accountId: account.id,
         payeeId,
+        categoryId,
         date: t.date,
         amount: balance,
         memo: "Starting balance",
@@ -160,6 +168,7 @@ export async function createTransaction(formData: FormData) {
   const date = new Date(dateInput);
 
   await prisma.$transaction(async (tx) => {
+    await assertCategoryUsable(tx, categoryId, { budgetId, accountId });
     const payeeId = payeeName
       ? await findOrCreatePayee(tx, budgetId, payeeName, user.id)
       : null;
@@ -389,6 +398,15 @@ export async function updateTransaction(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
+    // Only a changed category is checked: the row editor resends the
+    // current one with every edit, and a row whose account later went
+    // off-budget must still be editable (and re-categorizable) there.
+    if (data.categoryId !== undefined && data.categoryId !== transaction.categoryId) {
+      await assertCategoryUsable(tx, data.categoryId, {
+        budgetId: transaction.account.budgetId,
+        accountId: transaction.accountId,
+      });
+    }
     if (payeeName !== undefined) {
       data.payeeId = payeeName
         ? await findOrCreatePayee(tx, transaction.account.budgetId, payeeName, user.id)

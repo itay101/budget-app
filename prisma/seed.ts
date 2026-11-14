@@ -48,16 +48,34 @@ async function main() {
     data: { budgetId: budget.id, name: "Starting Balance" },
   });
 
+  // Every Budget's system Inflow group and its Inflow: Ready to Assign
+  // category (ADR 0008), as createBudgetFromTemplate seeds them.
+  const inflow = await prisma.categoryGroup.create({
+    data: {
+      budgetId: budget.id,
+      name: "Inflow",
+      sortOrder: -1,
+      systemKind: "INFLOW",
+      categories: {
+        create: { name: "Inflow: Ready to Assign", sortOrder: 0, systemKind: "READY_TO_ASSIGN" },
+      },
+    },
+    include: { categories: true },
+  });
+  const readyToAssign = inflow.categories[0]!;
+
   // Starting-balance transactions, so each account's transaction list sums
   // to its cached balance instead of the balance being an unexplained
   // number with nothing behind it. Checking's is offset by the grocery
   // purchase and last month's electric bill below so the account still
-  // ends up at $1,500.00.
+  // ends up at $1,500.00. It's on-budget cash, so it's Ready to Assign
+  // income; the off-budget card's stays uncategorized (ADR 0008).
   await prisma.transaction.createMany({
     data: [
       {
         accountId: checking.id,
         payeeId: startingBalance.id,
+        categoryId: readyToAssign.id,
         date: new Date(),
         amount: 1_624_990,
         memo: "Starting balance",

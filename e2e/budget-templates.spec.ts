@@ -42,8 +42,10 @@ async function seededGroups(budgetName: string) {
   const budget = await prisma.budget.findFirstOrThrow({
     where: { name: budgetName, ownerId: E2E_TEST_USER_ID, deleted: false },
   });
+  // Only the template's own groups: every budget also gets the system
+  // Inflow group (ADR 0008), which no template chooses.
   return prisma.categoryGroup.findMany({
-    where: { budgetId: budget.id },
+    where: { budgetId: budget.id, systemKind: null },
     orderBy: { sortOrder: "asc" },
     include: { categories: { orderBy: { sortOrder: "asc" } } },
   });

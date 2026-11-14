@@ -93,28 +93,36 @@ export async function requireTransactionAccess(transactionId: string) {
   return { user, budgetId: transaction.account.budgetId };
 }
 
-/** Authorizes access to a CategoryGroup by id, via its Budget. */
+/** Authorizes access to a CategoryGroup by id, via its Budget. Also
+ * returns its `systemKind`, so an action can refuse to edit the system
+ * Inflow group (assertNotSystem, src/lib/systemCategories.ts). */
 export async function requireCategoryGroupAccess(categoryGroupId: string) {
   const group = await prisma.categoryGroup.findUnique({
     where: { id: categoryGroupId },
-    select: { budgetId: true },
+    select: { budgetId: true, systemKind: true },
   });
   if (!group) {
     throw new Error("Category group not found");
   }
   const { user } = await requireBudgetAccess(group.budgetId);
-  return { user, budgetId: group.budgetId };
+  return { user, budgetId: group.budgetId, systemKind: group.systemKind };
 }
 
-/** Authorizes access to a Category by id, via its CategoryGroup's Budget. */
+/** Authorizes access to a Category by id, via its CategoryGroup's Budget.
+ * Also returns its `systemKind`, so an action can refuse to edit
+ * Inflow: Ready to Assign (assertNotSystem, src/lib/systemCategories.ts). */
 export async function requireCategoryAccess(categoryId: string) {
   const category = await prisma.category.findUnique({
     where: { id: categoryId },
-    select: { categoryGroup: { select: { budgetId: true } } },
+    select: { systemKind: true, categoryGroup: { select: { budgetId: true } } },
   });
   if (!category) {
     throw new Error("Category not found");
   }
   const { user } = await requireBudgetAccess(category.categoryGroup.budgetId);
-  return { user, budgetId: category.categoryGroup.budgetId };
+  return {
+    user,
+    budgetId: category.categoryGroup.budgetId,
+    systemKind: category.systemKind,
+  };
 }

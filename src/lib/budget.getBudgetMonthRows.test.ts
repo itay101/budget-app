@@ -35,7 +35,8 @@ describe("getBudgetMonthRows", () => {
     await getBudgetMonthRows("budget-1", month);
 
     expect(mockFindMany).toHaveBeenCalledWith({
-      where: { budgetId: "budget-1" },
+      // The system Inflow group is never a section of the page (ADR 0008).
+      where: { budgetId: "budget-1", systemKind: null },
       orderBy: { sortOrder: "asc" },
       include: {
         categories: {

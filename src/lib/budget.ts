@@ -18,6 +18,7 @@ import { accessibleBudgetWhere } from "@/lib/authorization";
 import { auditedUpdate, diffFields, recordAuditEntry } from "@/lib/audit";
 import { seedCategoryGroups } from "@/lib/defaultCategories";
 import { FALLBACK_TEMPLATE_ID, getBudgetTemplate } from "@/lib/budgetTemplates";
+import { seedSystemCategories } from "@/lib/systemCategories";
 import {
   addMonths,
   currentBudgetMonth,
@@ -98,7 +99,8 @@ export async function getCurrentBudget() {
 
 /**
  * Creates a Budget with its creation AuditEntry (ADR 0002) and seeds it
- * with the chosen BudgetTemplate's category groups (#212), all on the
+ * with its system Inflow: Ready to Assign category (ADR 0008), then the
+ * chosen BudgetTemplate's category groups (#212), all on the
  * caller's `tx` so they commit or roll back together. Every path that
  * opens a new budget goes through here: createBudget and
  * getCurrentBudget's first-visit fallback. Throws on an unknown
@@ -126,6 +128,7 @@ export async function createBudgetFromTemplate(
     actorId: ownerId,
     changes: diffFields({}, { name, currency, ownerId }),
   });
+  await seedSystemCategories(tx, { budgetId: created.id, actorId: ownerId });
   await seedCategoryGroups(tx, {
     budgetId: created.id,
     actorId: ownerId,
@@ -455,8 +458,11 @@ export async function getBudgetMonthRows(
 ): Promise<BudgetMonthRows> {
   const nextMonth = startOfNextMonth(month);
 
+  // The system Inflow group isn't a section of the budget page (ADR
+  // 0008): Inflow: Ready to Assign can't be assigned to, and its money is
+  // the Ready to Assign figure instead of a row.
   const groups = await prisma.categoryGroup.findMany({
-    where: { budgetId },
+    where: { budgetId, systemKind: null },
     orderBy: { sortOrder: "asc" },
     include: {
       categories: {

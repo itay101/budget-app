@@ -14,8 +14,16 @@ function mockTx() {
     budget: {
       create: jest.fn(({ data }: { data: object }) => Promise.resolve({ id: "b-1", ...data })),
     },
-    categoryGroup: { createManyAndReturn: jest.fn(withIds) },
-    category: { createManyAndReturn: jest.fn(withIds) },
+    // The system Inflow group and its category are single creates
+    // (seedSystemCategories); a template's groups are batched.
+    categoryGroup: {
+      create: jest.fn(({ data }: { data: object }) => Promise.resolve({ id: "inflow", ...data })),
+      createManyAndReturn: jest.fn(withIds),
+    },
+    category: {
+      create: jest.fn(({ data }: { data: object }) => Promise.resolve({ id: "rta", ...data })),
+      createManyAndReturn: jest.fn(withIds),
+    },
     auditEntry: { create: jest.fn(), createMany: jest.fn() },
   };
 }
@@ -44,15 +52,22 @@ describe("createBudgetFromTemplate", () => {
     expect(categories.map((c) => c.name)).toEqual(template.groups.flatMap((g) => g.categories));
   });
 
-  it("seeds nothing beyond the budget for Blank", async () => {
+  it("seeds only the system Inflow: Ready to Assign category for Blank (ADR 0008)", async () => {
     const tx = mockTx();
     await createBudgetFromTemplate(tx as never, { ...owner, templateId: "blank" });
 
     expect(tx.budget.create).toHaveBeenCalledTimes(1);
     expect(tx.auditEntry.create).toHaveBeenCalledTimes(1);
+    expect(tx.categoryGroup.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ budgetId: "b-1", systemKind: "INFLOW" }),
+    });
+    expect(tx.category.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ categoryGroupId: "inflow", systemKind: "READY_TO_ASSIGN" }),
+    });
     expect(tx.categoryGroup.createManyAndReturn).not.toHaveBeenCalled();
     expect(tx.category.createManyAndReturn).not.toHaveBeenCalled();
-    expect(tx.auditEntry.createMany).not.toHaveBeenCalled();
+    // One batch of audit entries: the system group and its category.
+    expect(tx.auditEntry.createMany).toHaveBeenCalledTimes(1);
   });
 
   it("rejects an unknown template before writing anything", async () => {
