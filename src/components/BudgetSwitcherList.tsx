@@ -6,6 +6,7 @@ import { Icon } from "@/components/Icon";
 import { usePopover } from "@/components/usePopover";
 import { useServerAction } from "@/components/useServerAction";
 import { CollaboratorManager, type CollaboratorActions } from "@/components/CollaboratorManager";
+import { BudgetTemplatePicker } from "@/components/BudgetTemplatePicker";
 
 type Collaborator = { userId: string; email: string };
 type PendingInvite = { id: string; email: string };
@@ -147,10 +148,8 @@ export function BudgetSwitcherList({
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     try {
-      await createAction.run({
-        name: String(formData.get("name") ?? ""),
-        currency: String(formData.get("currency") ?? ""),
-      });
+      // name, currency and template (BudgetTemplatePicker): all strings.
+      await createAction.run(Object.fromEntries(formData) as Record<string, string>);
       formRef.current?.reset();
       setAdding(false);
       setOpen(false);
@@ -371,6 +370,7 @@ export function BudgetSwitcherList({
                       ))}
                     </select>
                   </div>
+                  <BudgetTemplatePicker />
                   <div className="flex justify-end gap-2 pt-1">
                     <button
                       type="button"
