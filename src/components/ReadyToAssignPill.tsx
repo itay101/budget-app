@@ -274,24 +274,67 @@ export function ReadyToAssignPill({
           document.body,
         )}
 
-      {lastRun && (
-        <Toast
-          message={autoAssignMessage(lastRun, currency)}
-          actionLabel={lastRun.applied.length > 0 ? "Undo" : undefined}
-          onAction={() => {
-            const run = lastRun;
-            setLastRun(null);
-            const formData = new FormData();
-            formData.set("option", run.option);
-            formData.set("month", run.month);
-            formData.set("rows", JSON.stringify(run.applied));
-            void undoAutoAssign(formData);
-          }}
-          onClose={() => setLastRun(null)}
-        />
-      )}
+      <AutoAssignToasts
+        run={lastRun}
+        currency={currency}
+        undoAutoAssign={undoAutoAssign}
+        onRunClosed={() => setLastRun(null)}
+      />
     </>
   );
+}
+
+/**
+ * The toast after an Auto-Assign run, with Undo for as long as the page
+ * stays open (#219), then a short note on how the Undo went.
+ */
+function AutoAssignToasts({
+  run,
+  currency,
+  undoAutoAssign,
+  onRunClosed,
+}: {
+  run: AutoAssignDone | null;
+  currency: string;
+  undoAutoAssign: AutoAssignAction;
+  onRunClosed: () => void;
+}) {
+  const [undoNote, setUndoNote] = useState<string | null>(null);
+
+  async function undo(done: AutoAssignDone) {
+    onRunClosed();
+    const formData = new FormData();
+    formData.set("option", done.option);
+    formData.set("month", done.month);
+    formData.set("rows", JSON.stringify(done.applied));
+    try {
+      const result = await undoAutoAssign(formData);
+      setUndoNote(undoMessage(result.applied.length, result.skipped.length));
+    } catch (e) {
+      setUndoNote(`Undo failed: ${e instanceof Error ? e.message : "please try again"}`);
+    }
+  }
+
+  return (
+    <>
+      {run && (
+        <Toast
+          message={autoAssignMessage(run, currency)}
+          actionLabel={run.applied.length > 0 ? "Undo" : undefined}
+          onAction={() => void undo(run)}
+          onClose={onRunClosed}
+        />
+      )}
+      {undoNote && <Toast message={undoNote} onClose={() => setUndoNote(null)} />}
+    </>
+  );
+}
+
+/** The note after an Undo, e.g. "Undid 3 changes" or, when some had been
+ * edited since the run, how many were left as they were. */
+export function undoMessage(undone: number, skipped: number): string {
+  const done = `Undid ${undone} ${undone === 1 ? "change" : "changes"}`;
+  return skipped > 0 ? `${done}; ${skipped} changed since and left as is` : done;
 }
 
 /** The toast after an Auto-Assign run, e.g. "Assigned $40.00 to 3

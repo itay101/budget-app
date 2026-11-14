@@ -7,7 +7,8 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { AutoAssignMenu } from "@/components/AutoAssignMenu";
-import { autoAssignMessage } from "@/components/ReadyToAssignPill";
+import { autoAssignMessage, undoMessage } from "@/components/ReadyToAssignPill";
+import { Toast } from "@/components/Toast";
 import type { AutoAssignCategory } from "@/lib/autoAssign";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -94,5 +95,42 @@ describe("AutoAssignMenu", () => {
     expect(autoAssignMessage({ ...run, total: -5_000, skipped: 2 }, "USD")).toBe(
       "Freed $5.00 from 1 category (2 changed since the preview, skipped)",
     );
+  });
+
+  it("phrases the note after an Undo", () => {
+    expect(undoMessage(3, 0)).toBe("Undid 3 changes");
+    expect(undoMessage(1, 2)).toBe("Undid 1 change; 2 changed since and left as is");
+  });
+});
+
+describe("Toast", () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  function renderToast(props: Partial<Parameters<typeof Toast>[0]>) {
+    const onClose = jest.fn();
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => root.render(<Toast message="Assigned $40.00 to 1 category" onClose={onClose} {...props} />));
+    return onClose;
+  }
+
+  it("keeps a toast with an action (Undo) until it's used or dismissed", () => {
+    const onAction = jest.fn();
+    const onClose = renderToast({ actionLabel: "Undo", onAction });
+    act(() => jest.advanceTimersByTime(60 * 60_000));
+    expect(onClose).not.toHaveBeenCalled();
+
+    act(() => (document.querySelector('[role="status"] button') as HTMLButtonElement).click());
+    expect(onAction).toHaveBeenCalled();
+  });
+
+  it("hides a toast without an action after its duration", () => {
+    const onClose = renderToast({ duration: 6_000 });
+    act(() => jest.advanceTimersByTime(5_999));
+    expect(onClose).not.toHaveBeenCalled();
+    act(() => jest.advanceTimersByTime(1));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
