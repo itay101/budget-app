@@ -15,6 +15,8 @@ import { READY_TO_ASSIGN } from "@/lib/readyToAssign";
 let container: HTMLDivElement;
 let root: Root;
 const transferAvailable = jest.fn((_formData: FormData) => Promise.resolve());
+const noop = jest.fn((_formData: FormData) => Promise.resolve({ applied: [], skipped: [] }));
+const autoAssign = { categories: [], limit: 0, run: noop, undo: noop };
 
 const groups = [
   {
@@ -34,7 +36,7 @@ beforeEach(() => {
   root = createRoot(container);
   act(() =>
     root.render(
-      <ReadyToAssignProvider total={55_000}>
+      <ReadyToAssignProvider total={55_000} autoAssign={autoAssign}>
         <MoveMoneyPopover
           categoryId="rent"
           categoryName="Rent"
