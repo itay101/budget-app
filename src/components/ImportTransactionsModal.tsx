@@ -4,15 +4,16 @@ import { useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { readImportFile } from "@/lib/spreadsheet";
 import {
-  cleanCell,
-  detectDateOrder,
   guessColumn,
   guessHeaderRowIndex,
   HEADER_HINTS,
-  parseImportAmount,
-  parseImportDate,
   type DateOrder,
 } from "@/lib/importParsing";
+import {
+  buildImportPreview,
+  type ColumnMapping,
+  type PreviewRow,
+} from "@/lib/importPreview";
 import { formatMilliunits, numberToMilliunits } from "@/lib/money";
 import { Icon } from "@/components/Icon";
 import { ImportFileError, useImportFileError } from "@/components/ImportFailureReport";
@@ -24,44 +25,11 @@ import {
 } from "@/lib/importMappingPreferences";
 
 type Step = "select" | "mapping" | "preview";
-type AmountMode = "single" | "split";
-
-type Mapping = {
-  date: number | null;
-  payee: number | null;
-  memo: number | null;
-  amountMode: AmountMode;
-  amount: number | null;
-  inflow: number | null;
-  outflow: number | null;
-};
-
-type PreviewRow = ImportRow & {
-  rowIndex: number; // 1-based position in the file, for the error list
-  error: string | null;
-  duplicate: boolean;
-  included: boolean;
-};
+type Mapping = ColumnMapping;
 
 // <select> sentinel for "no column chosen" - "" is already the header-index
 // string for column 0, so it can't double as "none".
 const NONE = "__none__";
-
-function parseSingleAmount(raw: string): number | null {
-  return parseImportAmount(raw);
-}
-
-// Combines an Inflow/Outflow column pair into one signed amount, same
-// "whichever side has a value wins" rule the manual entry row uses. Blank
-// cells on both sides means the row has no amount at all (an error);
-// blank on one side just means that side is zero.
-function parseSplitAmount(inflowRaw: string, outflowRaw: string): number | null {
-  if (!inflowRaw.trim() && !outflowRaw.trim()) return null;
-  const inflow = inflowRaw.trim() ? parseImportAmount(inflowRaw) : 0;
-  const outflow = outflowRaw.trim() ? parseImportAmount(outflowRaw) : 0;
-  if (inflow === null || outflow === null) return null;
-  return inflow !== 0 ? Math.abs(inflow) : -Math.abs(outflow);
-}
 
 /**
  * File Import (#35): a three-step modal (choose file → map columns →
@@ -206,75 +174,7 @@ export function ImportTransactionsModal({
   }
 
   function buildPreview(): PreviewRow[] {
-    const resolvedDateOrder: DateOrder =
-      dateOrder === "auto"
-        ? detectDateOrder(
-            dataRows.map((cells) =>
-              mapping.date !== null ? (cells[mapping.date] ?? "") : "",
-            ),
-          )
-        : dateOrder;
-
-    return dataRows.map((cells, i) => {
-      const rawCell = (index: number | null) =>
-        index !== null ? (cells[index] ?? "") : "";
-      const cell = (index: number | null) => cleanCell(rawCell(index));
-
-      const rawDate = rawCell(mapping.date);
-      const date = parseImportDate(cell(mapping.date), resolvedDateOrder);
-      const payeeName = cell(mapping.payee);
-      const memo = cell(mapping.memo);
-      const parsedAmount =
-        mapping.amountMode === "single"
-          ? parseSingleAmount(cell(mapping.amount))
-          : parseSplitAmount(cell(mapping.inflow), cell(mapping.outflow));
-      // Flip only applies in single-column mode: separate Inflow/Outflow
-      // columns already carry explicit direction (that's the whole point
-      // of mapping them separately), so flipping there would turn a
-      // refund into a charge instead of fixing anything.
-      const amount =
-        parsedAmount === null
-          ? null
-          : flipSign && mapping.amountMode === "single"
-            ? -parsedAmount
-            : parsedAmount;
-
-      let error: string | null = null;
-      if (!date) {
-        error = "Invalid or missing date";
-        // A date that fails to parse despite looking fine on screen is
-        // exactly the failure mode an invisible character or a Unicode
-        // look-alike produces (see cleanCell) - neither shows up in a
-        // screenshot, so logging the exact codepoints here means that
-        // class of bug never again has to be diagnosed by guessing from
-        // one. Only logs when there's something to see: a genuinely blank
-        // cell isn't a mystery.
-        if (typeof window !== "undefined" && rawDate) {
-          console.warn(
-            `[File Import] row ${i + 1}: Date column didn't parse`,
-            {
-              raw: rawDate,
-              rawCodePoints: Array.from(rawDate, (c) =>
-                "U+" + c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0"),
-              ),
-              cleaned: cell(mapping.date),
-              order: resolvedDateOrder,
-            },
-          );
-        }
-      } else if (amount === null) error = "Invalid or missing amount";
-
-      return {
-        rowIndex: i + 1,
-        date: date ?? "",
-        payeeName,
-        memo,
-        amount: amount ?? 0,
-        error,
-        duplicate: false,
-        included: error === null,
-      };
-    });
+    return buildImportPreview({ dataRows, mapping, dateOrder, flipSign });
   }
 
   // A blank/missing header is saved as null rather than "" - see
