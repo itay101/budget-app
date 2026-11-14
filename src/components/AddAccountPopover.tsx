@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { ACCOUNT_TYPE_OPTIONS } from "@/lib/accountTypes";
 import { MoneyInput } from "@/components/MoneyInput";
 import { AddFormPopover } from "@/components/AddFormPopover";
@@ -7,15 +8,18 @@ import { AddFormPopover } from "@/components/AddFormPopover";
 /**
  * The sidebar's "+ Add account" button, opening a small popover (same
  * pattern as MoveMoneyPopover) with the create-account form, instead of
- * navigating to the Accounts page.
+ * navigating to the Accounts page. Once the account is created it opens
+ * that account's page (#195); a failed create keeps the popover open with
+ * its error and stays put.
  */
 export function AddAccountPopover({
   createAccount,
   currency,
 }: {
-  createAccount: (formData: FormData) => Promise<void>;
+  createAccount: (formData: FormData) => Promise<{ id: string }>;
   currency: string;
 }) {
+  const router = useRouter();
   return (
     <AddFormPopover
       triggerLabel="Add account"
@@ -23,6 +27,7 @@ export function AddAccountPopover({
       title="Add account"
       submitLabel="Add account"
       onSubmit={createAccount}
+      onSuccess={({ id }) => router.push(`/accounts/${id}`)}
     >
       <div>
         <label

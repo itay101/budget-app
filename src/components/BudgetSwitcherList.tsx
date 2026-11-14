@@ -6,6 +6,7 @@ import { Icon } from "@/components/Icon";
 import { usePopover } from "@/components/usePopover";
 import { useServerAction } from "@/components/useServerAction";
 import { CollaboratorManager, type CollaboratorActions } from "@/components/CollaboratorManager";
+import { BudgetTemplateDialog } from "@/components/BudgetTemplateDialog";
 
 type Collaborator = { userId: string; email: string };
 type PendingInvite = { id: string; email: string };
@@ -96,7 +97,6 @@ export function BudgetSwitcherList({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const switchAction = useServerAction(switchBudget);
   const defaultAction = useServerAction(setDefaultBudget);
-  const createAction = useServerAction(createBudget);
   const renameAction = useServerAction(renameBudget);
   const deleteAction = useServerAction(deleteBudget);
   const leaveAction = useServerAction(leaveBudget);
@@ -104,14 +104,12 @@ export function BudgetSwitcherList({
   const pending =
     switchAction.pending ||
     defaultAction.pending ||
-    createAction.pending ||
     renameAction.pending ||
     deleteAction.pending ||
     leaveAction.pending;
   const actionError =
     switchAction.error ||
     defaultAction.error ||
-    createAction.error ||
     deleteAction.error ||
     leaveAction.error;
   const { open, setOpen, position, triggerRef, panelRef } = usePopover({
@@ -123,6 +121,9 @@ export function BudgetSwitcherList({
     },
   });
   const formRef = useRef<HTMLFormElement>(null);
+  // Name + currency from the new-budget form, held while the template
+  // dialog (outside the popover) is open.
+  const [newBudget, setNewBudget] = useState<{ name: string; currency: string } | null>(null);
   const owned = budgets.filter((b) => b.isOwner);
   const shared = budgets.filter((b) => !b.isOwner);
 
@@ -143,21 +144,17 @@ export function BudgetSwitcherList({
     }
   }
 
-  async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
+  function handleChooseTemplate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    try {
-      await createAction.run({
-        name: String(formData.get("name") ?? ""),
-        currency: String(formData.get("currency") ?? ""),
-      });
-      formRef.current?.reset();
-      setAdding(false);
-      setOpen(false);
-    } catch {
-      // error is surfaced via createAction.error
-    }
+    setNewBudget({
+      name: String(formData.get("name")),
+      currency: String(formData.get("currency")),
+    });
+    setAdding(false);
+    setOpen(false);
   }
+
 
   async function handleToggleDefault(budget: BudgetOption) {
     try {
@@ -333,7 +330,7 @@ export function BudgetSwitcherList({
               {adding && (
                 <form
                   ref={formRef}
-                  onSubmit={handleCreate}
+                  onSubmit={handleChooseTemplate}
                   className="space-y-2 rounded-sm border border-neutral-200 p-2"
                 >
                   <div>
@@ -384,7 +381,7 @@ export function BudgetSwitcherList({
                       disabled={pending}
                       className="rounded-sm bg-brand-700 px-2 py-1 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
                     >
-                      {pending ? "Creating…" : "Create"}
+                      Choose template
                     </button>
                   </div>
                 </form>
@@ -552,6 +549,13 @@ export function BudgetSwitcherList({
           </div>,
           document.body,
         )}
+      {newBudget && (
+        <BudgetTemplateDialog
+          budget={newBudget}
+          createBudget={createBudget}
+          onClose={() => setNewBudget(null)}
+        />
+      )}
     </>
   );
 }

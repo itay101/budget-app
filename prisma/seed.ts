@@ -49,7 +49,7 @@ async function main() {
   });
 
   // Every Budget's system Inflow group and its Inflow: Ready to Assign
-  // category (ADR 0008), as createBudgetWithDefaults seeds them.
+  // category (ADR 0008), as createBudgetFromTemplate seeds them.
   const inflow = await prisma.categoryGroup.create({
     data: {
       budgetId: budget.id,
