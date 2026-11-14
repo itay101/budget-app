@@ -7,10 +7,13 @@ mapping step. A less confident one opens the mapping step pre-filled.
 
 - **Provider:** Vercel AI Gateway through the `ai` SDK, called from the
   `detectImportColumns` server action. The model is
-  `IMPORT_DETECTION_MODEL`, defaulting to `anthropic/claude-haiku-5.5`.
-  It's a setting because the Gateway's free tier serves only some models
-  and refuses the rest (403 `RestrictedModelsError`), so the model has to
-  follow the team's plan. On Vercel the Gateway authenticates with the deployment's
+  `IMPORT_DETECTION_MODEL`, defaulting to `google/gemini-2.5-flash-lite`.
+  The team's Gateway is on the free tier, which serves only some models
+  and refuses the rest (403 `RestrictedModelsError`); Anthropic models
+  aren't among them, so Claude Haiku, the first choice, was refused. The
+  default is small and fast (no thinking by default), reliable at
+  structured output and handles Hebrew headers. It's a setting so the
+  model can follow the team's plan without a code change. On Vercel the Gateway authenticates with the deployment's
   OIDC token, so production and previews need no new secret. Elsewhere it
   needs `AI_GATEWAY_API_KEY`. With neither, the feature is off, which is
   the case for local dev and e2e: the account page tells the modal so, and
