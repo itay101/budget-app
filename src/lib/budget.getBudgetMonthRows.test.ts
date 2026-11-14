@@ -59,7 +59,7 @@ describe("getBudgetMonthRows", () => {
           include: {
             months: { where: { month } },
             transactions: {
-              where: { date: { gte: month, lt: nextMonth } },
+              where: { date: { gte: month, lt: nextMonth }, account: { onBudget: true } },
               select: { amount: true },
             },
             targets: { orderBy: { startMonth: "desc" } },
@@ -89,7 +89,9 @@ describe("getBudgetMonthRows", () => {
       select: { categoryId: true, month: true, budgeted: true },
     });
     const [sql, ...values] = mockActivityByMonth.mock.calls[0] as unknown as [TemplateStringsArray, ...unknown[]];
-    expect(sql.join("?")).toContain("date_trunc('month', \"date\")");
+    expect(sql.join("?")).toContain("date_trunc('month', t.\"date\")");
+    // Off-budget accounts never count (ADR 0008).
+    expect(sql.join("?")).toContain('a."onBudget" = true');
     expect(sql.join("?")).toContain("GROUP BY 1, 2");
     // A plain timestamp literal, so the session time zone can't move the bound.
     expect(values).toContainEqual("2026-04-01");

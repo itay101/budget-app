@@ -400,11 +400,14 @@ async function loadMonthlyTotals(categoryIds: string[], nextMonth: Date) {
       select: { categoryId: true, month: true, budgeted: true },
     }),
     prisma.$queryRaw<{ categoryId: string; month: string; amount: bigint }[]>`
-      SELECT "categoryId",
-             to_char(date_trunc('month', "date"), 'YYYY-MM') AS "month",
-             SUM("amount")::bigint AS "amount"
-      FROM "Transaction"
-      WHERE "categoryId" IN (${Prisma.join(categoryIds)}) AND "date" < ${`${formatBudgetMonth(nextMonth)}-01`}::timestamp
+      SELECT t."categoryId",
+             to_char(date_trunc('month', t."date"), 'YYYY-MM') AS "month",
+             SUM(t."amount")::bigint AS "amount"
+      FROM "Transaction" t
+      JOIN "Account" a ON a.id = t."accountId"
+      WHERE t."categoryId" IN (${Prisma.join(categoryIds)})
+        AND a."onBudget" = true
+        AND t."date" < ${`${formatBudgetMonth(nextMonth)}-01`}::timestamp
       GROUP BY 1, 2
     `,
   ]);
@@ -492,8 +495,10 @@ export async function getBudgetMonthRows(
         orderBy: { sortOrder: "asc" },
         include: {
           months: { where: { month } },
+          // Off-budget accounts never count toward the budget (ADR
+          // 0008), here or in loadMonthlyTotals' earlier months.
           transactions: {
-            where: { date: { gte: month, lt: nextMonth } },
+            where: { date: { gte: month, lt: nextMonth }, account: { onBudget: true } },
             select: { amount: true },
           },
           // Every row, newest first: effectiveTarget picks the one in effect
