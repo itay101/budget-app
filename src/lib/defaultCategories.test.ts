@@ -1,4 +1,4 @@
-import { DEFAULT_CATEGORY_GROUPS, seedDefaultCategories } from "./defaultCategories";
+import { DEFAULT_CATEGORY_GROUPS, seedCategoryGroups } from "./defaultCategories";
 
 // Hand-built stub client, same pattern as audit.test.ts: what's under test
 // is what gets written and in which order, not Postgres behaviour.
@@ -47,10 +47,14 @@ describe("DEFAULT_CATEGORY_GROUPS", () => {
   });
 });
 
-describe("seedDefaultCategories", () => {
+describe("seedCategoryGroups", () => {
   it("creates every group with its position as sortOrder", async () => {
     const tx = mockTx();
-    await seedDefaultCategories(tx as never, { budgetId: "b-1", actorId: "u-1" });
+    await seedCategoryGroups(tx as never, {
+      budgetId: "b-1",
+      actorId: "u-1",
+      groups: DEFAULT_CATEGORY_GROUPS,
+    });
 
     expect(tx.categoryGroup.createManyAndReturn).toHaveBeenCalledWith({
       data: DEFAULT_CATEGORY_GROUPS.map((g, sortOrder) => ({
@@ -63,7 +67,11 @@ describe("seedDefaultCategories", () => {
 
   it("creates each group's categories under that group, in order", async () => {
     const tx = mockTx();
-    await seedDefaultCategories(tx as never, { budgetId: "b-1", actorId: "u-1" });
+    await seedCategoryGroups(tx as never, {
+      budgetId: "b-1",
+      actorId: "u-1",
+      groups: DEFAULT_CATEGORY_GROUPS,
+    });
 
     const groups = await tx.categoryGroup.createManyAndReturn.mock.results[0].value;
     const groupIdByName = new Map(
@@ -84,7 +92,11 @@ describe("seedDefaultCategories", () => {
 
   it("writes one audit entry per created group and category, in a single batch", async () => {
     const tx = mockTx();
-    await seedDefaultCategories(tx as never, { budgetId: "b-1", actorId: "u-1" });
+    await seedCategoryGroups(tx as never, {
+      budgetId: "b-1",
+      actorId: "u-1",
+      groups: DEFAULT_CATEGORY_GROUPS,
+    });
 
     const categoryCount = DEFAULT_CATEGORY_GROUPS.reduce(
       (sum, g) => sum + g.categories.length,
@@ -114,5 +126,33 @@ describe("seedDefaultCategories", () => {
         sortOrder: [null, 0],
       },
     });
+  });
+});
+
+describe("seedCategoryGroups edge cases", () => {
+  it("writes nothing for an empty list (a Blank budget)", async () => {
+    const tx = mockTx();
+    await seedCategoryGroups(tx as never, { budgetId: "b-1", actorId: "u-1", groups: [] });
+
+    expect(tx.categoryGroup.createManyAndReturn).not.toHaveBeenCalled();
+    expect(tx.category.createManyAndReturn).not.toHaveBeenCalled();
+    expect(tx.auditEntry.create).not.toHaveBeenCalled();
+    expect(tx.auditEntry.createMany).not.toHaveBeenCalled();
+  });
+
+  it("seeds any given list, skipping the category insert when no group has categories", async () => {
+    const tx = mockTx();
+    await seedCategoryGroups(tx as never, {
+      budgetId: "b-1",
+      actorId: "u-1",
+      groups: [{ name: "Empty", categories: [] }],
+    });
+
+    expect(tx.categoryGroup.createManyAndReturn).toHaveBeenCalledWith({
+      data: [{ budgetId: "b-1", name: "Empty", sortOrder: 0 }],
+    });
+    expect(tx.category.createManyAndReturn).not.toHaveBeenCalled();
+    const { data } = tx.auditEntry.createMany.mock.calls[0][0];
+    expect(data).toHaveLength(1);
   });
 });
