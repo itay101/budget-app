@@ -181,7 +181,8 @@ export function guessHeaderRowIndex(table: string[][]): number {
   return 0;
 }
 
-function looksLikeDataRow(row: string[]): boolean {
+/** Whether a row has both a date (either order) and an amount cell. */
+export function looksLikeDataRow(row: string[]): boolean {
   // Either order: a day-first date like 21/08/2026 is still a date here,
   // even though it doesn't parse as month-first.
   const hasDate = row.some(

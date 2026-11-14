@@ -11,7 +11,12 @@
  * - canSkipMapping: whether that answer is trusted enough to go straight to
  *   the preview step.
  */
-import { cleanCell, guessHeaderRowIndex, type DateOrder } from "@/lib/importParsing";
+import {
+  cleanCell,
+  guessHeaderRowIndex,
+  looksLikeDataRow,
+  type DateOrder,
+} from "@/lib/importParsing";
 import { buildImportPreview, type AmountMode, type ColumnMapping } from "@/lib/importPreview";
 
 /** Data rows sent after the guessed header row. */
@@ -54,26 +59,40 @@ function trimCell(value: string): string {
  */
 export function buildDetectionSample(table: string[][]): string[][] {
   const headerGuess = guessHeaderRowIndex(table);
+  // guessHeaderRowIndex falls back to row 0 when nothing looks like data,
+  // and row 0 is itself a transaction in a file with no header row. Only
+  // a guess that is followed by a data row and isn't one itself is sent
+  // as plain text, so no real payee or amount can slip through that way.
+  const plainRow =
+    looksLikeDataRow(table[headerGuess + 1] ?? []) && !looksLikeDataRow(table[headerGuess])
+      ? headerGuess
+      : -1;
   const rowCount = Math.min(table.length, headerGuess + 1 + SAMPLE_DATA_ROWS, MAX_SAMPLE_ROWS);
   return table.slice(0, rowCount).map((row, i) =>
     row
       .slice(0, MAX_SAMPLE_COLUMNS)
-      .map((cell) => (i === headerGuess ? trimCell(cell) : maskCell(trimCell(cell)))),
+      .map((cell) => (i === plainRow ? trimCell(cell) : maskCell(trimCell(cell)))),
   );
 }
 
 /**
- * Validates a detection request on the server. Returns null (feature off,
+ * Validates a detection request on the server (isColumnDetectionEnabled
+ * is also read by the account page, so the modal doesn't even try when it
+ * is off). Returns null (feature off,
  * nothing is sent) when no AI Gateway credential is available or the
  * request is malformed. On Vercel the Gateway authenticates with the
  * deployment's OIDC token, so `VERCEL` alone turns it on; elsewhere it needs
  * `AI_GATEWAY_API_KEY`. Local dev and e2e normally have neither.
  */
+export function isColumnDetectionEnabled(env: Record<string, string | undefined>): boolean {
+  return Boolean(env.AI_GATEWAY_API_KEY || env.VERCEL);
+}
+
 export function parseDetectionRequest(
   input: { accountId: unknown; sample: unknown },
   env: Record<string, string | undefined>,
 ): { accountId: string; sample: string[][] } | null {
-  if (!env.AI_GATEWAY_API_KEY && !env.VERCEL) return null;
+  if (!isColumnDetectionEnabled(env)) return null;
   const { accountId, sample } = input;
   if (typeof accountId !== "string" || !accountId) return null;
   if (!Array.isArray(sample) || sample.length < 2 || sample.length > MAX_SAMPLE_ROWS) return null;
