@@ -443,3 +443,69 @@ describe("getBudgetMonthRows", () => {
     });
   });
 });
+
+describe("getBudgetMonthRows' Ready to Assign (ADR 0008, ADR 0009)", () => {
+  const groupWith = (...categories: { id: string; hidden: boolean }[]) => [
+    {
+      id: "group-1",
+      name: "Everyday Expenses",
+      categories: categories.map((c) => ({
+        ...c,
+        name: c.id,
+        months: [],
+        transactions: [],
+        targets: [],
+        targetSnoozes: [],
+      })),
+    },
+  ];
+
+  it("reads only this budget's on-budget Inflow: Ready to Assign and uncategorized rows, before next month", async () => {
+    mockFindMany.mockResolvedValue(groupWith({ id: "rent", hidden: false }) as never);
+
+    await getBudgetMonthRows("budget-1", month, current);
+
+    const [sql, ...values] = mockReadyToAssignRows.mock.calls[0] as [TemplateStringsArray, ...unknown[]];
+    const text = sql.join("?");
+    expect(text).toContain('a."budgetId" = ?');
+    expect(text).toContain('a."onBudget" = true');
+    expect(text).toContain(`t."categoryId" IS NULL OR c."systemKind" = 'READY_TO_ASSIGN'`);
+    expect(values).toEqual(["budget-1", "2026-04-01"]);
+    expect(mockAssignedLater).toHaveBeenCalledWith({
+      where: { categoryId: { in: ["rent"] }, month: { gte: nextMonth } },
+      _sum: { budgeted: true },
+    });
+  });
+
+  it("combines income, hidden categories' overspending, Uncategorized and later assignments", async () => {
+    mockFindMany.mockResolvedValue(
+      groupWith({ id: "rent", hidden: false }, { id: "old", hidden: true }) as never,
+    );
+    mockAssignments.mockResolvedValue([
+      { categoryId: "rent", month, budgeted: 60_000 },
+    ] as never);
+    // The hidden category overspent by $5 in February.
+    mockActivityByMonth.mockResolvedValue([
+      { categoryId: "old", month: "2026-02", amount: BigInt(-5_000) },
+    ] as never);
+    mockReadyToAssignRows.mockResolvedValue([
+      { kind: "income", month: "2026-02", amount: BigInt(100_000) },
+      { kind: "income", month: "2026-03", amount: BigInt(10_000) },
+      // Uncategorized spending in February overspends too.
+      { kind: "uncategorized", month: "2026-02", amount: BigInt(-2_000) },
+    ]);
+    mockAssignedLater.mockResolvedValue({ _sum: { budgeted: 8_000 } } as never);
+
+    const { readyToAssign } = await getBudgetMonthRows("budget-1", month, current);
+
+    expect(readyToAssign).toEqual({
+      leftOver: 100_000,
+      inflow: 10_000,
+      overspent: 7_000,
+      assigned: 60_000,
+      assignedFuture: 8_000,
+      total: 35_000,
+      state: "positive",
+    });
+  });
+});
