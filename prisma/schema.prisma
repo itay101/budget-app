@@ -90,9 +90,23 @@ model CategoryGroup {
   budget     Budget     @relation(fields: [budgetId], references: [id], onDelete: Cascade)
   name       String
   sortOrder  Int        @default(0)
+  // Set only on system-owned groups (ADR 0008): exactly one INFLOW group
+  // per Budget, holding its Inflow: Ready to Assign category. Null for
+  // every ordinary group, and Postgres treats NULLs as distinct, so the
+  // unique index below never constrains those.
+  systemKind CategoryGroupSystemKind?
   categories Category[]
 
+  @@unique([budgetId, systemKind])
   @@index([budgetId])
+}
+
+enum CategoryGroupSystemKind {
+  INFLOW
+}
+
+enum CategorySystemKind {
+  READY_TO_ASSIGN
 }
 
 model Category {
@@ -106,6 +120,12 @@ model Category {
   // category (from any group) under a synthetic "Hidden" section at the
   // end, and unhiding puts it right back where it was.
   hidden          Boolean         @default(false)
+  // Set only on system-owned categories (ADR 0008). READY_TO_ASSIGN is
+  // Inflow: Ready to Assign, the one category whose on-budget
+  // transactions count as Ready to Assign income. A system category
+  // can't be renamed, hidden, moved, deleted, assigned to or targeted,
+  // and isn't a row on the budget page (src/lib/systemCategories.ts).
+  systemKind      CategorySystemKind?
   months          CategoryMonth[]
   transactions    Transaction[]
   targets         CategoryTarget[]
