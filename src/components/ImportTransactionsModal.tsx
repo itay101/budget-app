@@ -1,18 +1,19 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { readImportFile } from "@/lib/spreadsheet";
 import {
-  cleanCell,
-  detectDateOrder,
   guessColumn,
   guessHeaderRowIndex,
   HEADER_HINTS,
-  parseImportAmount,
-  parseImportDate,
   type DateOrder,
 } from "@/lib/importParsing";
+import {
+  buildImportPreview,
+  type ColumnMapping,
+  type PreviewRow,
+} from "@/lib/importPreview";
 import { formatMilliunits, numberToMilliunits } from "@/lib/money";
 import { Icon } from "@/components/Icon";
 import { ImportFileError, useImportFileError } from "@/components/ImportFailureReport";
@@ -22,46 +23,32 @@ import {
   loadImportMapping,
   saveImportMapping,
 } from "@/lib/importMappingPreferences";
+import {
+  DETECTION_TIMEOUT_MS,
+  buildDetectionSample,
+  canSkipMapping,
+  detectionToMapping,
+  normalizeDetection,
+  type ColumnDetection,
+} from "@/lib/importColumnDetection";
+import { detectImportColumns } from "@/app/(app)/accounts/importColumnDetectionActions";
+import {
+  DetectedMappingNote,
+  DetectedPreviewBanner,
+  DetectingStep,
+  type AutoDetected,
+} from "@/components/ImportColumnDetection";
 
-type Step = "select" | "mapping" | "preview";
-type AmountMode = "single" | "split";
-
-type Mapping = {
-  date: number | null;
-  payee: number | null;
-  memo: number | null;
-  amountMode: AmountMode;
-  amount: number | null;
-  inflow: number | null;
-  outflow: number | null;
-};
-
-type PreviewRow = ImportRow & {
-  rowIndex: number; // 1-based position in the file, for the error list
-  error: string | null;
-  duplicate: boolean;
-  included: boolean;
-};
+type Step = "select" | "detecting" | "mapping" | "preview";
+type Mapping = ColumnMapping;
 
 // <select> sentinel for "no column chosen" - "" is already the header-index
 // string for column 0, so it can't double as "none".
 const NONE = "__none__";
 
-function parseSingleAmount(raw: string): number | null {
-  return parseImportAmount(raw);
-}
-
-// Combines an Inflow/Outflow column pair into one signed amount, same
-// "whichever side has a value wins" rule the manual entry row uses. Blank
-// cells on both sides means the row has no amount at all (an error);
-// blank on one side just means that side is zero.
-function parseSplitAmount(inflowRaw: string, outflowRaw: string): number | null {
-  if (!inflowRaw.trim() && !outflowRaw.trim()) return null;
-  const inflow = inflowRaw.trim() ? parseImportAmount(inflowRaw) : 0;
-  const outflow = outflowRaw.trim() ? parseImportAmount(outflowRaw) : 0;
-  if (inflow === null || outflow === null) return null;
-  return inflow !== 0 ? Math.abs(inflow) : -Math.abs(outflow);
-}
+// The server action gives up after DETECTION_TIMEOUT_MS; this covers the
+// round trip on top of that, so a stuck request can't hold the modal.
+const CLIENT_DETECTION_TIMEOUT_MS = DETECTION_TIMEOUT_MS + 2000;
 
 /**
  * File Import (#35): a three-step modal (choose file → map columns →
@@ -82,10 +69,18 @@ function parseSplitAmount(inflowRaw: string, outflowRaw: string): number | null 
  * remembered per account (in localStorage, see
  * @/lib/importMappingPreferences) and pre-filled next time this account
  * is imported into, on top of the usual header-guessing heuristics.
+ *
+ * With no saved mapping for the account, an AI model first guesses the
+ * header row, columns, amount mode and date format from a masked sample
+ * of the file (#197, docs/adr/0014). A confident guess that parses
+ * cleanly skips the mapping step entirely; anything less opens it
+ * pre-filled with the guess. Either way the preview step can go back to
+ * the mapping step to fix a mistake, and the result is saved as above.
  */
 export function ImportTransactionsModal({
   accountId,
   accountType,
+  columnDetection = false,
   currency,
   checkImportDuplicates,
   importTransactions,
@@ -93,6 +88,7 @@ export function ImportTransactionsModal({
 }: {
   accountId: string;
   accountType?: AccountType;
+  columnDetection?: boolean;
   currency: string;
   checkImportDuplicates: (formData: FormData) => Promise<boolean[]>;
   importTransactions: (formData: FormData) => Promise<void>;
@@ -132,6 +128,13 @@ export function ImportTransactionsModal({
     inflow: null,
     outflow: null,
   });
+  // Whether the current mapping came from AI detection: "skipped" when it
+  // went straight to the preview, "prefilled" when it opened the mapping
+  // step with the guess. Drives the notes on those steps.
+  const [autoDetected, setAutoDetected] = useState<AutoDetected>(null);
+  // Bumped whenever a pending detection should be ignored (a new file, the
+  // user skipping it, going back) - only the latest request may apply.
+  const detectionRequest = useRef(0);
   const [rows, setRows] = useState<PreviewRow[]>([]);
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -199,93 +202,95 @@ export function ImportTransactionsModal({
       return;
     }
 
+    startMapping(table);
+  }
+
+  // Precedence: this account's saved mapping, then AI, then heuristics. A
+  // saved mapping means no detection request at all - nothing is sent.
+  async function startMapping(table: string[][]) {
     setRawTable(table);
+    setAutoDetected(null);
+    const requestId = ++detectionRequest.current;
+    if (!columnDetection || loadImportMapping(accountId)) {
+      openMappingWithHeuristics(table);
+      return;
+    }
+
+    setDateOrder("auto");
+    setStep("detecting");
+    const detection = await detectColumns(table);
+    if (requestId === detectionRequest.current) applyDetection(table, detection);
+  }
+
+  // Falls back to the heuristics when detection gave nothing usable.
+  function applyDetection(table: string[][], detection: ColumnDetection | null) {
+    if (!detection) {
+      setAutoDetected("failed");
+      openMappingWithHeuristics(table);
+      return;
+    }
+    const detected = {
+      table,
+      headerRowIndex: detection.headerRowIndex,
+      mapping: detectionToMapping(detection),
+      dateOrder: detection.dateOrder ?? ("auto" as const),
+    };
+    setHeaderRowIndex(detected.headerRowIndex);
+    setMapping(detected.mapping);
+    setDateOrder(detected.dateOrder);
+    if (canSkipMapping(detection, table)) {
+      setAutoDetected("skipped");
+      goToPreview(detected);
+    } else {
+      setAutoDetected("prefilled");
+      setStep("mapping");
+    }
+  }
+
+  // Also the path for a saved mapping, whose date format it restores.
+  function openMappingWithHeuristics(table: string[][]) {
     setDateOrder(loadImportMapping(accountId)?.dateOrder ?? "auto");
     applyHeaderRow(table, guessHeaderRowIndex(table));
     setStep("mapping");
   }
 
-  function buildPreview(): PreviewRow[] {
-    const resolvedDateOrder: DateOrder =
-      dateOrder === "auto"
-        ? detectDateOrder(
-            dataRows.map((cells) =>
-              mapping.date !== null ? (cells[mapping.date] ?? "") : "",
-            ),
-          )
-        : dateOrder;
-
-    return dataRows.map((cells, i) => {
-      const rawCell = (index: number | null) =>
-        index !== null ? (cells[index] ?? "") : "";
-      const cell = (index: number | null) => cleanCell(rawCell(index));
-
-      const rawDate = rawCell(mapping.date);
-      const date = parseImportDate(cell(mapping.date), resolvedDateOrder);
-      const payeeName = cell(mapping.payee);
-      const memo = cell(mapping.memo);
-      const parsedAmount =
-        mapping.amountMode === "single"
-          ? parseSingleAmount(cell(mapping.amount))
-          : parseSplitAmount(cell(mapping.inflow), cell(mapping.outflow));
-      // Flip only applies in single-column mode: separate Inflow/Outflow
-      // columns already carry explicit direction (that's the whole point
-      // of mapping them separately), so flipping there would turn a
-      // refund into a charge instead of fixing anything.
-      const amount =
-        parsedAmount === null
-          ? null
-          : flipSign && mapping.amountMode === "single"
-            ? -parsedAmount
-            : parsedAmount;
-
-      let error: string | null = null;
-      if (!date) {
-        error = "Invalid or missing date";
-        // A date that fails to parse despite looking fine on screen is
-        // exactly the failure mode an invisible character or a Unicode
-        // look-alike produces (see cleanCell) - neither shows up in a
-        // screenshot, so logging the exact codepoints here means that
-        // class of bug never again has to be diagnosed by guessing from
-        // one. Only logs when there's something to see: a genuinely blank
-        // cell isn't a mystery.
-        if (typeof window !== "undefined" && rawDate) {
-          console.warn(
-            `[File Import] row ${i + 1}: Date column didn't parse`,
-            {
-              raw: rawDate,
-              rawCodePoints: Array.from(rawDate, (c) =>
-                "U+" + c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0"),
-              ),
-              cleaned: cell(mapping.date),
-              order: resolvedDateOrder,
-            },
-          );
-        }
-      } else if (amount === null) error = "Invalid or missing amount";
-
-      return {
-        rowIndex: i + 1,
-        date: date ?? "",
-        payeeName,
-        memo,
-        amount: amount ?? 0,
-        error,
-        duplicate: false,
-        included: error === null,
-      };
-    });
+  // Resolves null on any failure or after CLIENT_DETECTION_TIMEOUT_MS, so
+  // detection can only ever delay the mapping step, never block it.
+  async function detectColumns(table: string[][]): Promise<ColumnDetection | null> {
+    const timeout = new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), CLIENT_DETECTION_TIMEOUT_MS),
+    );
+    const request = detectImportColumns({ accountId, sample: buildDetectionSample(table) })
+      .then((raw) => normalizeDetection(raw, table))
+      .catch(() => null);
+    return Promise.race([request, timeout]);
   }
 
-  // A blank/missing header is saved as null rather than "" - see
-  // findHeaderIndex's matching rule above.
-  function headerName(index: number | null): string | null {
-    if (index === null) return null;
-    const h = headers[index];
-    return h && h.trim() ? h : null;
+  function skipDetection() {
+    detectionRequest.current++;
+    openMappingWithHeuristics(rawTable);
   }
 
-  function goToPreview() {
+  // Takes the table/mapping explicitly so a just-detected mapping can go
+  // straight to the preview in the same handler, before React has applied
+  // the state updates; defaults to the current state otherwise.
+  function goToPreview(
+    current: {
+      table: string[][];
+      headerRowIndex: number;
+      mapping: Mapping;
+      dateOrder: "auto" | DateOrder;
+    } = { table: rawTable, headerRowIndex, mapping, dateOrder },
+  ) {
+    const headerRow = current.table[current.headerRowIndex] ?? [];
+    // A blank/missing header is saved as null rather than "" - see
+    // findHeaderIndex's matching rule above.
+    const headerName = (index: number | null): string | null => {
+      if (index === null) return null;
+      const h = headerRow[index];
+      return h && h.trim() ? h : null;
+    };
+    const { mapping, dateOrder } = current;
     saveImportMapping(accountId, {
       date: headerName(mapping.date),
       payee: headerName(mapping.payee),
@@ -297,7 +302,12 @@ export function ImportTransactionsModal({
       dateOrder,
     });
 
-    const built = buildPreview();
+    const built = buildImportPreview({
+      dataRows: current.table.slice(current.headerRowIndex + 1),
+      mapping,
+      dateOrder,
+      flipSign,
+    });
     setRows(built);
     setStep("preview");
 
@@ -459,6 +469,12 @@ export function ImportTransactionsModal({
             </div>
           )}
 
+          <DetectingStep
+            active={step === "detecting"}
+            fileName={fileName}
+            onSkip={skipDetection}
+          />
+
           {step === "mapping" && (
             <div className="space-y-4">
               <p className="text-body text-neutral-600">
@@ -466,6 +482,8 @@ export function ImportTransactionsModal({
                 &#39;s columns to a transaction&#39;s fields. Only Date and an
                 amount are required.
               </p>
+
+              <DetectedMappingNote autoDetected={autoDetected} />
 
               {rawTable.length > 1 && (
                 <div>
@@ -640,6 +658,11 @@ export function ImportTransactionsModal({
 
           {step === "preview" && (
             <div className="space-y-3">
+              <DetectedPreviewBanner
+                autoDetected={autoDetected}
+                onFix={() => setStep("mapping")}
+                disabled={pending}
+              />
               <div className="flex flex-wrap items-center justify-between gap-2 text-small text-neutral-600">
                 <span>
                   {rows.length} row{rows.length === 1 ? "" : "s"} parsed ·{" "}
@@ -739,7 +762,10 @@ export function ImportTransactionsModal({
           <button
             type="button"
             onClick={() => {
-              if (step === "mapping") setStep("select");
+              if (step === "detecting") {
+                detectionRequest.current++;
+                setStep("select");
+              } else if (step === "mapping") setStep("select");
               else if (step === "preview") setStep("mapping");
               else onClose();
             }}
@@ -752,7 +778,7 @@ export function ImportTransactionsModal({
           {step === "mapping" && (
             <button
               type="button"
-              onClick={goToPreview}
+              onClick={() => goToPreview()}
               disabled={!mappingValid}
               className="rounded-sm bg-brand-700 px-3 py-1.5 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
             >

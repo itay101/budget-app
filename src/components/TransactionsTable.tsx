@@ -146,6 +146,7 @@ export function TransactionsTable({
   unreconcileTransaction,
   checkImportDuplicates,
   importTransactions,
+  columnDetection,
   showAccount = false,
   currency = "USD",
   accountBalance,
@@ -196,6 +197,9 @@ export function TransactionsTable({
   // even though it's an outflow. Omitted wherever accountId/accountBalance
   // are, for the same single-account-only reason.
   accountType?: AccountType;
+  // Whether File Import may ask AI to detect columns (#197) - false unless
+  // the server has an AI Gateway credential.
+  columnDetection?: boolean;
 }) {
   const gridCols = showAccount ? GRID_COLS_WITH_ACCOUNT : GRID_COLS;
 
@@ -313,6 +317,7 @@ export function TransactionsTable({
           <ImportTransactionsModal
             accountId={accountId}
             accountType={accountType}
+            columnDetection={columnDetection}
             currency={currency}
             checkImportDuplicates={checkImportDuplicates}
             importTransactions={importTransactions}
