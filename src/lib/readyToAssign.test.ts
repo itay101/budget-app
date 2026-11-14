@@ -1,4 +1,10 @@
-import { readyToAssignFor, rollForward, type MonthlyTotals } from "./readyToAssign";
+import {
+  moveLegs,
+  READY_TO_ASSIGN,
+  readyToAssignFor,
+  rollForward,
+  type MonthlyTotals,
+} from "./readyToAssign";
 
 const utc = (y: number, m: number) => new Date(Date.UTC(y, m - 1, 1));
 const jan = utc(2026, 1);
@@ -166,5 +172,29 @@ describe("readyToAssignFor", () => {
       const result = rta({ month: utc(2026, m), incomeByMonth, assignedByMonth, activityByMonth });
       expect(Number.isInteger(result.total)).toBe(true);
     }
+  });
+});
+
+describe("moveLegs", () => {
+  it("moves between two categories: out of one, into the other", () => {
+    expect(moveLegs("food", "rent", 5_000)).toEqual([
+      { categoryId: "food", delta: -5_000 },
+      { categoryId: "rent", delta: 5_000 },
+    ]);
+  });
+
+  it("assigns money when it comes from Ready to Assign", () => {
+    expect(moveLegs(READY_TO_ASSIGN, "rent", 5_000)).toEqual([{ categoryId: "rent", delta: 5_000 }]);
+  });
+
+  it("un-assigns money when it goes back to Ready to Assign", () => {
+    expect(moveLegs("food", READY_TO_ASSIGN, 5_000)).toEqual([{ categoryId: "food", delta: -5_000 }]);
+  });
+
+  it("refuses the same category, or Ready to Assign, on both sides", () => {
+    expect(() => moveLegs("food", "food", 1)).toThrow("Cannot move money to the same category");
+    expect(() => moveLegs(READY_TO_ASSIGN, READY_TO_ASSIGN, 1)).toThrow(
+      "Cannot move money from Ready to Assign to Ready to Assign",
+    );
   });
 });
