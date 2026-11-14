@@ -4,7 +4,9 @@ import {
   SAMPLE_DATA_ROWS,
   buildDetectionPrompt,
   buildDetectionSample,
+  DEFAULT_DETECTION_MODEL,
   canSkipMapping,
+  detectionModel,
   detectionToMapping,
   isColumnDetectionEnabled,
   maskCell,
@@ -96,6 +98,19 @@ describe("buildDetectionSample", () => {
 describe("buildDetectionPrompt", () => {
   it("sends the rows as JSON", () => {
     expect(buildDetectionPrompt([["a"], ["9"]])).toContain('[["a"],["9"]]');
+  });
+});
+
+describe("detectionModel", () => {
+  it("defaults when IMPORT_DETECTION_MODEL is unset or blank", () => {
+    expect(detectionModel({})).toBe(DEFAULT_DETECTION_MODEL);
+    expect(detectionModel({ IMPORT_DETECTION_MODEL: "  " })).toBe(DEFAULT_DETECTION_MODEL);
+  });
+
+  it("uses IMPORT_DETECTION_MODEL when set", () => {
+    expect(detectionModel({ IMPORT_DETECTION_MODEL: " google/gemini-2.5-flash-lite " })).toBe(
+      "google/gemini-2.5-flash-lite",
+    );
   });
 });
 
