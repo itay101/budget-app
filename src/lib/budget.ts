@@ -20,6 +20,12 @@ import { seedCategoryGroups } from "@/lib/defaultCategories";
 import { FALLBACK_TEMPLATE_ID, getBudgetTemplate } from "@/lib/budgetTemplates";
 import { seedSystemCategories } from "@/lib/systemCategories";
 import {
+  readyToAssignFor,
+  rollForward,
+  type MonthlyTotals,
+  type ReadyToAssignBreakdown,
+} from "@/lib/readyToAssign";
+import {
   addMonths,
   currentBudgetMonth,
   formatBudgetMonth,
@@ -227,13 +233,7 @@ export async function softDeleteBudget(budgetId: string, actorId: string) {
   );
 }
 
-/**
- * Per-category, per-month totals in milliunits: category id → Budget Month
- * (`YYYY-MM`) → amount. Built by getBudgetMonthRows from the month's
- * assignments and a per-month activity query, and passed in as plain
- * `Map`s so balanceFor/rowFor don't need to know Prisma's result shapes.
- */
-export type MonthlyTotals = Map<string, Map<string, number>>;
+export type { MonthlyTotals };
 
 export interface CategoryBalance {
   /** Available carried in from the month before: max(0, Available(M-1)). */
@@ -262,21 +262,14 @@ export function balanceFor(
   month: Date,
 ): CategoryBalance {
   const target = formatBudgetMonth(month);
-  const assigned = assignedByMonth.get(categoryId) ?? new Map<string, number>();
-  const activity = activityByMonth.get(categoryId) ?? new Map<string, number>();
-  // YYYY-MM keys sort chronologically as strings.
-  const earlier = [...new Set([...assigned.keys(), ...activity.keys()])]
-    .filter((key) => key < target)
-    .sort();
-
-  let available = 0;
-  for (const key of earlier) {
-    available = Math.max(0, available) + (assigned.get(key) ?? 0) + (activity.get(key) ?? 0);
-  }
-  const carriedIn = Math.max(0, available);
+  const assigned = assignedByMonth.get(categoryId);
+  const activity = activityByMonth.get(categoryId);
+  // The fold itself lives in readyToAssign.ts, shared with the Ready to
+  // Assign math, which absorbs the overspending it finds.
+  const { carriedIn } = rollForward(assigned, activity, target);
   return {
     carriedIn,
-    available: carriedIn + (assigned.get(target) ?? 0) + (activity.get(target) ?? 0),
+    available: carriedIn + (assigned?.get(target) ?? 0) + (activity?.get(target) ?? 0),
   };
 }
 
@@ -376,6 +369,8 @@ export type BudgetMonthRows = {
   /** Plan-level Underfunded, overspending and Cost to Be Me, over every
    * category, hidden ones included (ADR 0011). */
   totals: PlanTotals;
+  /** The viewed month's Ready to Assign and its Breakdown (ADR 0009). */
+  readyToAssign: ReadyToAssignBreakdown;
 };
 
 /** Works out a row's Target state from its stored target rows, whether this month is snoozed, and its
@@ -426,11 +421,14 @@ async function loadMonthlyTotals(categoryIds: string[], nextMonth: Date) {
       select: { categoryId: true, month: true, budgeted: true },
     }),
     prisma.$queryRaw<{ categoryId: string; month: string; amount: bigint }[]>`
-      SELECT "categoryId",
-             to_char(date_trunc('month', "date"), 'YYYY-MM') AS "month",
-             SUM("amount")::bigint AS "amount"
-      FROM "Transaction"
-      WHERE "categoryId" IN (${Prisma.join(categoryIds)}) AND "date" < ${`${formatBudgetMonth(nextMonth)}-01`}::timestamp
+      SELECT t."categoryId",
+             to_char(date_trunc('month', t."date"), 'YYYY-MM') AS "month",
+             SUM(t."amount")::bigint AS "amount"
+      FROM "Transaction" t
+      JOIN "Account" a ON a.id = t."accountId"
+      WHERE t."categoryId" IN (${Prisma.join(categoryIds)})
+        AND a."onBudget" = true
+        AND t."date" < ${`${formatBudgetMonth(nextMonth)}-01`}::timestamp
       GROUP BY 1, 2
     `,
   ]);
@@ -444,6 +442,54 @@ async function loadMonthlyTotals(categoryIds: string[], nextMonth: Date) {
   return { assignedByMonth, activityByMonth };
 }
 
+/** The key Uncategorized activity goes under in the Ready to Assign math.
+ * Not a category id, so it can never collide with one. */
+const UNCATEGORIZED = "__uncategorized__";
+
+/**
+ * What Ready to Assign needs beyond the categories' own monthly totals
+ * (ADR 0008, ADR 0009), in two queries:
+ *
+ * - on-budget transactions before `nextMonth`, by month: the
+ *   Inflow: Ready to Assign ones are income, and the uncategorized ones are
+ *   the Uncategorized row's activity, which can overspend like any
+ *   category. Off-budget accounts never count;
+ * - the total assigned in any month from `nextMonth` on.
+ *
+ * Dates are bound as timestamp literals for the reason loadMonthlyTotals
+ * gives.
+ */
+async function loadReadyToAssignTotals(budgetId: string, categoryIds: string[], nextMonth: Date) {
+  const [onBudget, later] = await Promise.all([
+    prisma.$queryRaw<{ kind: "income" | "uncategorized"; month: string; amount: bigint }[]>`
+      SELECT CASE WHEN t."categoryId" IS NULL THEN 'uncategorized' ELSE 'income' END AS "kind",
+             to_char(date_trunc('month', t."date"), 'YYYY-MM') AS "month",
+             SUM(t."amount")::bigint AS "amount"
+      FROM "Transaction" t
+      JOIN "Account" a ON a.id = t."accountId"
+      LEFT JOIN "Category" c ON c.id = t."categoryId"
+      WHERE a."budgetId" = ${budgetId}
+        AND a."onBudget" = true
+        AND (t."categoryId" IS NULL OR c."systemKind" = 'READY_TO_ASSIGN')
+        AND t."date" < ${`${formatBudgetMonth(nextMonth)}-01`}::timestamp
+      GROUP BY 1, 2
+    `,
+    categoryIds.length === 0
+      ? null
+      : prisma.categoryMonth.aggregate({
+          where: { categoryId: { in: categoryIds }, month: { gte: nextMonth } },
+          _sum: { budgeted: true },
+        }),
+  ]);
+
+  const incomeByMonth = new Map<string, number>();
+  const uncategorizedByMonth = new Map<string, number>();
+  for (const row of onBudget) {
+    (row.kind === "income" ? incomeByMonth : uncategorizedByMonth).set(row.month, Number(row.amount));
+  }
+  return { incomeByMonth, uncategorizedByMonth, assignedAfter: later?._sum.budgeted ?? 0 };
+}
+
 /**
  * The budget page's full month view for one budget: every category group
  * (with its non-hidden categories rendered as rows), the slimmed-down
@@ -455,6 +501,7 @@ async function loadMonthlyTotals(categoryIds: string[], nextMonth: Date) {
 export async function getBudgetMonthRows(
   budgetId: string,
   month: Date,
+  current: Date = currentBudgetMonth(),
 ): Promise<BudgetMonthRows> {
   const nextMonth = startOfNextMonth(month);
 
@@ -469,8 +516,10 @@ export async function getBudgetMonthRows(
         orderBy: { sortOrder: "asc" },
         include: {
           months: { where: { month } },
+          // Off-budget accounts never count toward the budget (ADR
+          // 0008), here or in loadMonthlyTotals' earlier months.
           transactions: {
-            where: { date: { gte: month, lt: nextMonth } },
+            where: { date: { gte: month, lt: nextMonth }, account: { onBudget: true } },
             select: { amount: true },
           },
           // Every row, newest first: effectiveTarget picks the one in effect
@@ -486,7 +535,10 @@ export async function getBudgetMonthRows(
 
   // Available rolls over month by month (ADR 0009, see balanceFor), so it
   // needs every earlier month's assigned and activity per category.
-  const { assignedByMonth, activityByMonth } = await loadMonthlyTotals(categoryIds, nextMonth);
+  const [{ assignedByMonth, activityByMonth }, readyToAssignTotals] = await Promise.all([
+    loadMonthlyTotals(categoryIds, nextMonth),
+    loadReadyToAssignTotals(budgetId, categoryIds, nextMonth),
+  ]);
 
   function categoryRow(category: (typeof groups)[number]["categories"][number]): BudgetCategoryRow {
     const row = rowFor(
@@ -548,6 +600,18 @@ export async function getBudgetMonthRows(
     categoryOptions,
     hiddenCategories,
     totals: planTotals([...visibleRows, ...hiddenCategories]),
+    // Every ordinary category counts, hidden ones included (ADR 0009).
+    readyToAssign: readyToAssignFor({
+      month,
+      current,
+      incomeByMonth: readyToAssignTotals.incomeByMonth,
+      assignedByMonth,
+      assignedAfter: readyToAssignTotals.assignedAfter,
+      activityByMonth: new Map([
+        ...activityByMonth,
+        [UNCATEGORIZED, readyToAssignTotals.uncategorizedByMonth],
+      ]),
+    }),
   };
 }
 
