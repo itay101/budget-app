@@ -364,3 +364,33 @@ function cadenceFields(input: TargetInput): ScheduleFields {
     }
   }
 }
+
+function isoDay(year: number, month: number, day: number): string {
+  return new Date(Date.UTC(year, month, day)).toISOString().slice(0, 10);
+}
+
+/**
+ * When a target is next due on or after the start of `month`, as
+ * `YYYY-MM-DD`, or null when it has no due date: no target, a monthly one
+ * without a due day, or an undated balance. Only orders Auto-Assign when
+ * Ready to Assign runs short (#147): soonest due first, undated last.
+ */
+export function nextDue(target: Target | null, month: Date): string | null {
+  if (!target || target.kind === "NONE") return null;
+  const year = month.getUTCFullYear();
+  const m = month.getUTCMonth();
+  if (target.kind === "BALANCE") return target.dueDate ? target.dueDate.toISOString().slice(0, 10) : null;
+  if (target.cadence === "YEARLY" && target.dueDate) {
+    const due = nextYearlyDue(target.dueDate, month);
+    return isoDay(due.getUTCFullYear(), due.getUTCMonth(), target.dueDate.getUTCDate());
+  }
+  if (target.cadence === "WEEKLY" && target.weekday !== null) {
+    const firstWeekday = new Date(Date.UTC(year, m, 1)).getUTCDay();
+    return isoDay(year, m, 1 + ((target.weekday - firstWeekday + 7) % 7));
+  }
+  if (target.cadence === "MONTHLY" && target.dueDay !== null) {
+    const lastDay = new Date(Date.UTC(year, m + 1, 0)).getUTCDate();
+    return isoDay(year, m, Math.min(target.dueDay, lastDay));
+  }
+  return null;
+}
