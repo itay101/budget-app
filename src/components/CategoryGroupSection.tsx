@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AddCategoryPopover } from "@/components/AddCategoryPopover";
+import { GroupAutoAssignPopover } from "@/components/GroupAutoAssignPopover";
 import { Icon } from "@/components/Icon";
 import { BudgetCategoryRow } from "@/components/BudgetCategoryRow";
 import { CategoryRenameForm } from "@/components/CategoryRenameForm";
@@ -281,6 +282,7 @@ export function CategoryGroupSection({
               categoryGroupId={groupId}
               createCategory={createCategory}
             />
+            <GroupAutoAssignPopover groupId={groupId} groupName={groupName} month={month} currency={currency} />
             {isEmpty && (
               <button
                 type="button"

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Toast } from "@/components/Toast";
+import type { AutoAssignAction } from "@/components/ReadyToAssignContext";
 import { formatMilliunits } from "@/lib/money";
 import {
   addsMoney,
@@ -12,10 +14,6 @@ import {
   type AutoAssignPlan,
 } from "@/lib/autoAssign";
 
-export type AutoAssignAction = (formData: FormData) => Promise<{
-  applied: { categoryId: string; from: number; to: number }[];
-  skipped: string[];
-}>;
 
 /** What a confirmed run hands back, for its toast and Undo. */
 export interface AutoAssignDone {
@@ -30,14 +28,12 @@ function Amount({ milliunits, currency }: { milliunits: number; currency: string
   return <bdi dir="ltr">{formatMilliunits(milliunits, currency)}</bdi>;
 }
 
-/** Why an option can't run now, or null when it can. */
-function disabledReason(option: AutoAssignOption, plan: AutoAssignPlan, readyToAssign: number, isPast: boolean) {
-  if (plan.rows.length === 0) return "Nothing to change";
-  if (addsMoney(option) && plan.total > 0) {
-    if (readyToAssign <= 0) return "No money to assign";
-    if (isPast) return "Not in past months yet";
-  }
-  return null;
+/** Why an option can't run now, or null when it can. With no money to add,
+ * planRun funds no increases, so an option that adds money is off only when
+ * it has nothing else to do; one whose run also frees money still runs (#147). */
+function disabledReason(option: AutoAssignOption, plan: AutoAssignPlan, limit: number) {
+  if (plan.rows.length > 0) return null;
+  return addsMoney(option) && limit <= 0 ? "No money to assign" : "Nothing to change";
 }
 
 /**
@@ -48,27 +44,26 @@ function disabledReason(option: AutoAssignOption, plan: AutoAssignPlan, readyToA
  */
 export function AutoAssignMenu({
   categories,
-  readyToAssign,
+  limit,
   month,
   currency,
-  isPast,
   autoAssign,
   onDone,
 }: {
   /** The categories in scope, in display order. */
   categories: AutoAssignCategory[];
-  readyToAssign: number;
+  /** The most a run may add (getBudgetMonthRows' autoAssignLimit). */
+  limit: number;
   /** The viewed Budget Month, `YYYY-MM`. */
   month: string;
   currency: string;
-  isPast: boolean;
   autoAssign: AutoAssignAction;
   onDone: (done: AutoAssignDone) => void;
 }) {
   const [previewing, setPreviewing] = useState<AutoAssignOption | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const plans = new Map(AUTO_ASSIGN_OPTIONS.map((option) => [option, planRun(option, categories, readyToAssign)]));
+  const plans = new Map(AUTO_ASSIGN_OPTIONS.map((option) => [option, planRun(option, categories, limit)]));
 
   if (previewing) {
     const plan = plans.get(previewing)!;
@@ -148,7 +143,7 @@ export function AutoAssignMenu({
       <h3 className="text-small font-medium uppercase tracking-wide text-neutral-600">Auto-Assign</h3>
       {AUTO_ASSIGN_OPTIONS.map((option) => {
         const plan = plans.get(option)!;
-        const reason = disabledReason(option, plan, readyToAssign, isPast);
+        const reason = disabledReason(option, plan, limit);
         return (
           <button
             key={option}
@@ -167,4 +162,67 @@ export function AutoAssignMenu({
       })}
     </section>
   );
+}
+
+/**
+ * The toast after an Auto-Assign run, with Undo for as long as the page
+ * stays open (#219), then a short note on how the Undo went.
+ */
+export function AutoAssignToasts({
+  run,
+  currency,
+  undoAutoAssign,
+  onRunClosed,
+}: {
+  run: AutoAssignDone | null;
+  currency: string;
+  undoAutoAssign: AutoAssignAction;
+  onRunClosed: () => void;
+}) {
+  const [undoNote, setUndoNote] = useState<string | null>(null);
+
+  async function undo(done: AutoAssignDone) {
+    onRunClosed();
+    const formData = new FormData();
+    formData.set("option", done.option);
+    formData.set("month", done.month);
+    formData.set("rows", JSON.stringify(done.applied));
+    try {
+      const result = await undoAutoAssign(formData);
+      setUndoNote(undoMessage(result.applied.length, result.skipped.length));
+    } catch (e) {
+      setUndoNote(`Undo failed: ${e instanceof Error ? e.message : "please try again"}`);
+    }
+  }
+
+  return (
+    <>
+      {run && (
+        <Toast
+          message={autoAssignMessage(run, currency)}
+          actionLabel={run.applied.length > 0 ? "Undo" : undefined}
+          onAction={() => void undo(run)}
+          onClose={onRunClosed}
+        />
+      )}
+      {undoNote && <Toast message={undoNote} onClose={() => setUndoNote(null)} />}
+    </>
+  );
+}
+
+/** The note after an Undo, e.g. "Undid 3 changes" or, when some had been
+ * edited since the run, how many were left as they were. */
+export function undoMessage(undone: number, skipped: number): string {
+  const done = `Undid ${undone} ${undone === 1 ? "change" : "changes"}`;
+  return skipped > 0 ? `${done}; ${skipped} changed since and left as is` : done;
+}
+
+/** The toast after an Auto-Assign run, e.g. "Assigned $40.00 to 3
+ * categories" (#147), noting any rows that had changed and were skipped. */
+export function autoAssignMessage(run: AutoAssignDone, currency: string): string {
+  const count = run.applied.length;
+  const categories = `${count} ${count === 1 ? "category" : "categories"}`;
+  const amount = formatMilliunits(Math.abs(run.total), currency);
+  const done = run.total >= 0 ? `Assigned ${amount} to ${categories}` : `Freed ${amount} from ${categories}`;
+  return run.skipped > 0 ? `${done} (${run.skipped} changed since the preview, skipped)` : done;
 }
