@@ -6,6 +6,7 @@ import {
   buildDetectionSample,
   canSkipMapping,
   detectionToMapping,
+  isColumnDetectionEnabled,
   maskCell,
   normalizeDetection,
   parseDetectionRequest,
@@ -61,6 +62,19 @@ describe("buildDetectionSample", () => {
     expect(sample[2]).toEqual(["99/99/9999", "Xxxxxx Xxxxx", "xxxxx", "-9.99"]);
   });
 
+  it("masks the first row too when the file has no header row", () => {
+    const sample = buildDetectionSample([
+      ["08/21/2026", "John Smith Rent", "-1500.00"],
+      ["08/22/2026", "Grocer", "-9.10"],
+    ]);
+    expect(sample[0]).toEqual(["99/99/9999", "Xxxx Xxxxx Xxxx", "-9999.99"]);
+  });
+
+  it("masks every row when nothing in the file looks like a transaction", () => {
+    const sample = buildDetectionSample([["Account holder: Jane Doe, acct 12345678"], ["x"]]);
+    expect(sample[0]).toEqual(["Xxxxxxx xxxxxx: Xxxx Xxx, xxxx 99999999"]);
+  });
+
   it("sends at most SAMPLE_DATA_ROWS data rows, MAX_SAMPLE_ROWS in all", () => {
     const long = [["Date", "Amount"], ...Array.from({ length: 40 }, () => ["2026-08-01", "1.00"])];
     expect(buildDetectionSample(long)).toHaveLength(1 + SAMPLE_DATA_ROWS);
@@ -82,6 +96,14 @@ describe("buildDetectionSample", () => {
 describe("buildDetectionPrompt", () => {
   it("sends the rows as JSON", () => {
     expect(buildDetectionPrompt([["a"], ["9"]])).toContain('[["a"],["9"]]');
+  });
+});
+
+describe("isColumnDetectionEnabled", () => {
+  it("needs a Gateway key or a Vercel deployment", () => {
+    expect(isColumnDetectionEnabled({})).toBe(false);
+    expect(isColumnDetectionEnabled({ AI_GATEWAY_API_KEY: "key" })).toBe(true);
+    expect(isColumnDetectionEnabled({ VERCEL: "1" })).toBe(true);
   });
 });
 
