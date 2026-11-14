@@ -48,7 +48,7 @@ beforeEach(() => {
   stored = { rent: 0, food: 5_000 };
   jest.mocked(requireCategoryAccess).mockResolvedValue(access());
   jest.mocked(requireNavigableMonth).mockResolvedValue(current);
-  jest.mocked(getBudgetMonthRows).mockResolvedValue({ readyToAssign: { total: 100_000 } } as never);
+  jest.mocked(getBudgetMonthRows).mockResolvedValue({ autoAssignLimit: 100_000 } as never);
   jest.mocked(prisma.$transaction).mockImplementation(((fn: (tx: unknown) => unknown) => fn(prisma)) as never);
   findUnique.mockImplementation((({ where }: { where: { categoryId_month: { categoryId: string } } }) =>
     Promise.resolve({ budgeted: stored[where.categoryId_month.categoryId] ?? 0 })) as never);
@@ -85,7 +85,7 @@ describe("autoAssign (#147, #219)", () => {
   });
 
   it("refuses a run that would overdraw Ready to Assign, writing nothing", async () => {
-    jest.mocked(getBudgetMonthRows).mockResolvedValue({ readyToAssign: { total: 10_000 } } as never);
+    jest.mocked(getBudgetMonthRows).mockResolvedValue({ autoAssignLimit: 10_000 } as never);
     await expect(autoAssign(form([{ categoryId: "rent", from: 0, to: 30_000 }]))).rejects.toThrow("Not enough Ready to Assign");
     expect(upsert).not.toHaveBeenCalled();
     expect(auditCreate).not.toHaveBeenCalled();
@@ -96,17 +96,27 @@ describe("autoAssign (#147, #219)", () => {
     // Food was raised by hand since, so Ready to Assign is now $280 and the
     // whole run no longer fits; but food is skipped, and rent alone does.
     stored.food = 9_000;
-    jest.mocked(getBudgetMonthRows).mockResolvedValue({ readyToAssign: { total: 280_000 } } as never);
+    jest.mocked(getBudgetMonthRows).mockResolvedValue({ autoAssignLimit: 280_000 } as never);
     const result = await autoAssign(
       form([{ categoryId: "rent", from: 0, to: 250_000 }, { categoryId: "food", from: 5_000, to: 45_000 }]),
     );
     expect(result).toEqual({ applied: [{ categoryId: "rent", from: 0, to: 250_000 }], skipped: ["food"] });
   });
 
-  it("refuses to add money in a past month for now", async () => {
+  it("re-checks a money-adding run against the month's Auto-Assign limit, which covers past months (#163)", async () => {
     jest.mocked(requireNavigableMonth).mockResolvedValue(addMonths(current, -1));
-    await expect(autoAssign(form([{ categoryId: "rent", from: 0, to: 30_000 }]))).rejects.toThrow("past month");
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    jest.mocked(getBudgetMonthRows).mockResolvedValue({ autoAssignLimit: 20_000 } as never);
+    await expect(autoAssign(form([{ categoryId: "rent", from: 0, to: 30_000 }]))).rejects.toThrow("Not enough");
+    expect(getBudgetMonthRows).toHaveBeenCalledWith("budget-1", addMonths(current, -1));
+
+    jest.mocked(getBudgetMonthRows).mockResolvedValue({ autoAssignLimit: 30_000 } as never);
+    await expect(autoAssign(form([{ categoryId: "rent", from: 0, to: 30_000 }]))).resolves.toMatchObject({ skipped: [] });
+  });
+
+  it("doesn't check the limit for a run that only frees money", async () => {
+    await autoAssign(form([{ categoryId: "food", from: 5_000, to: 0 }], "reset-assigned"));
+    expect(getBudgetMonthRows).not.toHaveBeenCalled();
+    expect(upsert).toHaveBeenCalledTimes(1);
   });
 
   it.each([

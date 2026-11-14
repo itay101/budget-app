@@ -73,7 +73,7 @@ export default async function BudgetPage({
   const { month } = viewed;
   const monthKey = formatBudgetMonth(month);
 
-  const { groups, categoryOptions, hiddenCategories, totals, readyToAssign, autoAssignCategories } =
+  const { groups, categoryOptions, hiddenCategories, totals, readyToAssign, autoAssignCategories, autoAssignLimit } =
     await getBudgetMonthRows(budget.id, month, current);
 
   const filter = parseQuickFilter(params.filter);
@@ -82,47 +82,47 @@ export default async function BudgetPage({
 
   return (
     <div className="space-y-300">
-      <h1 className="text-h2 text-neutral-800 sm:text-h1">Budget</h1>
+      <ReadyToAssignProvider
+        total={readyToAssign.total}
+        autoAssign={{ categories: autoAssignCategories, limit: autoAssignLimit, run: autoAssign, undo: undoAutoAssign }}
+      >
+        <h1 className="text-h2 text-neutral-800 sm:text-h1">Budget</h1>
 
-      {/* Sticky month toolbar (#136): under the mobile top bar on phones,
-          edge to edge there; at the top of the page from md up. The Ready
-          to Assign pill sits at its end, wrapping to the right on phones. */}
-      <div className="sticky top-mobile-nav z-10 -mx-200 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-y border-neutral-200 bg-neutral-100/95 px-200 py-1 backdrop-blur-sm md:top-0 md:mx-0 md:rounded-lg md:border md:bg-neutral-0/95 md:px-2">
-        <MonthHeader
-          month={monthKey}
-          current={formatBudgetMonth(current)}
-          first={formatBudgetMonth(range.first)}
-          last={formatBudgetMonth(range.last)}
-        />
-        <div className="ms-auto">
-          <ReadyToAssignPill
-            breakdown={readyToAssign}
-            currency={budget.currency}
+        {/* Sticky month toolbar (#136): under the mobile top bar on phones,
+            edge to edge there; at the top of the page from md up. The Ready
+            to Assign pill sits at its end, wrapping to the right on phones. */}
+        <div className="sticky top-mobile-nav z-10 -mx-200 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-y border-neutral-200 bg-neutral-100/95 px-200 py-1 backdrop-blur-sm md:top-0 md:mx-0 md:rounded-lg md:border md:bg-neutral-0/95 md:px-2">
+          <MonthHeader
             month={monthKey}
-            categoryOptions={categoryOptions}
-            transferAvailable={transferAvailable}
-            autoAssignCategories={autoAssignCategories}
-            autoAssign={autoAssign}
-            undoAutoAssign={undoAutoAssign}
-            monthName={monthLabel(month)}
-            previousMonthName={monthLabel(addMonths(month, -1))}
-            isPast={month.getTime() < current.getTime()}
+            current={formatBudgetMonth(current)}
+            first={formatBudgetMonth(range.first)}
+            last={formatBudgetMonth(range.last)}
           />
+          <div className="ms-auto">
+            <ReadyToAssignPill
+              breakdown={readyToAssign}
+              currency={budget.currency}
+              month={monthKey}
+              categoryOptions={categoryOptions}
+              transferAvailable={transferAvailable}
+              monthName={monthLabel(month)}
+              previousMonthName={monthLabel(addMonths(month, -1))}
+              isPast={month.getTime() < current.getTime()}
+            />
+          </div>
         </div>
-      </div>
 
-      <div className="space-y-200">
-        <UnderfundedBanner
-          totals={totals}
-          counts={underfundedBanner(allRows)}
-          month={monthKey}
-          filter={filter}
-          currency={budget.currency}
-        />
-        <QuickFilterBar counts={quickFilterCounts(allRows)} month={monthKey} filter={filter} />
-      </div>
+        <div className="space-y-200">
+          <UnderfundedBanner
+            totals={totals}
+            counts={underfundedBanner(allRows)}
+            month={monthKey}
+            filter={filter}
+            currency={budget.currency}
+          />
+          <QuickFilterBar counts={quickFilterCounts(allRows)} month={monthKey} filter={filter} />
+        </div>
 
-      <ReadyToAssignProvider total={readyToAssign.total}>
         <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-0">
           <div className="flex items-center justify-between gap-2 border-b border-neutral-200 bg-neutral-100 px-200 py-2 text-small font-medium uppercase tracking-wide text-neutral-600 sm:grid sm:grid-cols-budget lg:grid-cols-budget-targets lg:gap-x-4">
             <div className="flex items-center gap-2">

@@ -1,4 +1,4 @@
-import { addsMoney, planRun, proposedAssigned, type AutoAssignCategory } from "./autoAssign";
+import { addsMoney, planRun, proposedAssigned, type AutoAssignCategory, type AutoAssignHistory } from "./autoAssign";
 
 let order = 0;
 function category(overrides: Partial<AutoAssignCategory> & { id: string }): AutoAssignCategory {
@@ -11,8 +11,14 @@ function category(overrides: Partial<AutoAssignCategory> & { id: string }): Auto
     available: 0,
     needed: 0,
     due: null,
+    overfunded: 0,
+    history: emptyHistory(),
     ...overrides,
   };
+}
+
+function emptyHistory(): AutoAssignHistory {
+  return { assigned: Array(12).fill(0), spent: Array(12).fill(0), firstAssigned: null, firstActive: null };
 }
 
 beforeEach(() => {
@@ -111,5 +117,107 @@ describe("planRun", () => {
 
   it("marks Underfunded as an option that adds money", () => {
     expect(addsMoney("underfunded")).toBe(true);
+  });
+});
+
+/** History with the last `values.length` months filled in, oldest first. */
+function history(assigned: number[], spent: number[] = [], start?: { assigned?: number | null; active?: number | null }) {
+  const pad = (values: number[]) => [...Array(12 - values.length).fill(0), ...values];
+  const firstAssigned = start?.assigned !== undefined ? start.assigned : assigned.length ? 12 - assigned.length : null;
+  const firstActive =
+    start?.active !== undefined ? start.active : Math.min(...[firstAssigned, spent.length ? 12 - spent.length : null].filter((v): v is number => v !== null));
+  return {
+    assigned: pad(assigned),
+    spent: pad(spent),
+    firstAssigned,
+    firstActive: Number.isFinite(firstActive) ? firstActive : null,
+  };
+}
+
+describe("proposedAssigned: the other seven options (#147)", () => {
+  it("Assigned and Spent Last Month replace Assigned with last month's figure", () => {
+    const c = category({ id: "food", assigned: 20_000, history: history([30_000, 45_000], [10_000, 52_000]) });
+    expect(proposedAssigned("assigned-last-month", c)).toBe(45_000);
+    expect(proposedAssigned("spent-last-month", c)).toBe(52_000);
+    // Running it again on its own result changes nothing.
+    expect(proposedAssigned("assigned-last-month", { ...c, assigned: 45_000 })).toBeNull();
+  });
+
+  it("Last Month leaves a category with no history alone", () => {
+    expect(proposedAssigned("assigned-last-month", category({ id: "new", assigned: 5_000 }))).toBeNull();
+    expect(proposedAssigned("spent-last-month", category({ id: "new", assigned: 5_000 }))).toBeNull();
+  });
+
+  it("Average Assigned averages from the first month with Assigned, empty months as $0", () => {
+    // Started 3 months ago: $30, $0, $45 → $25.
+    const c = category({ id: "gas", history: history([30_000, 0, 45_000]) });
+    expect(proposedAssigned("average-assigned", c)).toBe(25_000);
+  });
+
+  it("Average Spent starts from the first month with Assigned or Activity", () => {
+    // Spending started 4 months ago, Assigned only 2 months ago.
+    const c = category({
+      id: "fun",
+      history: history([10_000, 10_000], [12_000, 0, 9_000, 6_000]),
+    });
+    expect(c.history.firstActive).toBe(8);
+    expect(proposedAssigned("average-spent", c)).toBe(6_750);
+  });
+
+  it("averages round half up to whole cents", () => {
+    // $10.005 average → $10.01; $10.004 → $10.00 (three months: 30.015 / 30.012).
+    expect(proposedAssigned("average-assigned", category({ id: "a", history: history([10_005, 10_005, 10_005]) }))).toBe(10_010);
+    expect(proposedAssigned("average-assigned", category({ id: "b", history: history([10_004, 10_004, 10_004]) }))).toBe(10_000);
+    // A whole window from before it: 12 months.
+    expect(
+      proposedAssigned("average-assigned", category({ id: "c", history: { ...history(Array(12).fill(1_000)), firstAssigned: 0 } })),
+    ).toBe(1_000);
+  });
+
+  it("rounds a negative average half up too", () => {
+    // −$10.005 → −$10.00 (half up is toward +∞); −$10.006 → −$10.01.
+    expect(proposedAssigned("average-assigned", category({ id: "n1", assigned: 5, history: history([-10_005, -10_005]) }))).toBe(-10_000);
+    expect(proposedAssigned("average-assigned", category({ id: "n2", assigned: 5, history: history([-10_006, -10_006]) }))).toBe(-10_010);
+  });
+
+  it("the averages leave a category with no history alone", () => {
+    expect(proposedAssigned("average-assigned", category({ id: "new", assigned: 7_000 }))).toBeNull();
+    expect(proposedAssigned("average-spent", category({ id: "new", assigned: 7_000 }))).toBeNull();
+  });
+
+  it("Reduce Overfunding takes back the excess, never more than this month's Assigned", () => {
+    expect(proposedAssigned("reduce-overfunding", category({ id: "a", assigned: 50_000, overfunded: 20_000 }))).toBe(30_000);
+    expect(proposedAssigned("reduce-overfunding", category({ id: "b", assigned: 10_000, overfunded: 25_000 }))).toBe(0);
+    expect(proposedAssigned("reduce-overfunding", category({ id: "c", assigned: 10_000 }))).toBeNull();
+  });
+
+  it("Reset Available brings Available to $0 in both directions", () => {
+    expect(proposedAssigned("reset-available", category({ id: "a", assigned: 30_000, available: 12_000 }))).toBe(18_000);
+    expect(proposedAssigned("reset-available", category({ id: "b", assigned: 0, available: -4_000 }))).toBe(4_000);
+  });
+
+  it("Reset Assigned brings Assigned to $0", () => {
+    expect(proposedAssigned("reset-assigned", category({ id: "a", assigned: 30_000 }))).toBe(0);
+    expect(proposedAssigned("reset-assigned", category({ id: "b", assigned: 0 }))).toBeNull();
+  });
+
+  it("lists which options add money", () => {
+    expect(["underfunded", "assigned-last-month", "spent-last-month", "average-assigned", "average-spent"].every((o) => addsMoney(o as never))).toBe(true);
+    expect(["reduce-overfunding", "reset-available", "reset-assigned"].some((o) => addsMoney(o as never))).toBe(false);
+  });
+});
+
+describe("planRun with decreases", () => {
+  it("applies decreases first, so they fund increases in the same run", () => {
+    const plan = planRun(
+      "reset-available",
+      [category({ id: "spare", assigned: 50_000, available: 30_000 }), category({ id: "short", available: -20_000 })],
+      0,
+    );
+    expect(plan.rows.map((r) => [r.categoryId, r.to, r.partial])).toEqual([
+      ["spare", 20_000, false],
+      ["short", 20_000, false],
+    ]);
+    expect(plan.total).toBe(-10_000);
   });
 });

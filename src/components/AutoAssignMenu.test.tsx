@@ -6,8 +6,7 @@
  */
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { AutoAssignMenu } from "@/components/AutoAssignMenu";
-import { autoAssignMessage, undoMessage } from "@/components/ReadyToAssignPill";
+import { AutoAssignMenu, autoAssignMessage, undoMessage } from "@/components/AutoAssignMenu";
 import { Toast } from "@/components/Toast";
 import type { AutoAssignCategory } from "@/lib/autoAssign";
 
@@ -20,12 +19,13 @@ const autoAssign = jest.fn((_formData: FormData) =>
 );
 const onDone = jest.fn();
 
+const noHistory = { assigned: Array(12).fill(0), spent: Array(12).fill(0), firstAssigned: null, firstActive: null };
 const categories: AutoAssignCategory[] = [
-  { id: "rent", name: "Rent", groupId: "g", hidden: false, order: 0, assigned: 0, available: 0, needed: 30_000, due: null },
-  { id: "old", name: "Old", groupId: "g", hidden: true, order: 1, assigned: 0, available: -2_000, needed: 0, due: null },
+  { id: "rent", name: "Rent", groupId: "g", hidden: false, order: 0, assigned: 0, available: 0, needed: 30_000, due: null, overfunded: 0, history: noHistory },
+  { id: "old", name: "Old", groupId: "g", hidden: true, order: 1, assigned: 0, available: -2_000, needed: 0, due: null, overfunded: 0, history: noHistory },
 ];
 
-function render(readyToAssign: number, isPast = false) {
+function render(limit: number) {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -33,10 +33,9 @@ function render(readyToAssign: number, isPast = false) {
     root.render(
       <AutoAssignMenu
         categories={categories}
-        readyToAssign={readyToAssign}
+        limit={limit}
         month="2026-11"
         currency="USD"
-        isPast={isPast}
         autoAssign={autoAssign}
         onDone={onDone}
       />,
@@ -61,13 +60,14 @@ describe("AutoAssignMenu", () => {
     expect(option("Underfunded").disabled).toBe(false);
   });
 
-  it("disables options that add money when Ready to Assign is $0 or below, and in past months", () => {
+  it("disables options that add money when there's nothing to add, but not ones that free money", () => {
     render(0);
     expect(option("Underfunded").disabled).toBe(true);
-    act(() => root.unmount());
-    container.remove();
-    render(100_000, true);
-    expect(option("Underfunded").title).toBe("Not in past months yet");
+    expect(option("Underfunded").title).toBe("No money to assign");
+    // Reset Available isn't an option that adds money, so it's never off for
+    // that reason; here lifting Old's −$2 would need money, so it has
+    // nothing it can change.
+    expect(option("Reset Available").title).toBe("Nothing to change");
   });
 
   it("previews every change, then confirms the previewed rows", async () => {

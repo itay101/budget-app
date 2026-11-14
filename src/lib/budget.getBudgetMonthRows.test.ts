@@ -511,3 +511,65 @@ describe("getBudgetMonthRows' Ready to Assign (ADR 0008, ADR 0009)", () => {
     });
   });
 });
+
+describe("getBudgetMonthRows' Auto-Assign inputs (#219)", () => {
+  const group = [
+    {
+      id: "group-1",
+      name: "Everyday Expenses",
+      categories: [{ id: "food", name: "food", hidden: false, months: [], transactions: [], targets: [], targetSnoozes: [] }],
+    },
+  ];
+
+  it("gives each category its 12-month history and where it starts", async () => {
+    mockFindMany.mockResolvedValue(group as never);
+    // Assigned from January; spending from December. March is the viewed month.
+    mockAssignments.mockResolvedValue([
+      { categoryId: "food", month: new Date(Date.UTC(2026, 0, 1)), budgeted: 30_000 },
+      { categoryId: "food", month: new Date(Date.UTC(2026, 1, 1)), budgeted: 45_000 },
+    ] as never);
+    mockActivityByMonth.mockResolvedValue([
+      { categoryId: "food", month: "2025-12", amount: BigInt(-10_000) },
+      { categoryId: "food", month: "2026-02", amount: BigInt(4_000) },
+    ]);
+
+    const { autoAssignCategories } = await getBudgetMonthRows("budget-1", month, current);
+
+    // Window: Mar 2025 … Feb 2026, so Dec is index 9, Jan 10, Feb 11.
+    expect(autoAssignCategories[0].history).toEqual({
+      assigned: [...Array(10).fill(0), 30_000, 45_000],
+      // February had more in than out, so it counts as $0 spent.
+      spent: [...Array(9).fill(0), 10_000, 0, 0],
+      firstAssigned: 10,
+      firstActive: 9,
+    });
+  });
+
+  it("in an earlier month, loads through the current one and limits Auto-Assign to the lowest Ready to Assign from there (#163)", async () => {
+    mockFindMany.mockResolvedValue(group as never);
+    const may = new Date(Date.UTC(2026, 4, 1));
+    // $100 of income in January; $30 assigned in March (viewed) and $50 in May.
+    mockAssignments.mockResolvedValue([
+      { categoryId: "food", month, budgeted: 30_000 },
+      { categoryId: "food", month: may, budgeted: 50_000 },
+    ] as never);
+    mockReadyToAssignRows.mockResolvedValue([{ kind: "income", month: "2026-01", amount: BigInt(100_000) }]);
+
+    const { readyToAssign, autoAssignLimit } = await getBudgetMonthRows("budget-1", month, may);
+
+    // March shows its own $70, but May is down to $20, so only $20 can be added.
+    expect(readyToAssign.total).toBe(70_000);
+    expect(autoAssignLimit).toBe(20_000);
+    expect(mockAssignments).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ month: { lt: new Date(Date.UTC(2026, 5, 1)) } }) }),
+    );
+  });
+
+  it("in the current month, the limit is Ready to Assign", async () => {
+    mockFindMany.mockResolvedValue(group as never);
+    mockReadyToAssignRows.mockResolvedValue([{ kind: "income", month: "2026-03", amount: BigInt(40_000) }]);
+    const { readyToAssign, autoAssignLimit } = await getBudgetMonthRows("budget-1", month, current);
+    expect(autoAssignLimit).toBe(readyToAssign.total);
+    expect(autoAssignLimit).toBe(40_000);
+  });
+});

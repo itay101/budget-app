@@ -20,7 +20,6 @@ import { effectiveTarget, parseTargetInput, type Target } from "@/lib/targets";
 import { assertNotSystem } from "@/lib/systemCategories";
 import { moveLegs } from "@/lib/readyToAssign";
 import { isAutoAssignOption } from "@/lib/autoAssign";
-import { currentBudgetMonth } from "@/lib/budgetMonth";
 
 /**
  * Creates a new category group, appended after every existing group in
@@ -728,21 +727,17 @@ async function applyAssignedRows(
 /**
  * Confirms an Auto-Assign run (#147, #219): the previewed `rows` for one
  * option in the viewed month. A run that adds money is re-checked against
- * Ready to Assign, which it may use up but never overdraw. A past month
- * only takes runs that add nothing for now; adding money there, which must
- * keep every later month at $0 or more (#163), comes with the remaining
- * options.
+ * the month's Auto-Assign limit: Ready to Assign, or in an earlier month
+ * the lowest figure from there through the current month, so no month is
+ * left below $0 (#163). It may use all of that, never more.
  */
 export async function autoAssign(formData: FormData): Promise<AutoAssignResult> {
   const context = await requireAutoAssignContext(formData);
   if (!context.rows.some((row) => row.to > row.from)) return applyAssignedRows(context, "auto-assigned");
-  if (context.month.getTime() < currentBudgetMonth().getTime()) {
-    throw new Error("Auto-Assign can't add money in a past month yet");
-  }
-  // Ready to Assign as it is now, edits since the preview included; the
+  // The limit as it is now, edits since the preview included; the
   // transaction then checks only the rows that still apply against it.
-  const { readyToAssign } = await getBudgetMonthRows(context.budgetId, context.month);
-  return applyAssignedRows(context, "auto-assigned", readyToAssign.total);
+  const { autoAssignLimit } = await getBudgetMonthRows(context.budgetId, context.month);
+  return applyAssignedRows(context, "auto-assigned", autoAssignLimit);
 }
 
 /** Undoes a confirmed run: the same rows, back from `to` to `from`, each

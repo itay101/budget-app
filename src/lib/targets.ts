@@ -394,3 +394,26 @@ export function nextDue(target: Target | null, month: Date): string | null {
   }
   return null;
 }
+
+/**
+ * How far a Target is overfunded this month, for Auto-Assign's Reduce
+ * Overfunding (#147): a Refill (monthly or weekly) or undated balance
+ * counts what's funded (carried in plus assigned) over its amount; Set
+ * aside, yearly and dated targets count Assigned over this month's ask.
+ * 0 without a target or when nothing is over.
+ */
+export function overfundedBy(
+  target: Target | null,
+  need: TargetNeed | null,
+  funding: { carriedIn: number; assigned: number },
+  month: Date,
+): number {
+  if (!target || !need || target.kind === "NONE") return 0;
+  const refill = target.kind === "REFILL" && target.cadence !== "YEARLY";
+  const undatedBalance = target.kind === "BALANCE" && !target.dueDate;
+  if (refill || undatedBalance) {
+    const amount = refill ? recurringAmount(target, month) : target.amount;
+    return Math.max(0, funding.carriedIn + funding.assigned - amount);
+  }
+  return Math.max(0, funding.assigned - need.ask);
+}

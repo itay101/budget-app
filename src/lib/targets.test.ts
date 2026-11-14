@@ -8,6 +8,7 @@ import {
   type Target,
   type TargetRow,
   nextDue,
+  overfundedBy,
 } from "./targets";
 
 // ADR 0011. Amounts in milliunits; months are UTC firsts.
@@ -452,5 +453,26 @@ describe("nextDue", () => {
     expect(
       nextDue({ ...base, kind: "BALANCE", cadence: null, dueDate: new Date(Date.UTC(2027, 5, 1)) }, november),
     ).toBe("2027-06-01");
+  });
+});
+
+describe("overfundedBy", () => {
+  const november = new Date(Date.UTC(2026, 10, 1));
+  const base = { amount: 50_000, weekday: null, dueDay: null, dueDate: null } as const;
+  const need = (ask: number) => ({ ask, needed: 0 });
+
+  it("for Set aside, yearly and dated targets, is Assigned over this month's ask", () => {
+    expect(overfundedBy({ ...base, kind: "SET_ASIDE", cadence: "MONTHLY" }, need(50_000), { carriedIn: 90_000, assigned: 70_000 }, november)).toBe(20_000);
+    expect(overfundedBy({ ...base, kind: "BALANCE", cadence: null, dueDate: new Date(Date.UTC(2027, 0, 1)) }, need(10_000), { carriedIn: 0, assigned: 15_000 }, november)).toBe(5_000);
+  });
+
+  it("for a monthly Refill or an undated balance, is what's funded over the amount", () => {
+    expect(overfundedBy({ ...base, kind: "REFILL", cadence: "MONTHLY" }, need(0), { carriedIn: 40_000, assigned: 30_000 }, november)).toBe(20_000);
+    expect(overfundedBy({ ...base, kind: "BALANCE", cadence: null }, need(0), { carriedIn: 45_000, assigned: 10_000 }, november)).toBe(5_000);
+  });
+
+  it("is 0 without a target or when nothing is over", () => {
+    expect(overfundedBy(null, null, { carriedIn: 0, assigned: 99_000 }, november)).toBe(0);
+    expect(overfundedBy({ ...base, kind: "SET_ASIDE", cadence: "MONTHLY" }, need(50_000), { carriedIn: 0, assigned: 40_000 }, november)).toBe(0);
   });
 });

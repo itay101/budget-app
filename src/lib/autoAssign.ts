@@ -7,16 +7,38 @@
  * integer milliunits.
  */
 
-export const AUTO_ASSIGN_OPTIONS = ["underfunded"] as const;
+export const AUTO_ASSIGN_OPTIONS = [
+  "underfunded",
+  "assigned-last-month",
+  "spent-last-month",
+  "average-assigned",
+  "average-spent",
+  "reduce-overfunding",
+  "reset-available",
+  "reset-assigned",
+] as const;
 export type AutoAssignOption = (typeof AUTO_ASSIGN_OPTIONS)[number];
 
 export const AUTO_ASSIGN_LABELS: Record<AutoAssignOption, string> = {
   underfunded: "Underfunded",
+  "assigned-last-month": "Assigned Last Month",
+  "spent-last-month": "Spent Last Month",
+  "average-assigned": "Average Assigned",
+  "average-spent": "Average Spent",
+  "reduce-overfunding": "Reduce Overfunding",
+  "reset-available": "Reset Available",
+  "reset-assigned": "Reset Assigned",
 };
 
 /** Options that exist to add money. They're disabled when Ready to Assign is
  * $0 or below (#147), though a run can still lower some categories. */
-const MONEY_ADDING: ReadonlySet<AutoAssignOption> = new Set(["underfunded"]);
+const MONEY_ADDING: ReadonlySet<AutoAssignOption> = new Set([
+  "underfunded",
+  "assigned-last-month",
+  "spent-last-month",
+  "average-assigned",
+  "average-spent",
+]);
 
 export function addsMoney(option: AutoAssignOption): boolean {
   return MONEY_ADDING.has(option);
@@ -41,6 +63,45 @@ export interface AutoAssignCategory {
   needed: number;
   /** When its Target is next due (`YYYY-MM-DD`), or null (targets.ts nextDue). */
   due: string | null;
+  /** How far its Target is overfunded (targets.ts overfundedBy), else 0. */
+  overfunded: number;
+  history: AutoAssignHistory;
+}
+
+/**
+ * The 12 months before the viewed month, oldest first: index 11 is last
+ * month. Months before the category's first month with Assigned (or
+ * Activity) don't count toward its averages (#147).
+ */
+export interface AutoAssignHistory {
+  assigned: number[];
+  /** Outflow Activity as a positive amount; a month with more money in
+   * than out counts as 0. */
+  spent: number[];
+  /** Index of the first month with Assigned, 0 if earlier than the window,
+   * null if none before the viewed month. */
+  firstAssigned: number | null;
+  /** Same, for the first month with Assigned or Activity. */
+  firstActive: number | null;
+}
+
+/** Integer floor division: subtracts the remainder first, so the `/` only
+ * ever divides an exact multiple and no fraction is produced. */
+function floorDiv(n: number, d: number): number {
+  const remainder = ((n % d) + d) % d;
+  return (n - remainder) / d;
+}
+
+/** `sum / count` milliunits, rounded half up to whole cents (#147), in
+ * integer arithmetic only (money never goes through a fraction). */
+function averageToCent(sum: number, count: number): number {
+  return floorDiv(2 * sum + 10 * count, 20 * count) * 10;
+}
+
+function averageFrom(values: number[], start: number | null): number | null {
+  if (start === null) return null;
+  const window = values.slice(start);
+  return averageToCent(window.reduce((total, v) => total + v, 0), window.length);
 }
 
 /** One change a run makes: Assigned goes from `from` to `to`. */
@@ -58,19 +119,33 @@ export interface AutoAssignRow {
  * A category's new Assigned under `option`, before Ready to Assign caps the
  * run, or null when it wouldn't change.
  *
- * Underfunded lifts an overspent category back to $0, Target or not, then
- * adds what its Target still needs, so a full run clears the plan-level
- * Underfunded total (ADR 0011).
+ * Each rule, from #147:
+ * - Underfunded lifts an overspent category back to $0, Target or not, then
+ *   adds what its Target still needs, so a full run clears the plan-level
+ *   Underfunded total (ADR 0011).
+ * - Last Month and the Averages *replace* Assigned, so a second run changes
+ *   nothing. A category with no history before this month is left alone.
+ * - Reduce Overfunding takes back the excess over the Target, never more
+ *   than this month's Assigned.
+ * - Reset Available brings Available to $0 either way; Reset Assigned
+ *   brings Assigned to $0.
  */
 export function proposedAssigned(option: AutoAssignOption, category: AutoAssignCategory): number | null {
-  let to: number;
-  switch (option) {
-    case "underfunded":
-      to = category.assigned + Math.max(0, -category.available) + category.needed;
-      break;
-  }
-  return to === category.assigned ? null : to;
+  const to = RULES[option](category);
+  return to === null || to === category.assigned ? null : to;
 }
+
+/** Each option's new Assigned for a category, null to leave it alone. */
+const RULES: Record<AutoAssignOption, (c: AutoAssignCategory) => number | null> = {
+  underfunded: (c) => c.assigned + Math.max(0, -c.available) + c.needed,
+  "assigned-last-month": ({ history }) => (history.firstActive === null ? null : history.assigned[11]),
+  "spent-last-month": ({ history }) => (history.firstActive === null ? null : history.spent[11]),
+  "average-assigned": ({ history }) => averageFrom(history.assigned, history.firstAssigned),
+  "average-spent": ({ history }) => averageFrom(history.spent, history.firstActive),
+  "reduce-overfunding": (c) => c.assigned - Math.min(c.overfunded, Math.max(0, c.assigned)),
+  "reset-available": (c) => c.assigned - c.available,
+  "reset-assigned": () => 0,
+};
 
 /** A slice of one category's increase, funded on its own: covering its
  * overspending, or the rest (what its Target needs, or the option's figure). */
