@@ -7,6 +7,7 @@ import {
   targetStatus,
   type Target,
   type TargetRow,
+  nextDue,
 } from "./targets";
 
 // ADR 0011. Amounts in milliunits; months are UTC firsts.
@@ -417,5 +418,39 @@ describe("parseTargetInput", () => {
     ["a dated balance with a bad due month", { kind: "BALANCE", amount: "1", dated: "true", dueMonth: "2027-13" }, "due month"],
   ])("rejects %s", (_, input, message) => {
     expect(() => parseTargetInput(input)).toThrow(message);
+  });
+});
+
+describe("nextDue", () => {
+  const november = new Date(Date.UTC(2026, 10, 1));
+  const base = { amount: 10_000, weekday: null, dueDay: null, dueDate: null } as const;
+
+  it("is null without a target, for NONE, a monthly target with no due day, or an undated balance", () => {
+    expect(nextDue(null, november)).toBeNull();
+    expect(nextDue({ ...base, kind: "NONE", cadence: null }, november)).toBeNull();
+    expect(nextDue({ ...base, kind: "SET_ASIDE", cadence: "MONTHLY" }, november)).toBeNull();
+    expect(nextDue({ ...base, kind: "BALANCE", cadence: null }, november)).toBeNull();
+  });
+
+  it("uses a monthly due day, clamped to the month's last day", () => {
+    expect(nextDue({ ...base, kind: "SET_ASIDE", cadence: "MONTHLY", dueDay: 15 }, november)).toBe("2026-11-15");
+    expect(nextDue({ ...base, kind: "REFILL", cadence: "MONTHLY", dueDay: 31 }, november)).toBe("2026-11-30");
+  });
+
+  it("uses a weekly target's first matching weekday in the month", () => {
+    // 1 Nov 2026 is a Sunday; Wednesday is the 4th.
+    expect(nextDue({ ...base, kind: "SET_ASIDE", cadence: "WEEKLY", weekday: 3 }, november)).toBe("2026-11-04");
+  });
+
+  it("uses a yearly target's next occurrence on or after the month", () => {
+    const yearly = { ...base, kind: "SET_ASIDE" as const, cadence: "YEARLY" as const };
+    expect(nextDue({ ...yearly, dueDate: new Date(Date.UTC(2025, 2, 20)) }, november)).toBe("2027-03-20");
+    expect(nextDue({ ...yearly, dueDate: new Date(Date.UTC(2025, 11, 5)) }, november)).toBe("2026-12-05");
+  });
+
+  it("uses a dated balance's due date", () => {
+    expect(
+      nextDue({ ...base, kind: "BALANCE", cadence: null, dueDate: new Date(Date.UTC(2027, 5, 1)) }, november),
+    ).toBe("2027-06-01");
   });
 });
