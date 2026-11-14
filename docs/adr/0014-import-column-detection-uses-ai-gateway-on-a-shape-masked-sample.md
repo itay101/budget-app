@@ -9,9 +9,11 @@ mapping step. A less confident one opens the mapping step pre-filled.
   `anthropic/claude-haiku-5.5`, called from the `detectImportColumns`
   server action. On Vercel the Gateway authenticates with the deployment's
   OIDC token, so production and previews need no new secret. Elsewhere it
-  needs `AI_GATEWAY_API_KEY`. With neither, the feature is off and nothing
-  is sent, which is the case for local dev and e2e. Usage is billed to the
-  Vercel team, and the Gateway must be enabled there. If it isn't, every
+  needs `AI_GATEWAY_API_KEY`. With neither, the feature is off, which is
+  the case for local dev and e2e: the account page tells the modal so, and
+  the modal goes straight to the mapping step as before, with no request.
+  Usage is billed to the Vercel team, and the Gateway must be enabled
+  there. If it isn't, every
   call fails and File Import falls back to the heuristics.
 - **What leaves the browser:** the rows up to the heuristically guessed
   header row, that header row, and the first 5 data rows: at most 12 rows,
@@ -21,8 +23,12 @@ mapping step. A less confident one opens the mapping step pre-filled.
   `9`, and letters become `X` or `x`. So `-1,234.56` is sent as
   `-9,999.99` and `ACME Coffee #12` as `XXXX Xxxxxx #99`. The header is
   sent as plain text because column names are what the model needs most
-  and aren't personal. The modal tells the user that a masked sample is
-  sent while detection runs.
+  and aren't personal, but only when the guess is backed by a data row
+  right after it and the guessed row isn't a data row itself. Otherwise
+  (a file with no header row, or no recognizable data) every row is
+  masked, so a real transaction or account line can't be sent by mistake.
+  The modal tells the user that a masked sample is sent while detection
+  runs.
 - **Precedence:** the account's saved mapping, then AI, then the
   header-name heuristics. When a saved mapping exists, detection doesn't
   run and nothing is sent. The server gives the model 5 seconds and makes

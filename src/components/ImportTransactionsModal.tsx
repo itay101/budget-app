@@ -80,6 +80,7 @@ const CLIENT_DETECTION_TIMEOUT_MS = DETECTION_TIMEOUT_MS + 2000;
 export function ImportTransactionsModal({
   accountId,
   accountType,
+  columnDetection = false,
   currency,
   checkImportDuplicates,
   importTransactions,
@@ -87,6 +88,7 @@ export function ImportTransactionsModal({
 }: {
   accountId: string;
   accountType?: AccountType;
+  columnDetection?: boolean;
   currency: string;
   checkImportDuplicates: (formData: FormData) => Promise<boolean[]>;
   importTransactions: (formData: FormData) => Promise<void>;
@@ -209,9 +211,7 @@ export function ImportTransactionsModal({
     setRawTable(table);
     setAutoDetected(null);
     const requestId = ++detectionRequest.current;
-    const saved = loadImportMapping(accountId);
-    if (saved) {
-      setDateOrder(saved.dateOrder);
+    if (!columnDetection || loadImportMapping(accountId)) {
       openMappingWithHeuristics(table);
       return;
     }
@@ -246,7 +246,9 @@ export function ImportTransactionsModal({
     }
   }
 
+  // Also the path for a saved mapping, whose date format it restores.
   function openMappingWithHeuristics(table: string[][]) {
+    setDateOrder(loadImportMapping(accountId)?.dateOrder ?? "auto");
     applyHeaderRow(table, guessHeaderRowIndex(table));
     setStep("mapping");
   }
