@@ -5,9 +5,12 @@ amount, which row is the header, whether amounts are one signed column or
 Inflow/Outflow, and the date format (#197). A confident answer skips the
 mapping step. A less confident one opens the mapping step pre-filled.
 
-- **Provider:** Vercel AI Gateway through the `ai` SDK, model
-  `anthropic/claude-haiku-5.5`, called from the `detectImportColumns`
-  server action. On Vercel the Gateway authenticates with the deployment's
+- **Provider:** Vercel AI Gateway through the `ai` SDK, called from the
+  `detectImportColumns` server action. The model is
+  `IMPORT_DETECTION_MODEL`, defaulting to `anthropic/claude-haiku-5.5`.
+  It's a setting because the Gateway's free tier serves only some models
+  and refuses the rest (403 `RestrictedModelsError`), so the model has to
+  follow the team's plan. On Vercel the Gateway authenticates with the deployment's
   OIDC token, so production and previews need no new secret. Elsewhere it
   needs `AI_GATEWAY_API_KEY`. With neither, the feature is off, which is
   the case for local dev and e2e: the account page tells the modal so, and
@@ -33,7 +36,9 @@ mapping step. A less confident one opens the mapping step pre-filled.
   header-name heuristics. When a saved mapping exists, detection doesn't
   run and nothing is sent. The server gives the model 5 seconds and makes
   no retries. The client gives up after 7. Any failure, timeout or
-  unusable answer falls back to the heuristics.
+  unusable answer falls back to the heuristics, and the mapping step then
+  says detection didn't work, so a failure isn't mistaken for a
+  low-confidence answer.
 - **Skipping the mapping step** needs all of these: Date, Payee and the
   amount column(s) for the mode (Amount, or both Inflow and Outflow) are
   present; they and the amount mode each have a confidence of at least 0.8;
