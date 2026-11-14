@@ -437,8 +437,11 @@ export async function getBudgetMonthRows(
 ): Promise<BudgetMonthRows> {
   const nextMonth = startOfNextMonth(month);
 
+  // The system Inflow group isn't a section of the budget page (ADR
+  // 0008): Inflow: Ready to Assign can't be assigned to, and its money is
+  // the Ready to Assign figure instead of a row.
   const groups = await prisma.categoryGroup.findMany({
-    where: { budgetId },
+    where: { budgetId, systemKind: null },
     orderBy: { sortOrder: "asc" },
     include: {
       categories: {
