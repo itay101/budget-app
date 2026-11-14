@@ -69,6 +69,21 @@ describe("planRun", () => {
     expect(plan.total).toBe(25_000);
   });
 
+  it("covers every category's overspending before any Target, even within one category", () => {
+    // x is overspent by $10 and its Target needs $500; y is overspent by $10
+    // with no Target. With $100, both overspends are covered first, and only
+    // the remaining $80 goes to x's Target.
+    const plan = planRun(
+      "underfunded",
+      [category({ id: "x", available: -10_000, needed: 500_000 }), category({ id: "y", available: -10_000 })],
+      100_000,
+    );
+    expect(plan.rows.map((r) => [r.categoryId, r.to, r.partial])).toEqual([
+      ["x", 90_000, true],
+      ["y", 10_000, false],
+    ]);
+  });
+
   it("breaks ties by display order", () => {
     const plan = planRun(
       "underfunded",

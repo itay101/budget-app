@@ -72,17 +72,36 @@ export function proposedAssigned(option: AutoAssignOption, category: AutoAssignC
   return to === category.assigned ? null : to;
 }
 
-/** Funding order when money runs short (#147): overspent categories, then
- * Targets by soonest due date, then everything undated; ties by order. */
-function fundingOrder(a: AutoAssignCategory, b: AutoAssignCategory): number {
-  const overspent = Number(b.available < 0) - Number(a.available < 0);
-  if (overspent !== 0) return overspent;
-  if (a.due !== b.due) {
-    if (a.due === null) return 1;
-    if (b.due === null) return -1;
-    return a.due < b.due ? -1 : 1;
+/** A slice of one category's increase, funded on its own: covering its
+ * overspending, or the rest (what its Target needs, or the option's figure). */
+interface Slice {
+  category: AutoAssignCategory;
+  amount: number;
+  overspending: boolean;
+}
+
+/** Funding order when money runs short (#147): every category's overspending
+ * first, then the rest by soonest Target due date, then everything undated;
+ * ties by display order. */
+function fundingOrder(a: Slice, b: Slice): number {
+  if (a.overspending !== b.overspending) return a.overspending ? -1 : 1;
+  if (a.category.due !== b.category.due) {
+    if (a.category.due === null) return 1;
+    if (b.category.due === null) return -1;
+    return a.category.due < b.category.due ? -1 : 1;
   }
-  return a.order - b.order;
+  return a.category.order - b.category.order;
+}
+
+/** Splits an increase into its overspending part (up to what lifts the
+ * category back to $0) and the rest, so one category's Target can't be
+ * funded ahead of another's overspending. */
+function slices(category: AutoAssignCategory, wanted: number): Slice[] {
+  const overspent = Math.min(wanted, Math.max(0, -category.available));
+  return [
+    { category, amount: overspent, overspending: true },
+    { category, amount: wanted - overspent, overspending: false },
+  ].filter((slice) => slice.amount > 0);
 }
 
 export interface AutoAssignPlan {
@@ -95,8 +114,9 @@ export interface AutoAssignPlan {
  * The changes a run of `option` over `categories` makes. Decreases are
  * applied in full first, since they free money. Increases are then funded
  * in funding order until Ready to Assign, plus what the decreases freed,
- * reaches $0. The last one funded may be partial, and any left after that
- * are dropped. Rows come back in display order.
+ * reaches $0: each category's overspending part before anyone's Target
+ * part. The last slice funded may be partial, and any left after that are
+ * dropped. Rows come back in display order.
  */
 export function planRun(
   option: AutoAssignOption,
@@ -111,14 +131,26 @@ export function planRun(
   const increases = changes.filter((c) => c.to > c.category.assigned);
 
   let money = readyToAssign + decreases.reduce((sum, c) => sum + c.category.assigned - c.to, 0);
-  const funded: { category: AutoAssignCategory; to: number; partial: boolean }[] = [];
-  for (const change of [...increases].sort((a, b) => fundingOrder(a.category, b.category))) {
+  const given = new Map<string, number>();
+  const ordered = increases
+    .flatMap((change) => slices(change.category, change.to - change.category.assigned))
+    .sort(fundingOrder);
+  for (const slice of ordered) {
     if (money <= 0) break;
-    const wanted = change.to - change.category.assigned;
-    const given = Math.min(wanted, money);
-    money -= given;
-    funded.push({ category: change.category, to: change.category.assigned + given, partial: given < wanted });
+    const amount = Math.min(slice.amount, money);
+    money -= amount;
+    given.set(slice.category.id, (given.get(slice.category.id) ?? 0) + amount);
   }
+  const funded = increases
+    .filter((change) => given.has(change.category.id))
+    .map((change) => {
+      const amount = given.get(change.category.id)!;
+      return {
+        category: change.category,
+        to: change.category.assigned + amount,
+        partial: amount < change.to - change.category.assigned,
+      };
+    });
 
   const rows = [...decreases.map((c) => ({ ...c, partial: false })), ...funded]
     .sort((a, b) => a.category.order - b.category.order)
