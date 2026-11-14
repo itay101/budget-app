@@ -5,6 +5,9 @@ import { createPortal } from "react-dom";
 import { Icon } from "@/components/Icon";
 import { MoneyInput } from "@/components/MoneyInput";
 import { AvailableOptions } from "@/components/AvailableOptions";
+import { AutoAssignMenu, type AutoAssignAction, type AutoAssignDone } from "@/components/AutoAssignMenu";
+import { Toast } from "@/components/Toast";
+import type { AutoAssignCategory } from "@/lib/autoAssign";
 import { formatMilliunits, milliunitsToNumber, numberToMilliunits } from "@/lib/money";
 import {
   READY_TO_ASSIGN,
@@ -98,6 +101,9 @@ export function ReadyToAssignPill({
   isPast,
   categoryOptions,
   transferAvailable,
+  autoAssignCategories,
+  autoAssign,
+  undoAutoAssign,
 }: {
   breakdown: ReadyToAssignBreakdown;
   currency: string;
@@ -106,6 +112,11 @@ export function ReadyToAssignPill({
   /** Every category money can be assigned to, grouped, with its Available. */
   categoryOptions: GroupOption[];
   transferAvailable: (formData: FormData) => Promise<void>;
+  /** Every category's Auto-Assign inputs: the drawer's run covers the whole
+   * Budget (#219). */
+  autoAssignCategories: AutoAssignCategory[];
+  autoAssign: AutoAssignAction;
+  undoAutoAssign: AutoAssignAction;
   /** The viewed month, e.g. "November 2026". */
   monthName: string;
   /** The month before it, e.g. "October 2026". */
@@ -114,6 +125,7 @@ export function ReadyToAssignPill({
   isPast: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [lastRun, setLastRun] = useState<AutoAssignDone | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const style = READY_TO_ASSIGN_STYLE[breakdown.state];
@@ -234,6 +246,21 @@ export function ReadyToAssignPill({
                 </div>
               </dl>
 
+              <div className="mt-300">
+                <AutoAssignMenu
+                  categories={autoAssignCategories}
+                  readyToAssign={breakdown.total}
+                  month={month}
+                  currency={currency}
+                  isPast={isPast}
+                  autoAssign={autoAssign}
+                  onDone={(done) => {
+                    setOpen(false);
+                    setLastRun(done);
+                  }}
+                />
+              </div>
+
               <AssignMoneyForm
                 total={breakdown.total}
                 currency={currency}
@@ -246,8 +273,78 @@ export function ReadyToAssignPill({
           </div>,
           document.body,
         )}
+
+      <AutoAssignToasts
+        run={lastRun}
+        currency={currency}
+        undoAutoAssign={undoAutoAssign}
+        onRunClosed={() => setLastRun(null)}
+      />
     </>
   );
+}
+
+/**
+ * The toast after an Auto-Assign run, with Undo for as long as the page
+ * stays open (#219), then a short note on how the Undo went.
+ */
+function AutoAssignToasts({
+  run,
+  currency,
+  undoAutoAssign,
+  onRunClosed,
+}: {
+  run: AutoAssignDone | null;
+  currency: string;
+  undoAutoAssign: AutoAssignAction;
+  onRunClosed: () => void;
+}) {
+  const [undoNote, setUndoNote] = useState<string | null>(null);
+
+  async function undo(done: AutoAssignDone) {
+    onRunClosed();
+    const formData = new FormData();
+    formData.set("option", done.option);
+    formData.set("month", done.month);
+    formData.set("rows", JSON.stringify(done.applied));
+    try {
+      const result = await undoAutoAssign(formData);
+      setUndoNote(undoMessage(result.applied.length, result.skipped.length));
+    } catch (e) {
+      setUndoNote(`Undo failed: ${e instanceof Error ? e.message : "please try again"}`);
+    }
+  }
+
+  return (
+    <>
+      {run && (
+        <Toast
+          message={autoAssignMessage(run, currency)}
+          actionLabel={run.applied.length > 0 ? "Undo" : undefined}
+          onAction={() => void undo(run)}
+          onClose={onRunClosed}
+        />
+      )}
+      {undoNote && <Toast message={undoNote} onClose={() => setUndoNote(null)} />}
+    </>
+  );
+}
+
+/** The note after an Undo, e.g. "Undid 3 changes" or, when some had been
+ * edited since the run, how many were left as they were. */
+export function undoMessage(undone: number, skipped: number): string {
+  const done = `Undid ${undone} ${undone === 1 ? "change" : "changes"}`;
+  return skipped > 0 ? `${done}; ${skipped} changed since and left as is` : done;
+}
+
+/** The toast after an Auto-Assign run, e.g. "Assigned $40.00 to 3
+ * categories" (#147), noting any rows that had changed and were skipped. */
+export function autoAssignMessage(run: AutoAssignDone, currency: string): string {
+  const count = run.applied.length;
+  const categories = `${count} ${count === 1 ? "category" : "categories"}`;
+  const amount = formatMilliunits(Math.abs(run.total), currency);
+  const done = run.total >= 0 ? `Assigned ${amount} to ${categories}` : `Freed ${amount} from ${categories}`;
+  return run.skipped > 0 ? `${done} (${run.skipped} changed since the preview, skipped)` : done;
 }
 
 /**

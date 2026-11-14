@@ -38,6 +38,8 @@ import {
   snoozeTarget,
   transferAvailable,
   unsnoozeTarget,
+  autoAssign,
+  undoAutoAssign,
 } from "./actions";
 
 const targetActions = { setTarget, removeTarget, snoozeTarget, unsnoozeTarget };
@@ -71,7 +73,7 @@ export default async function BudgetPage({
   const { month } = viewed;
   const monthKey = formatBudgetMonth(month);
 
-  const { groups, categoryOptions, hiddenCategories, totals, readyToAssign } =
+  const { groups, categoryOptions, hiddenCategories, totals, readyToAssign, autoAssignCategories } =
     await getBudgetMonthRows(budget.id, month, current);
 
   const filter = parseQuickFilter(params.filter);
@@ -99,6 +101,9 @@ export default async function BudgetPage({
             month={monthKey}
             categoryOptions={categoryOptions}
             transferAvailable={transferAvailable}
+            autoAssignCategories={autoAssignCategories}
+            autoAssign={autoAssign}
+            undoAutoAssign={undoAutoAssign}
             monthName={monthLabel(month)}
             previousMonthName={monthLabel(addMonths(month, -1))}
             isPast={month.getTime() < current.getTime()}
