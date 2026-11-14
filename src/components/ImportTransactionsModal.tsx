@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { readImportFile } from "@/lib/spreadsheet";
 import {
@@ -23,13 +23,32 @@ import {
   loadImportMapping,
   saveImportMapping,
 } from "@/lib/importMappingPreferences";
+import {
+  DETECTION_TIMEOUT_MS,
+  buildDetectionSample,
+  canSkipMapping,
+  detectionToMapping,
+  normalizeDetection,
+  type ColumnDetection,
+} from "@/lib/importColumnDetection";
+import { detectImportColumns } from "@/app/(app)/accounts/importColumnDetectionActions";
+import {
+  DetectedMappingNote,
+  DetectedPreviewBanner,
+  DetectingStep,
+  type AutoDetected,
+} from "@/components/ImportColumnDetection";
 
-type Step = "select" | "mapping" | "preview";
+type Step = "select" | "detecting" | "mapping" | "preview";
 type Mapping = ColumnMapping;
 
 // <select> sentinel for "no column chosen" - "" is already the header-index
 // string for column 0, so it can't double as "none".
 const NONE = "__none__";
+
+// The server action gives up after DETECTION_TIMEOUT_MS; this covers the
+// round trip on top of that, so a stuck request can't hold the modal.
+const CLIENT_DETECTION_TIMEOUT_MS = DETECTION_TIMEOUT_MS + 2000;
 
 /**
  * File Import (#35): a three-step modal (choose file → map columns →
@@ -50,6 +69,13 @@ const NONE = "__none__";
  * remembered per account (in localStorage, see
  * @/lib/importMappingPreferences) and pre-filled next time this account
  * is imported into, on top of the usual header-guessing heuristics.
+ *
+ * With no saved mapping for the account, an AI model first guesses the
+ * header row, columns, amount mode and date format from a masked sample
+ * of the file (#197, docs/adr/0014). A confident guess that parses
+ * cleanly skips the mapping step entirely; anything less opens it
+ * pre-filled with the guess. Either way the preview step can go back to
+ * the mapping step to fix a mistake, and the result is saved as above.
  */
 export function ImportTransactionsModal({
   accountId,
@@ -100,6 +126,13 @@ export function ImportTransactionsModal({
     inflow: null,
     outflow: null,
   });
+  // Whether the current mapping came from AI detection: "skipped" when it
+  // went straight to the preview, "prefilled" when it opened the mapping
+  // step with the guess. Drives the notes on those steps.
+  const [autoDetected, setAutoDetected] = useState<AutoDetected>(null);
+  // Bumped whenever a pending detection should be ignored (a new file, the
+  // user skipping it, going back) - only the latest request may apply.
+  const detectionRequest = useRef(0);
   const [rows, setRows] = useState<PreviewRow[]>([]);
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -167,25 +200,94 @@ export function ImportTransactionsModal({
       return;
     }
 
+    startMapping(table);
+  }
+
+  // Precedence: this account's saved mapping, then AI, then heuristics. A
+  // saved mapping means no detection request at all - nothing is sent.
+  async function startMapping(table: string[][]) {
     setRawTable(table);
-    setDateOrder(loadImportMapping(accountId)?.dateOrder ?? "auto");
+    setAutoDetected(null);
+    const requestId = ++detectionRequest.current;
+    const saved = loadImportMapping(accountId);
+    if (saved) {
+      setDateOrder(saved.dateOrder);
+      openMappingWithHeuristics(table);
+      return;
+    }
+
+    setDateOrder("auto");
+    setStep("detecting");
+    const detection = await detectColumns(table);
+    if (requestId === detectionRequest.current) applyDetection(table, detection);
+  }
+
+  // Falls back to the heuristics when detection gave nothing usable.
+  function applyDetection(table: string[][], detection: ColumnDetection | null) {
+    if (!detection) {
+      openMappingWithHeuristics(table);
+      return;
+    }
+    const detected = {
+      table,
+      headerRowIndex: detection.headerRowIndex,
+      mapping: detectionToMapping(detection),
+      dateOrder: detection.dateOrder ?? ("auto" as const),
+    };
+    setHeaderRowIndex(detected.headerRowIndex);
+    setMapping(detected.mapping);
+    setDateOrder(detected.dateOrder);
+    if (canSkipMapping(detection, table)) {
+      setAutoDetected("skipped");
+      goToPreview(detected);
+    } else {
+      setAutoDetected("prefilled");
+      setStep("mapping");
+    }
+  }
+
+  function openMappingWithHeuristics(table: string[][]) {
     applyHeaderRow(table, guessHeaderRowIndex(table));
     setStep("mapping");
   }
 
-  function buildPreview(): PreviewRow[] {
-    return buildImportPreview({ dataRows, mapping, dateOrder, flipSign });
+  // Resolves null on any failure or after CLIENT_DETECTION_TIMEOUT_MS, so
+  // detection can only ever delay the mapping step, never block it.
+  async function detectColumns(table: string[][]): Promise<ColumnDetection | null> {
+    const timeout = new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), CLIENT_DETECTION_TIMEOUT_MS),
+    );
+    const request = detectImportColumns({ accountId, sample: buildDetectionSample(table) })
+      .then((raw) => normalizeDetection(raw, table))
+      .catch(() => null);
+    return Promise.race([request, timeout]);
   }
 
-  // A blank/missing header is saved as null rather than "" - see
-  // findHeaderIndex's matching rule above.
-  function headerName(index: number | null): string | null {
-    if (index === null) return null;
-    const h = headers[index];
-    return h && h.trim() ? h : null;
+  function skipDetection() {
+    detectionRequest.current++;
+    openMappingWithHeuristics(rawTable);
   }
 
-  function goToPreview() {
+  // Takes the table/mapping explicitly so a just-detected mapping can go
+  // straight to the preview in the same handler, before React has applied
+  // the state updates; defaults to the current state otherwise.
+  function goToPreview(
+    current: {
+      table: string[][];
+      headerRowIndex: number;
+      mapping: Mapping;
+      dateOrder: "auto" | DateOrder;
+    } = { table: rawTable, headerRowIndex, mapping, dateOrder },
+  ) {
+    const headerRow = current.table[current.headerRowIndex] ?? [];
+    // A blank/missing header is saved as null rather than "" - see
+    // findHeaderIndex's matching rule above.
+    const headerName = (index: number | null): string | null => {
+      if (index === null) return null;
+      const h = headerRow[index];
+      return h && h.trim() ? h : null;
+    };
+    const { mapping, dateOrder } = current;
     saveImportMapping(accountId, {
       date: headerName(mapping.date),
       payee: headerName(mapping.payee),
@@ -197,7 +299,12 @@ export function ImportTransactionsModal({
       dateOrder,
     });
 
-    const built = buildPreview();
+    const built = buildImportPreview({
+      dataRows: current.table.slice(current.headerRowIndex + 1),
+      mapping,
+      dateOrder,
+      flipSign,
+    });
     setRows(built);
     setStep("preview");
 
@@ -359,6 +466,12 @@ export function ImportTransactionsModal({
             </div>
           )}
 
+          <DetectingStep
+            active={step === "detecting"}
+            fileName={fileName}
+            onSkip={skipDetection}
+          />
+
           {step === "mapping" && (
             <div className="space-y-4">
               <p className="text-body text-neutral-600">
@@ -366,6 +479,8 @@ export function ImportTransactionsModal({
                 &#39;s columns to a transaction&#39;s fields. Only Date and an
                 amount are required.
               </p>
+
+              <DetectedMappingNote autoDetected={autoDetected} />
 
               {rawTable.length > 1 && (
                 <div>
@@ -540,6 +655,11 @@ export function ImportTransactionsModal({
 
           {step === "preview" && (
             <div className="space-y-3">
+              <DetectedPreviewBanner
+                autoDetected={autoDetected}
+                onFix={() => setStep("mapping")}
+                disabled={pending}
+              />
               <div className="flex flex-wrap items-center justify-between gap-2 text-small text-neutral-600">
                 <span>
                   {rows.length} row{rows.length === 1 ? "" : "s"} parsed ·{" "}
@@ -639,7 +759,10 @@ export function ImportTransactionsModal({
           <button
             type="button"
             onClick={() => {
-              if (step === "mapping") setStep("select");
+              if (step === "detecting") {
+                detectionRequest.current++;
+                setStep("select");
+              } else if (step === "mapping") setStep("select");
               else if (step === "preview") setStep("mapping");
               else onClose();
             }}
@@ -652,7 +775,7 @@ export function ImportTransactionsModal({
           {step === "mapping" && (
             <button
               type="button"
-              onClick={goToPreview}
+              onClick={() => goToPreview()}
               disabled={!mappingValid}
               className="rounded-sm bg-brand-700 px-3 py-1.5 text-small font-medium text-white hover:bg-brand-800 disabled:opacity-50"
             >
