@@ -225,6 +225,7 @@ export function ImportTransactionsModal({
   // Falls back to the heuristics when detection gave nothing usable.
   function applyDetection(table: string[][], detection: ColumnDetection | null) {
     if (!detection) {
+      setAutoDetected("failed");
       openMappingWithHeuristics(table);
       return;
     }

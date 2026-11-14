@@ -8,7 +8,7 @@ import { Icon } from "@/components/Icon";
  * readable.
  */
 
-export type AutoDetected = "skipped" | "prefilled" | null;
+export type AutoDetected = "skipped" | "prefilled" | "failed" | null;
 
 /** Shown while the detection request runs. */
 export function DetectingStep({
@@ -37,15 +37,20 @@ export function DetectingStep({
   );
 }
 
-/** On the mapping step, when its columns came from detection. */
+const MAPPING_NOTES: Record<Exclude<AutoDetected, null>, string> = {
+  prefilled:
+    "These columns were detected automatically, but not confidently enough to skip this step - check them before continuing.",
+  skipped: "These columns were detected automatically - fix anything that's wrong and continue.",
+  failed: "Couldn't detect the columns automatically - match them below.",
+};
+
+/** On the mapping step: whether its columns came from detection, or detection failed. */
 export function DetectedMappingNote({ autoDetected }: { autoDetected: AutoDetected }) {
   if (!autoDetected) return null;
   return (
     <p className="flex items-start gap-1.5 text-small text-neutral-600">
       <Icon name="info" className="mt-0.5 shrink-0 text-[1.1em]" />
-      {autoDetected === "prefilled"
-        ? "These columns were detected automatically, but not confidently enough to skip this step - check them before continuing."
-        : "These columns were detected automatically - fix anything that's wrong and continue."}
+      {MAPPING_NOTES[autoDetected]}
     </p>
   );
 }
