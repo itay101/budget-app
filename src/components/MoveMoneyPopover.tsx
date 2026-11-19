@@ -101,7 +101,7 @@ export function MoveMoneyPopover({
             role="dialog"
             aria-label={`Move money for ${categoryName}`}
             style={{ position: "fixed", top: position.top, left: position.left }}
-            className="z-50 w-64 max-w-[calc(100vw-1rem)] rounded-lg border border-neutral-200 bg-neutral-0 p-3 text-left shadow-lg"
+            className="z-50 max-h-[calc(100vh-1rem)] w-64 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border border-neutral-200 bg-neutral-0 p-3 text-left shadow-lg"
           >
             <div
               role="radiogroup"

@@ -9,6 +9,47 @@ export interface PopoverPosition {
   left: number;
 }
 
+const POPOVER_GAP = 4;
+const POPOVER_MARGIN = 8;
+
+/**
+ * Where a fixed popover sits: under the trigger, nudged clear of the left
+ * and right edges, and above the trigger when the panel would otherwise
+ * run off the bottom of the viewport. A zero `panelHeight` (the panel
+ * isn't measured yet) always opens below.
+ */
+export function popoverPosition(
+  trigger: { top: number; bottom: number; left: number; right: number },
+  {
+    width,
+    align,
+    panelHeight,
+    viewportWidth,
+    viewportHeight,
+  }: {
+    width: number;
+    align: PopoverAlign;
+    panelHeight: number;
+    viewportWidth: number;
+    viewportHeight: number;
+  },
+): PopoverPosition {
+  const rawLeft = align === "right" ? trigger.right - width : trigger.left;
+  const left = Math.min(
+    Math.max(POPOVER_MARGIN, rawLeft),
+    Math.max(POPOVER_MARGIN, viewportWidth - width - POPOVER_MARGIN),
+  );
+  const below = trigger.bottom + POPOVER_GAP;
+  const roomBelow = viewportHeight - POPOVER_MARGIN - below;
+  const roomAbove = trigger.top - POPOVER_MARGIN;
+  const placeBelow = panelHeight === 0 || roomBelow >= panelHeight || roomBelow >= roomAbove;
+  let top = placeBelow ? below : trigger.top - POPOVER_GAP - panelHeight;
+  if (panelHeight > 0) {
+    top = Math.min(Math.max(POPOVER_MARGIN, top), Math.max(POPOVER_MARGIN, viewportHeight - panelHeight - POPOVER_MARGIN));
+  }
+  return { top, left };
+}
+
 export interface UsePopoverOptions {
   /**
    * Popover panel width in px - used to align it under the trigger and
@@ -72,13 +113,20 @@ export function usePopover({ width, align = "left", onDismiss }: UsePopoverOptio
     function updatePosition() {
       const rect = triggerRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const rawLeft = align === "right" ? rect.right - width : rect.left;
-      setPosition({
-        top: rect.bottom + 4,
-        left: Math.min(Math.max(8, rawLeft), window.innerWidth - width - 8),
-      });
+      setPosition(
+        popoverPosition(rect, {
+          width,
+          align,
+          panelHeight: panelRef.current?.offsetHeight ?? 0,
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+        }),
+      );
     }
     updatePosition();
+    // The panel isn't mounted until `position` is set, so measure it on the
+    // next frame and lift it above the trigger if it doesn't fit below.
+    const frame = requestAnimationFrame(updatePosition);
 
     function handlePointerDown(e: MouseEvent) {
       if (
@@ -102,6 +150,7 @@ export function usePopover({ width, align = "left", onDismiss }: UsePopoverOptio
     document.addEventListener("mousedown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
     return () => {
+      cancelAnimationFrame(frame);
       window.removeEventListener("scroll", updatePosition, true);
       window.removeEventListener("resize", updatePosition);
       document.removeEventListener("mousedown", handlePointerDown);
