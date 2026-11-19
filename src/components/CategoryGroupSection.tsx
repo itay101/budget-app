@@ -47,6 +47,7 @@ export function CategoryGroupSection({
   groupName,
   categories,
   isEmpty,
+  locked = false,
   month,
   currency,
   createCategory,
@@ -68,6 +69,8 @@ export function CategoryGroupSection({
   // Drives the delete button: a group holding only hidden categories isn't
   // really empty, even though it renders with no visible rows.
   isEmpty: boolean;
+  /** Credit Card Payments: the group follows its accounts, so it can't be edited. */
+  locked?: boolean;
   month: string;
   currency: string;
   createCategory: (formData: FormData) => Promise<void>;
@@ -176,17 +179,19 @@ export function CategoryGroupSection({
       />
     ) : (
       <div className="group col-span-2 flex items-center gap-1.5 text-neutral-800 sm:col-span-1">
-        <span
-          draggable
-          onDragStart={(e) => {
-            e.dataTransfer.setData(DRAG_TYPE, category.id);
-            e.dataTransfer.effectAllowed = "move";
-          }}
-          title="Drag to reorder or move to another group"
-          className="shrink-0 cursor-grab select-none text-neutral-400 hover:text-neutral-600 active:cursor-grabbing"
-        >
-          <Icon name="drag_indicator" label="Drag to reorder or move to another group" />
-        </span>
+        {!category.payment && (
+          <span
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData(DRAG_TYPE, category.id);
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            title="Drag to reorder or move to another group"
+            className="shrink-0 cursor-grab select-none text-neutral-400 hover:text-neutral-600 active:cursor-grabbing"
+          >
+            <Icon name="drag_indicator" label="Drag to reorder or move to another group" />
+          </span>
+        )}
         <span className="truncate">
           <bdi>{category.name}</bdi>
         </span>
@@ -264,36 +269,22 @@ export function CategoryGroupSection({
           </form>
         ) : (
           <>
-            <span>
-              <bdi>{groupName}</bdi>
-            </span>
-            <button
-              type="button"
-              onClick={() => {
+            <GroupHeading
+              groupId={groupId}
+              groupName={groupName}
+              locked={locked}
+              isEmpty={isEmpty}
+              pending={pending}
+              month={month}
+              currency={currency}
+              needed={needed}
+              createCategory={createCategory}
+              onRename={() => {
                 setGroupNameDraft(groupName);
                 setGroupRenaming(true);
               }}
-              title="Rename category group"
-              className="rounded-sm p-1 text-neutral-400 normal-case tracking-normal hover:bg-neutral-200 hover:text-neutral-600"
-            >
-              <Icon name="edit" label="Rename category group" />
-            </button>
-            <AddCategoryPopover
-              categoryGroupId={groupId}
-              createCategory={createCategory}
+              onDelete={handleDeleteGroup}
             />
-            <GroupAutoAssignPopover groupId={groupId} groupName={groupName} month={month} currency={currency} />
-            {isEmpty && (
-              <button
-                type="button"
-                onClick={handleDeleteGroup}
-                disabled={pending}
-                title="Delete empty category group"
-                className="rounded-sm p-1 text-neutral-400 normal-case tracking-normal hover:bg-danger/10 hover:text-danger disabled:opacity-50"
-              >
-                <Icon name="delete" label="Delete empty category group" />
-              </button>
-            )}
             {needed > 0 && (
               <span className="ms-auto whitespace-nowrap normal-case tracking-normal text-target-underfunded-fg">
                 {formatMilliunitsLtr(needed, currency)} needed
@@ -334,6 +325,107 @@ export function CategoryGroupSection({
         />
       ))}
     </div>
+  );
+}
+
+/** The group's name and its buttons. A locked group is Credit Card Payments:
+ * it follows its accounts, so it can't be renamed, added to, or deleted. */
+function GroupHeading({
+  groupId,
+  groupName,
+  locked,
+  isEmpty,
+  pending,
+  month,
+  currency,
+  needed,
+  createCategory,
+  onRename,
+  onDelete,
+}: {
+  groupId: string;
+  groupName: string;
+  locked: boolean;
+  isEmpty: boolean;
+  pending: boolean;
+  month: string;
+  currency: string;
+  needed: number;
+  createCategory: (formData: FormData) => Promise<void>;
+  onRename: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <>
+      <span>
+        <bdi>{groupName}</bdi>
+      </span>
+      <GroupEditButtons
+        groupId={groupId}
+        locked={locked}
+        isEmpty={isEmpty}
+        pending={pending}
+        createCategory={createCategory}
+        onRename={onRename}
+        onDelete={onDelete}
+      />
+      <GroupAutoAssignPopover groupId={groupId} groupName={groupName} month={month} currency={currency} />
+      {needed > 0 && (
+        <span className="ms-auto whitespace-nowrap normal-case tracking-normal text-target-underfunded-fg">
+          {formatMilliunitsLtr(needed, currency)} needed
+        </span>
+      )}
+    </>
+  );
+}
+
+function GroupEditButtons({
+  groupId,
+  locked,
+  isEmpty,
+  pending,
+  createCategory,
+  onRename,
+  onDelete,
+}: {
+  groupId: string;
+  locked: boolean;
+  isEmpty: boolean;
+  pending: boolean;
+  createCategory: (formData: FormData) => Promise<void>;
+  onRename: () => void;
+  onDelete: () => void;
+}) {
+  if (locked) {
+    return (
+      <span title="Payment categories follow their accounts" className="text-neutral-400 normal-case tracking-normal">
+        <Icon name="lock" label="Payment categories follow their accounts" />
+      </span>
+    );
+  }
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onRename}
+        title="Rename category group"
+        className="rounded-sm p-1 text-neutral-400 normal-case tracking-normal hover:bg-neutral-200 hover:text-neutral-600"
+      >
+        <Icon name="edit" label="Rename category group" />
+      </button>
+      <AddCategoryPopover categoryGroupId={groupId} createCategory={createCategory} />
+      {isEmpty && (
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={pending}
+          title="Delete empty category group"
+          className="rounded-sm p-1 text-neutral-400 normal-case tracking-normal hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+        >
+          <Icon name="delete" label="Delete empty category group" />
+        </button>
+      )}
+    </>
   );
 }
 

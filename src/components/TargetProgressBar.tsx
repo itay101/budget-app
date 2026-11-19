@@ -23,15 +23,17 @@ export function TargetProgressBar({
     return (
       <div
         role="img"
-        aria-label={`Overspent ${overspend.excessLabel}`}
-        title={`Overspent ${overspend.excessLabel}`}
+        aria-label={`${status === "credit_overspent" ? "Credit overspending" : "Overspent"} ${overspend.excessLabel}`}
+        title={`${status === "credit_overspent" ? "Credit overspending" : "Overspent"} ${overspend.excessLabel}`}
         className="relative flex h-4 w-full items-center"
       >
         <div
           className={`h-2.5 rounded-s-full opacity-60 ${style.bar}`}
           style={{ width: `${overspend.coveredPct}%` }}
         />
-        <div className="target-excess h-2.5 flex-1 rounded-e-full" />
+        <div
+          className={`target-excess h-2.5 flex-1 rounded-e-full${status === "credit_overspent" ? " target-excess-credit" : ""}`}
+        />
         {overspend.coveredPct > 0 && (
           <div
             className="absolute top-0 h-full w-0.5 bg-neutral-800"

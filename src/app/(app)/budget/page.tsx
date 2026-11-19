@@ -143,6 +143,7 @@ export default async function BudgetPage({
               month={monthKey}
               currency={budget.currency}
               isEmpty={group.isEmpty}
+              locked={group.locked}
               createCategory={createCategory}
               renameCategoryGroup={renameCategoryGroup}
               renameCategory={renameCategory}

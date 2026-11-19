@@ -21,7 +21,15 @@ export function CategoryAmountCells({
   transferAvailable,
   categoryOptions,
 }: {
-  category: { id: string; name: string; budgeted: number; activity: number; available: number };
+  category: {
+    id: string;
+    name: string;
+    budgeted: number;
+    activity: number;
+    available: number;
+    overspending?: number;
+    creditOverspending?: number;
+  };
   /** The viewed Budget Month, `YYYY-MM`. */
   month: string;
   currency: string;
@@ -73,6 +81,8 @@ export function CategoryAmountCells({
           month={month}
           currency={currency}
           available={category.available}
+          cashOverspending={category.overspending}
+          creditOverspending={category.creditOverspending}
           groups={categoryOptions}
           transferAvailable={transferAvailable}
         />
