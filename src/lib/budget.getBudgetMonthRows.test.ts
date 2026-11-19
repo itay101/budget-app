@@ -462,7 +462,7 @@ describe("getBudgetMonthRows' Ready to Assign (ADR 0008, ADR 0009)", () => {
     },
   ];
 
-  it("reads only this budget's on-budget Inflow: Ready to Assign and uncategorized rows, before next month", async () => {
+  it("reads this budget's on-budget income through the month after the viewed one, and assignments from next month on", async () => {
     mockFindMany.mockResolvedValue(groupWith({ id: "rent", hidden: false }) as never);
 
     await getBudgetMonthRows("budget-1", month, current);
@@ -472,7 +472,9 @@ describe("getBudgetMonthRows' Ready to Assign (ADR 0008, ADR 0009)", () => {
     expect(text).toContain('a."budgetId" = ?');
     expect(text).toContain('a."onBudget" = true');
     expect(text).toContain(`t."categoryId" IS NULL OR c."systemKind" = 'READY_TO_ASSIGN'`);
-    expect(values).toEqual(["budget-1", "2026-04-01"]);
+    // March is the current month, so income includes April for the warning.
+    // Assignments from April on still come out of March (assignedFuture).
+    expect(values).toEqual(["budget-1", "2026-05-01"]);
     expect(mockAssignedLater).toHaveBeenCalledWith({
       where: { categoryId: { in: ["rent"] }, month: { gte: nextMonth } },
       _sum: { budgeted: true },
@@ -498,7 +500,7 @@ describe("getBudgetMonthRows' Ready to Assign (ADR 0008, ADR 0009)", () => {
     ]);
     mockAssignedLater.mockResolvedValue({ _sum: { budgeted: 8_000 } } as never);
 
-    const { readyToAssign } = await getBudgetMonthRows("budget-1", month, current);
+    const { readyToAssign, nextMonthWarning } = await getBudgetMonthRows("budget-1", month, current);
 
     expect(readyToAssign).toEqual({
       leftOver: 100_000,
@@ -509,6 +511,53 @@ describe("getBudgetMonthRows' Ready to Assign (ADR 0008, ADR 0009)", () => {
       total: 35_000,
       state: "positive",
     });
+    // Nothing is cash-overspent in March itself, so next month stays positive.
+    expect(nextMonthWarning).toBeNull();
+  });
+
+  it("warns from this month's cash overspending, including a hidden category and Uncategorized, plus income dated next month", async () => {
+    mockFindMany.mockResolvedValue(
+      groupWith({ id: "rent", hidden: false }, { id: "gym", hidden: true }) as never,
+    );
+    mockAssignments.mockResolvedValue([{ categoryId: "rent", month, budgeted: 50_000 }] as never);
+    mockActivityByMonth.mockResolvedValue([
+      { categoryId: "rent", month: "2026-03", amount: BigInt(-250_000) },
+      { categoryId: "gym", month: "2026-03", amount: BigInt(-5_000) },
+    ] as never);
+    mockReadyToAssignRows.mockResolvedValue([
+      { kind: "income", month: "2026-03", amount: BigInt(100_000) },
+      { kind: "income", month: "2026-04", amount: BigInt(10_000) },
+      { kind: "uncategorized", month: "2026-03", amount: BigInt(-3_000) },
+    ]);
+
+    const { readyToAssign, nextMonthWarning } = await getBudgetMonthRows("budget-1", month, current);
+
+    // $100 income − $50 assigned = $50. Cash overspending is $200 + $5 + $3.
+    expect(readyToAssign.total).toBe(50_000);
+    expect(nextMonthWarning).toEqual({
+      nextReadyToAssign: -148_000,
+      cashOverspending: 208_000,
+      categories: [
+        { id: "rent", name: "rent", cashOverspending: 200_000, uncategorized: false },
+        { id: "gym", name: "gym", cashOverspending: 5_000, uncategorized: false },
+        { id: "__uncategorized__", name: "Uncategorized", cashOverspending: 3_000, uncategorized: true },
+      ],
+      moreCount: 0,
+    });
+  });
+
+  it("does not warn in a past month, and does not extend that month's income query", async () => {
+    mockFindMany.mockResolvedValue(groupWith({ id: "rent", hidden: false }) as never);
+    mockActivityByMonth.mockResolvedValue([{ categoryId: "rent", month: "2026-03", amount: BigInt(-200_000) }] as never);
+    mockReadyToAssignRows.mockResolvedValue([{ kind: "income", month: "2026-03", amount: BigInt(50_000) }]);
+    const later = new Date(Date.UTC(2026, 3, 1));
+
+    const { nextMonthWarning: warning } = await getBudgetMonthRows("budget-1", month, later);
+
+    expect(warning).toBeNull();
+    const [, ...values] = mockReadyToAssignRows.mock.calls[0] as [TemplateStringsArray, ...unknown[]];
+    // March is past (current is April), so income still stops at the start of May.
+    expect(values).toEqual(["budget-1", "2026-05-01"]);
   });
 });
 
