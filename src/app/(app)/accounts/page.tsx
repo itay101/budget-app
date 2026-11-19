@@ -14,6 +14,7 @@ export default async function AccountsPage() {
   const accounts = await prisma.account.findMany({
     where: { budgetId: budget.id },
     orderBy: { createdAt: "asc" },
+    include: { _count: { select: { transactions: true } } },
   });
 
   const totalOnBudget = accounts
@@ -30,7 +31,10 @@ export default async function AccountsPage() {
       </div>
 
       <AccountsTable
-        accounts={accounts}
+        accounts={accounts.map((account) => ({
+          ...account,
+          hasTransactions: account._count.transactions > 0,
+        }))}
         currency={budget.currency}
         updateAccount={updateAccount}
       />

@@ -11,6 +11,7 @@ import {
   deleteTransactions,
   reconcileTransaction,
   unreconcileTransaction,
+  findTransferLinkCandidates,
 } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export default async function AllAccountsPage({
   const [
     accounts,
     { transactions, totalCount },
-    { categoryGroups, payeeNames, payeeLastCategory },
+    { categoryGroups, payeeNames, payeeLastCategory, transferAccounts },
   ] = await Promise.all([
     prisma.account.findMany({
       where: { budgetId: budget.id, closed: false },
@@ -68,6 +69,8 @@ export default async function AllAccountsPage({
         categoryGroups={categoryGroups}
         payeeNames={payeeNames}
         payeeLastCategory={payeeLastCategory}
+        transferAccounts={transferAccounts}
+        findTransferLinkCandidates={findTransferLinkCandidates}
         updateTransaction={updateTransaction}
         deleteTransaction={deleteTransaction}
         deleteTransactions={deleteTransactions}
