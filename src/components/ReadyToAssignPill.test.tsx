@@ -7,6 +7,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { ReadyToAssignPill } from "@/components/ReadyToAssignPill";
+import type { NextMonthWarning } from "@/lib/nextMonthWarning";
 import type { ReadyToAssignBreakdown } from "@/lib/readyToAssign";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT =
@@ -45,7 +46,7 @@ const categoryOptions = [
 ];
 const transferAvailable = jest.fn((_formData: FormData) => Promise.resolve());
 
-function render(value: ReadyToAssignBreakdown, isPast = false) {
+function render(value: ReadyToAssignBreakdown, isPast = false, nextMonthWarning: NextMonthWarning | null = null) {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -56,10 +57,12 @@ function render(value: ReadyToAssignBreakdown, isPast = false) {
         currency="USD"
         month="2026-11"
         monthName="November 2026"
+        nextMonthName="December 2026"
         previousMonthName="October 2026"
         isPast={isPast}
         categoryOptions={categoryOptions}
         transferAvailable={transferAvailable}
+        nextMonthWarning={nextMonthWarning}
       />,
     ),
   );
@@ -176,5 +179,52 @@ describe("ReadyToAssignPill's Assign money form", () => {
       "20",
       "2026-11",
     ]);
+  });
+});
+
+describe("ReadyToAssignPill's Next-Month Warning", () => {
+  const warning: NextMonthWarning = {
+    nextReadyToAssign: -150_000,
+    cashOverspending: 200_000,
+    moreCount: 2,
+    categories: [
+      { id: "power", name: "Power", cashOverspending: 190_000, uncategorized: false },
+      { id: "__uncategorized__", name: "Uncategorized", cashOverspending: 10_000, uncategorized: true },
+    ],
+  };
+
+  it("shows a red dot and a callout under the Breakdown", () => {
+    const pill = render(breakdown({ total: 50_000, state: "positive" }), false, warning);
+    expect(pill.querySelector('[aria-label="Next month will start negative"]')).not.toBeNull();
+    expect(pill.getAttribute("title")).toBe("Next month will start negative");
+
+    const drawer = openDrawer(pill);
+    const callout = drawer.querySelector('[aria-label="Next month warning"]') as HTMLElement;
+    expect(drawer.querySelector("dl")!.nextElementSibling).toBe(callout);
+    expect(callout.textContent).toContain("December 2026 will start at −$150.00");
+    expect(callout.textContent).toContain(
+      "of cash overspending in November 2026 comes out of December 2026's Ready to Assign. Move money from other categories to cover it.",
+    );
+    expect(callout.textContent).toContain("+2 more");
+  });
+
+  it("opens Move Money for a category and links Uncategorized to its transactions", () => {
+    const drawer = openDrawer(render(breakdown({ total: 50_000, state: "positive" }), false, warning));
+    const callout = drawer.querySelector('[aria-label="Next month warning"]') as HTMLElement;
+
+    const link = callout.querySelector("a") as HTMLAnchorElement;
+    expect(link.textContent).toContain("Uncategorized");
+    expect(link.getAttribute("href")).toBe("/accounts/all?category=__uncategorized__&from=2026-11-01&to=2026-11-30");
+
+    const power = [...callout.querySelectorAll("button")].find((button) => button.textContent?.includes("Power"))!;
+    act(() => power.click());
+    expect(document.querySelector('[aria-label="Move money for Power"]')).not.toBeNull();
+  });
+
+  it("shows nothing when there is no warning", () => {
+    const pill = render(breakdown({ total: -1, state: "negative" }));
+    expect(pill.querySelector('[aria-label="Next month will start negative"]')).toBeNull();
+    const drawer = openDrawer(pill);
+    expect(drawer.querySelector('[aria-label="Next month warning"]')).toBeNull();
   });
 });
