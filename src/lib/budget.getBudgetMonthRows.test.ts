@@ -1,5 +1,7 @@
 import { getBudgetMonthRows } from "./budget";
 import { prisma } from "@/lib/prisma";
+import { STARTING_BALANCE_PAYEE } from "@/lib/payees";
+import { UNCATEGORIZED } from "@/lib/transactionFilters";
 
 jest.mock("@/lib/prisma", () => ({
   prisma: {
@@ -576,5 +578,95 @@ describe("getBudgetMonthRows' Auto-Assign inputs (#219)", () => {
     const { readyToAssign, autoAssignLimit } = await getBudgetMonthRows("budget-1", month, current);
     expect(autoAssignLimit).toBe(readyToAssign.total);
     expect(autoAssignLimit).toBe(40_000);
+  });
+});
+
+describe("getBudgetMonthRows' Uncategorized row (#225)", () => {
+  const group = [
+    {
+      id: "group-1",
+      name: "Everyday Expenses",
+      categories: [{ id: "rent", name: "Rent", hidden: false, months: [], transactions: [], targets: [], targetSnoozes: [] }],
+    },
+  ];
+
+  it("counts the month the way the uncategorized list does", async () => {
+    mockFindMany.mockResolvedValue(group as never);
+
+    await getBudgetMonthRows("budget-1", month, current);
+
+    expect(mockUncategorizedCount).toHaveBeenCalledWith({
+      where: {
+        account: { budgetId: "budget-1" },
+        NOT: { payee: { name: STARTING_BALANCE_PAYEE } },
+        categoryId: null,
+        date: {
+          gte: new Date("2026-03-01T00:00:00.000Z"),
+          lte: new Date("2026-03-31T23:59:59.999Z"),
+        },
+      },
+    });
+  });
+
+  it("hides the row when nothing needs a category and Available is zero", async () => {
+    mockFindMany.mockResolvedValue(group as never);
+
+    const result = await getBudgetMonthRows("budget-1", month, current);
+
+    expect(result.uncategorized).toBeNull();
+  });
+
+  it("shows the row when this month's transactions net to zero", async () => {
+    mockFindMany.mockResolvedValue(group as never);
+    mockUncategorizedCount.mockResolvedValue(2);
+
+    const result = await getBudgetMonthRows("budget-1", month, current);
+
+    expect(result.uncategorized).toEqual({ activity: 0, available: 0, count: 2 });
+  });
+
+  it("carries a positive Available into a later month and does not treat it as income", async () => {
+    mockFindMany.mockResolvedValue(group as never);
+    mockReadyToAssignRows.mockResolvedValue([
+      { kind: "uncategorized", month: "2026-01", amount: BigInt(30_000) },
+    ]);
+
+    const result = await getBudgetMonthRows("budget-1", month, current);
+
+    expect(result.uncategorized).toEqual({ activity: 0, available: 30_000, count: 0 });
+    expect(result.readyToAssign).toMatchObject({ inflow: 0, total: 0 });
+    expect(result.totals.overspending).toBe(0);
+  });
+
+  it("adds this month's cash overspending to the plan total, and keeps the row out of Move Money and Auto-Assign", async () => {
+    mockFindMany.mockResolvedValue(group as never);
+    mockUncategorizedCount.mockResolvedValue(1);
+    mockReadyToAssignRows.mockResolvedValue([
+      { kind: "uncategorized", month: "2026-03", amount: BigInt(-4_000) },
+    ]);
+
+    const result = await getBudgetMonthRows("budget-1", month, current);
+
+    expect(result.uncategorized).toEqual({ activity: -4_000, available: -4_000, count: 1 });
+    expect(result.totals.overspending).toBe(4_000);
+    // Overspending comes out of next month's Ready to Assign, not this one.
+    expect(result.readyToAssign.overspent).toBe(0);
+    const optionIds = result.categoryOptions.flatMap((g) => g.categories.map((c) => c.id));
+    expect(optionIds).toEqual(["rent"]);
+    expect(optionIds).not.toContain(UNCATEGORIZED);
+    expect(result.autoAssignCategories.map((c) => c.id)).toEqual(["rent"]);
+  });
+
+  it("resets last month's overspending, so a quiet month hides the row", async () => {
+    mockFindMany.mockResolvedValue(group as never);
+    mockReadyToAssignRows.mockResolvedValue([
+      { kind: "uncategorized", month: "2026-02", amount: BigInt(-4_000) },
+    ]);
+
+    const result = await getBudgetMonthRows("budget-1", month, current);
+
+    expect(result.uncategorized).toBeNull();
+    expect(result.readyToAssign.overspent).toBe(4_000);
+    expect(result.totals.overspending).toBe(0);
   });
 });
