@@ -23,6 +23,11 @@ import { seedCategoryGroups } from "@/lib/defaultCategories";
 import { FALLBACK_TEMPLATE_ID, getBudgetTemplate } from "@/lib/budgetTemplates";
 import { seedSystemCategories } from "@/lib/systemCategories";
 import {
+  nextMonthWarning,
+  type NextMonthWarning,
+  type NextMonthWarningCategoryInput,
+} from "@/lib/nextMonthWarning";
+import {
   readyToAssignFor,
   rollForward,
   type MonthlyTotals,
@@ -379,6 +384,8 @@ export type BudgetMonthRows = {
   /** The most an Auto-Assign run may add: Ready to Assign, or in an earlier
    * month the lowest figure from it through the current month (#163). */
   autoAssignLimit: number;
+  /** The Next-Month Warning for the viewed month, or null when it stays hidden (#226). */
+  nextMonthWarning: NextMonthWarning | null;
 };
 
 /** Works out a row's Target state from its stored target rows, whether this month is snoozed, and its
@@ -458,16 +465,23 @@ const UNCATEGORIZED = "__uncategorized__";
  * What Ready to Assign needs beyond the categories' own monthly totals
  * (ADR 0008, ADR 0009), in two queries:
  *
- * - on-budget transactions before `nextMonth`, by month: the
+ * - on-budget transactions before `incomeBefore`, by month: the
  *   Inflow: Ready to Assign ones are income, and the uncategorized ones are
  *   the Uncategorized row's activity, which can overspend like any
- *   category. Off-budget accounts never count;
- * - the total assigned in any month from `nextMonth` on.
+ *   category. Off-budget accounts never count. From the current month on,
+ *   `incomeBefore` is the month after next, so the Next-Month Warning can
+ *   add income dated next month without a second query (#226);
+ * - the total assigned in any month from `assignedFrom` on.
  *
  * Dates are bound as timestamp literals for the reason loadMonthlyTotals
  * gives.
  */
-async function loadReadyToAssignTotals(budgetId: string, categoryIds: string[], nextMonth: Date) {
+async function loadReadyToAssignTotals(
+  budgetId: string,
+  categoryIds: string[],
+  incomeBefore: Date,
+  assignedFrom: Date,
+) {
   const [onBudget, later] = await Promise.all([
     prisma.$queryRaw<{ kind: "income" | "uncategorized"; month: string; amount: bigint }[]>`
       SELECT CASE WHEN t."categoryId" IS NULL THEN 'uncategorized' ELSE 'income' END AS "kind",
@@ -479,13 +493,13 @@ async function loadReadyToAssignTotals(budgetId: string, categoryIds: string[], 
       WHERE a."budgetId" = ${budgetId}
         AND a."onBudget" = true
         AND (t."categoryId" IS NULL OR c."systemKind" = 'READY_TO_ASSIGN')
-        AND t."date" < ${`${formatBudgetMonth(nextMonth)}-01`}::timestamp
+        AND t."date" < ${`${formatBudgetMonth(incomeBefore)}-01`}::timestamp
       GROUP BY 1, 2
     `,
     categoryIds.length === 0
       ? null
       : prisma.categoryMonth.aggregate({
-          where: { categoryId: { in: categoryIds }, month: { gte: nextMonth } },
+          where: { categoryId: { in: categoryIds }, month: { gte: assignedFrom } },
           _sum: { budgeted: true },
         }),
   ]);
@@ -551,7 +565,9 @@ export async function getBudgetMonthRows(
   const totalsBound = isPast ? startOfNextMonth(current) : nextMonth;
   const [{ assignedByMonth, activityByMonth }, readyToAssignTotals] = await Promise.all([
     loadMonthlyTotals(categoryIds, totalsBound),
-    loadReadyToAssignTotals(budgetId, categoryIds, totalsBound),
+    // One month further than the viewed month's own math, and only when the
+    // warning can show: a past month's next month has already happened.
+    loadReadyToAssignTotals(budgetId, categoryIds, isPast ? totalsBound : addMonths(totalsBound, 1), totalsBound),
   ]);
 
   function categoryRow(category: (typeof groups)[number]["categories"][number]): BudgetCategoryRow {
@@ -657,7 +673,49 @@ export async function getBudgetMonthRows(
     autoAssignCategories,
     autoAssignLimit,
     readyToAssign,
+    nextMonthWarning: nextMonthWarning({
+      isPast,
+      readyToAssign: readyToAssign.total,
+      nextMonthIncome: readyToAssignTotals.incomeByMonth.get(formatBudgetMonth(nextMonth)) ?? 0,
+      categories: warningCategories(visibleGroups, hiddenCategories, readyToAssignTotals.uncategorizedByMonth, month),
+    }),
   };
+}
+
+/**
+ * Cash-overspent categories for the Next-Month Warning, in page order:
+ * visible rows, then hidden ones, then Uncategorized. `overspending` is
+ * the cash figure (ADR 0009). Credit overspending isn't separated in this
+ * read path yet (ADR 0010); a negative Available is cash, and the warning
+ * ignores a credit amount when one is supplied.
+ */
+function warningCategories(
+  groups: { categories: { id: string; name: string; overspending: number }[] }[],
+  hiddenCategories: { id: string; name: string; overspending: number }[],
+  uncategorizedByMonth: Map<string, number>,
+  month: Date,
+): NextMonthWarningCategoryInput[] {
+  const categories: NextMonthWarningCategoryInput[] = [...groups.flatMap((group) => group.categories), ...hiddenCategories]
+    .filter((category) => category.overspending > 0)
+    .map((category) => ({
+      id: category.id,
+      name: category.name,
+      cashOverspending: category.overspending,
+    }));
+
+  const uncategorizedOverspending = Math.max(
+    0,
+    -balanceFor(UNCATEGORIZED, new Map(), new Map([[UNCATEGORIZED, uncategorizedByMonth]]), month).available,
+  );
+  if (uncategorizedOverspending > 0) {
+    categories.push({
+      id: UNCATEGORIZED,
+      name: "Uncategorized",
+      cashOverspending: uncategorizedOverspending,
+      uncategorized: true,
+    });
+  }
+  return categories;
 }
 
 /**

@@ -1,12 +1,53 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export type PopoverAlign = "left" | "right";
 
 export interface PopoverPosition {
   top: number;
   left: number;
+}
+
+const POPOVER_GAP = 4;
+const POPOVER_MARGIN = 8;
+
+/**
+ * Where a fixed popover sits: under the trigger, nudged clear of the left
+ * and right edges, and above the trigger when the panel would otherwise
+ * run off the bottom of the viewport. A zero `panelHeight` (the panel
+ * isn't measured yet) always opens below.
+ */
+export function popoverPosition(
+  trigger: { top: number; bottom: number; left: number; right: number },
+  {
+    width,
+    align,
+    panelHeight,
+    viewportWidth,
+    viewportHeight,
+  }: {
+    width: number;
+    align: PopoverAlign;
+    panelHeight: number;
+    viewportWidth: number;
+    viewportHeight: number;
+  },
+): PopoverPosition {
+  const rawLeft = align === "right" ? trigger.right - width : trigger.left;
+  const left = Math.min(
+    Math.max(POPOVER_MARGIN, rawLeft),
+    Math.max(POPOVER_MARGIN, viewportWidth - width - POPOVER_MARGIN),
+  );
+  const below = trigger.bottom + POPOVER_GAP;
+  const roomBelow = viewportHeight - POPOVER_MARGIN - below;
+  const roomAbove = trigger.top - POPOVER_MARGIN;
+  const placeBelow = panelHeight === 0 || roomBelow >= panelHeight || roomBelow >= roomAbove;
+  let top = placeBelow ? below : trigger.top - POPOVER_GAP - panelHeight;
+  if (panelHeight > 0) {
+    top = Math.min(Math.max(POPOVER_MARGIN, top), Math.max(POPOVER_MARGIN, viewportHeight - panelHeight - POPOVER_MARGIN));
+  }
+  return { top, left };
 }
 
 export interface UsePopoverOptions {
@@ -66,19 +107,29 @@ export function usePopover({ width, align = "left", onDismiss }: UsePopoverOptio
   const onDismissRef = useRef(onDismiss);
   onDismissRef.current = onDismiss;
 
+  const updatePosition = useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const next = popoverPosition(rect, {
+      width,
+      align,
+      panelHeight: panelRef.current?.offsetHeight ?? 0,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    });
+    setPosition((prev) => (prev && prev.top === next.top && prev.left === next.left ? prev : next));
+  }, [align, width]);
+
+  // The panel mounts only after the first position is set, so this runs
+  // again with the measured height and lifts the panel above the trigger
+  // when it would not fit below. A frame callback is too late: it can run
+  // before that mount and then never correct the position.
+  useLayoutEffect(() => {
+    if (open) updatePosition();
+  }, [open, position, updatePosition]);
+
   useEffect(() => {
     if (!open) return;
-
-    function updatePosition() {
-      const rect = triggerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const rawLeft = align === "right" ? rect.right - width : rect.left;
-      setPosition({
-        top: rect.bottom + 4,
-        left: Math.min(Math.max(8, rawLeft), window.innerWidth - width - 8),
-      });
-    }
-    updatePosition();
 
     function handlePointerDown(e: MouseEvent) {
       if (
@@ -107,7 +158,7 @@ export function usePopover({ width, align = "left", onDismiss }: UsePopoverOptio
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open, align, width]);
+  }, [open, updatePosition]);
 
   return { open, setOpen, position, triggerRef, panelRef };
 }
