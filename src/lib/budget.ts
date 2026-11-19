@@ -461,7 +461,10 @@ const UNCATEGORIZED = "__uncategorized__";
  * - on-budget transactions before `nextMonth`, by month: the
  *   Inflow: Ready to Assign ones are income, and the uncategorized ones are
  *   the Uncategorized row's activity, which can overspend like any
- *   category. Off-budget accounts never count;
+ *   category. Off-budget accounts never count. An on-budget transfer with
+ *   no category (on-budget ↔ on-budget, ADR 0007) is neither income nor
+ *   uncategorized spending, so it is left out. An on ↔ off transfer is
+ *   categorized on its on-budget side and counts like any other row.
  * - the total assigned in any month from `nextMonth` on.
  *
  * Dates are bound as timestamp literals for the reason loadMonthlyTotals
@@ -478,7 +481,10 @@ async function loadReadyToAssignTotals(budgetId: string, categoryIds: string[], 
       LEFT JOIN "Category" c ON c.id = t."categoryId"
       WHERE a."budgetId" = ${budgetId}
         AND a."onBudget" = true
-        AND (t."categoryId" IS NULL OR c."systemKind" = 'READY_TO_ASSIGN')
+        AND (
+          (t."categoryId" IS NULL AND t."transferTransactionId" IS NULL)
+          OR c."systemKind" = 'READY_TO_ASSIGN'
+        )
         AND t."date" < ${`${formatBudgetMonth(nextMonth)}-01`}::timestamp
       GROUP BY 1, 2
     `,

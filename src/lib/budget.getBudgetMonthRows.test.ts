@@ -471,7 +471,8 @@ describe("getBudgetMonthRows' Ready to Assign (ADR 0008, ADR 0009)", () => {
     const text = sql.join("?");
     expect(text).toContain('a."budgetId" = ?');
     expect(text).toContain('a."onBudget" = true');
-    expect(text).toContain(`t."categoryId" IS NULL OR c."systemKind" = 'READY_TO_ASSIGN'`);
+    expect(text).toContain(`t."categoryId" IS NULL AND t."transferTransactionId" IS NULL`);
+    expect(text).toContain(`c."systemKind" = 'READY_TO_ASSIGN'`);
     expect(values).toEqual(["budget-1", "2026-04-01"]);
     expect(mockAssignedLater).toHaveBeenCalledWith({
       where: { categoryId: { in: ["rent"] }, month: { gte: nextMonth } },

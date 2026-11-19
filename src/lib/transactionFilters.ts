@@ -12,6 +12,7 @@
 import type { Prisma } from "@prisma/client";
 import { DateRangePreset, todayISODate } from "@/lib/dateRange";
 import type { FlowFilterValue } from "@/components/FlowFilter";
+import { transferSearchText } from "@/lib/transfers";
 
 /** Sentinel value for the "Uncategorized" filter — distinct from "" (all
  * categories) and from any real category id. Doubles as the `category` URL
@@ -121,7 +122,10 @@ export function transactionFiltersWhere(
   }
 
   if (filters.category === UNCATEGORIZED) {
+    // A transfer isn't uncategorized (CONTEXT.md): on ↔ on rows have no
+    // category on purpose, and off-budget transfer rows don't either.
     where.categoryId = null;
+    where.transferTransactionId = null;
   } else if (filters.category) {
     where.categoryId = filters.category;
   }
@@ -137,6 +141,12 @@ export function transactionFiltersWhere(
     where.OR = [
       { memo: { contains: q, mode: "insensitive" } },
       { payee: { name: { contains: q, mode: "insensitive" } } },
+      // Payee is null on a transfer; the label is the other account's name.
+      {
+        transferTransaction: {
+          account: { name: { contains: transferSearchText(q), mode: "insensitive" } },
+        },
+      },
     ];
   }
 
