@@ -47,11 +47,9 @@ export async function loadTransactionsView({
   // the context of the single account they seed - across "All Accounts"
   // they'd read as a stray, uncategorizable payee with no real activity
   // behind it, so they're excluded from both the filtered list and the
-  // unfiltered total below.
-  const baseWhere: Prisma.TransactionWhereInput = {
-    account: { budgetId },
-    NOT: { payee: { name: STARTING_BALANCE_PAYEE } },
-  };
+  // unfiltered total below. The Uncategorized row's count uses the same
+  // where (allAccountsTransactionWhere) so "N need a category" matches.
+  const baseWhere = allAccountsTransactionWhere(budgetId);
   const [transactions, totalCount] = await Promise.all([
     prisma.transaction.findMany({
       where: { ...baseWhere, ...filterWhere },
@@ -65,4 +63,16 @@ export async function loadTransactionsView({
     prisma.transaction.count({ where: baseWhere }),
   ]);
   return { transactions, totalCount };
+}
+
+/**
+ * Every transaction in the budget, without starting-balance rows. Shared
+ * by the all-accounts list and the Uncategorized row's "N need a category"
+ * count (#225), so the two can't drift.
+ */
+export function allAccountsTransactionWhere(budgetId: string): Prisma.TransactionWhereInput {
+  return {
+    account: { budgetId },
+    NOT: { payee: { name: STARTING_BALANCE_PAYEE } },
+  };
 }

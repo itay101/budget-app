@@ -23,6 +23,7 @@ import { ReadyToAssignProvider } from "@/components/ReadyToAssignContext";
 import { AddCategoryGroupPopover } from "@/components/AddCategoryGroupPopover";
 import { CategoryGroupSection } from "@/components/CategoryGroupSection";
 import { HiddenCategoriesSection } from "@/components/HiddenCategoriesSection";
+import { UncategorizedSection } from "@/components/UncategorizedSection";
 import { QuickFilterBar, UnderfundedBanner } from "@/components/BudgetQuickFilters";
 import {
   createCategory,
@@ -54,7 +55,8 @@ export const dynamic = "force-dynamic";
  * `&filter=` picks a quick filter (#171). All is the normal budget, with
  * hidden categories collapsed into their own section; every other filter
  * lists the matching categories, hidden ones included, in their real
- * groups.
+ * groups. The Uncategorized row, when the month has one, stays pinned at
+ * the top under every filter (#225).
  */
 export default async function BudgetPage({
   searchParams,
@@ -73,8 +75,16 @@ export default async function BudgetPage({
   const { month } = viewed;
   const monthKey = formatBudgetMonth(month);
 
-  const { groups, categoryOptions, hiddenCategories, totals, readyToAssign, autoAssignCategories, autoAssignLimit } =
-    await getBudgetMonthRows(budget.id, month, current);
+  const {
+    groups,
+    categoryOptions,
+    hiddenCategories,
+    totals,
+    readyToAssign,
+    autoAssignCategories,
+    autoAssignLimit,
+    uncategorized,
+  } = await getBudgetMonthRows(budget.id, month, current);
 
   const filter = parseQuickFilter(params.filter);
   const allRows = [...groups.flatMap((group) => group.categories), ...hiddenCategories];
@@ -134,6 +144,8 @@ export default async function BudgetPage({
             <div className="hidden text-right sm:block">Activity</div>
             <div className="hidden text-right sm:block">Available</div>
           </div>
+
+          <UncategorizedSection row={uncategorized} month={monthKey} currency={budget.currency} />
 
           {table.groups.map((group) => (
             <CategoryGroupSection
