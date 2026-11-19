@@ -84,8 +84,13 @@ export interface ReadyToAssignInput {
   /** Everything assigned in months after `month`, across every category. */
   assignedAfter: number;
   /** Activity by month through `month`, per ordinary category plus one entry
-   * for on-budget Uncategorized transactions, which can overspend too. */
+   * for on-budget Uncategorized transactions, which can overspend too.
+   * Ignored for the overspend total when `cashOverspentByMonth` is set. */
   activityByMonth: MonthlyTotals;
+  /** Cash overspending per category per month (ADR 0010). When set, this
+   * replaces the overspend rollForward would derive from activity, so
+   * credit overspending never reaches Ready to Assign. */
+  cashOverspentByMonth?: MonthlyTotals;
 }
 
 function sumWhere(byMonth: ByMonth | undefined, keep: (key: string) => boolean): number {
@@ -112,16 +117,24 @@ export function readyToAssignFor({
   assignedByMonth,
   assignedAfter,
   activityByMonth,
+  cashOverspentByMonth,
 }: ReadyToAssignInput): ReadyToAssignBreakdown {
   const key = formatBudgetMonth(month);
   const lastKey = formatBudgetMonth(addMonths(month, -1));
 
   let overspentBefore = 0;
   let overspent = 0;
-  for (const id of new Set([...assignedByMonth.keys(), ...activityByMonth.keys()])) {
-    const { overspentByMonth } = rollForward(assignedByMonth.get(id), activityByMonth.get(id), key);
-    overspentBefore += sumWhere(overspentByMonth, () => true);
-    overspent += overspentByMonth.get(lastKey) ?? 0;
+  if (cashOverspentByMonth) {
+    for (const byMonth of cashOverspentByMonth.values()) {
+      overspentBefore += sumWhere(byMonth, (k) => k < key);
+      overspent += byMonth.get(lastKey) ?? 0;
+    }
+  } else {
+    for (const id of new Set([...assignedByMonth.keys(), ...activityByMonth.keys()])) {
+      const { overspentByMonth } = rollForward(assignedByMonth.get(id), activityByMonth.get(id), key);
+      overspentBefore += sumWhere(overspentByMonth, () => true);
+      overspent += overspentByMonth.get(lastKey) ?? 0;
+    }
   }
 
   let assignedBefore = 0;

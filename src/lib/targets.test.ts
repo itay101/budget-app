@@ -230,6 +230,15 @@ describe("targetStatus", () => {
     expect(status(null, { carriedIn: 0, assigned: 0, available: $(-1) })).toBe("overspent");
   });
 
+  it("shows credit overspending in amber and lets cash win when both happen", () => {
+    expect(
+      targetStatus(null, null, { carriedIn: 0, assigned: 0, available: $(-60), cashOverspending: 0, creditOverspending: $(60) }),
+    ).toBe("credit_overspent");
+    expect(
+      targetStatus(null, null, { carriedIn: 0, assigned: 0, available: $(-100), cashOverspending: $(40), creditOverspending: $(60) }),
+    ).toBe("overspent");
+  });
+
   it("is none without a target", () => {
     expect(status(null, { carriedIn: 0, assigned: 0, available: $(10) })).toBe("none");
   });
@@ -279,6 +288,15 @@ describe("planTotals", () => {
       underfunded: $(300) + $(400) + $(1000) + $(75),
       costToBeMe: $(400) * 3,
     });
+  });
+
+  it("counts only cash overspending when a row says how much of its negative Available is cash", () => {
+    expect(
+      planTotals([
+        { target: null, need: null, available: -100_000, overspending: 40_000 },
+        { target: null, need: null, available: -60_000, overspending: 0 },
+      ]),
+    ).toMatchObject({ overspending: 40_000, underfunded: 40_000 });
   });
 });
 

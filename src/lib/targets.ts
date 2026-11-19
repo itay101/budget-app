@@ -202,17 +202,22 @@ export type TargetStatus =
   | "on_track"
   | "underfunded"
   | "overspent"
+  | "credit_overspent"
   | "snoozed"
   | "none";
 
 /** The status shown on a category row (#148). Overspending wins over any
- * target state; credit overspending gets its own status once Payment
- * Categories exist (ADR 0010). */
+ * target state. Cash overspending stays red; credit overspending is its
+ * own amber status (ADR 0010). When a month has both, cash wins. */
 export function targetStatus(
   target: Target | null,
   need: TargetNeed | null,
-  funding: TargetFunding & { available: number },
+  funding: TargetFunding & { available: number; cashOverspending?: number; creditOverspending?: number },
 ): TargetStatus {
+  const credit = funding.creditOverspending ?? 0;
+  const cash = funding.cashOverspending ?? Math.max(0, -funding.available - credit);
+  if (cash > 0) return "overspent";
+  if (credit > 0) return "credit_overspent";
   if (funding.available < 0) return "overspent";
   if (!target || !need) return "none";
   if (funding.snoozed) return "snoozed";
@@ -234,11 +239,13 @@ export interface PlanTotals {
 }
 
 export function planTotals(
-  rows: { target: Target | null; need: TargetNeed | null; available: number }[],
+  rows: { target: Target | null; need: TargetNeed | null; available: number; overspending?: number }[],
 ): PlanTotals {
   const totals = { needed: 0, overspending: 0, costToBeMe: 0 };
   for (const row of rows) {
-    if (row.available < 0) totals.overspending -= row.available;
+    // `overspending` is the cash shortfall. Credit overspending leaves
+    // Available negative without adding to the cash to cover (ADR 0010).
+    totals.overspending += row.overspending ?? Math.max(0, -row.available);
     if (!row.target || !row.need) continue;
     totals.needed += row.need.needed;
     const undatedBalance = row.target.kind === "BALANCE" && !row.target.dueDate;
