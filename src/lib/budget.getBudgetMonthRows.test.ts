@@ -10,6 +10,9 @@ jest.mock("@/lib/prisma", () => ({
       findMany: jest.fn(),
       aggregate: jest.fn(),
     },
+    transaction: {
+      count: jest.fn(),
+    },
     $queryRaw: jest.fn(),
   },
 }));
@@ -17,6 +20,7 @@ jest.mock("@/lib/prisma", () => ({
 const mockFindMany = jest.mocked(prisma.categoryGroup.findMany);
 const mockAssignments = jest.mocked(prisma.categoryMonth.findMany);
 const mockAssignedLater = jest.mocked(prisma.categoryMonth.aggregate);
+const mockUncategorizedCount = jest.mocked(prisma.transaction.count);
 // Two raw queries run: the categories' per-month activity, and Ready to
 // Assign's on-budget income and Uncategorized totals (its SQL selects a
 // "kind" column). $queryRaw hands each call to its own stub.
@@ -37,6 +41,7 @@ beforeEach(() => {
   mockAssignedLater.mockResolvedValue({ _sum: { budgeted: null } } as never);
   mockActivityByMonth.mockResolvedValue([]);
   mockReadyToAssignRows.mockResolvedValue([]);
+  mockUncategorizedCount.mockResolvedValue(0);
   jest.mocked(prisma.$queryRaw).mockImplementation(((sql: TemplateStringsArray, ...values: unknown[]) =>
     sql.join("").includes('"kind"')
       ? mockReadyToAssignRows(sql, ...values)

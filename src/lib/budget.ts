@@ -33,10 +33,14 @@ import {
   currentBudgetMonth,
   formatBudgetMonth,
   isInRange,
+  monthDateRange,
   navigableRange,
   parseBudgetMonth,
   type BudgetMonthRange,
 } from "@/lib/budgetMonth";
+import { UNCATEGORIZED, transactionFiltersWhere } from "@/lib/transactionFilters";
+import { allAccountsTransactionWhere } from "@/lib/transactionsView";
+import { showUncategorizedRow } from "@/lib/uncategorizedRow";
 
 /**
  * This app supports multiple budgets per user — one per currency (see
@@ -357,6 +361,18 @@ export type BudgetCategoryRow = CategoryRow &
     overspending: number;
   };
 
+/** The pinned Uncategorized row for one Budget Month, or absent when
+ * showUncategorizedRow says it stays hidden. Budgeted is always 0 and
+ * isn't stored here. */
+export interface UncategorizedRow {
+  /** This month's on-budget uncategorized activity, milliunits. */
+  activity: number;
+  /** Rolled-over Available, milliunits (ADR 0009). */
+  available: number;
+  /** Transactions the viewed month's uncategorized list shows. */
+  count: number;
+}
+
 export type BudgetMonthRows = {
   groups: {
     id: string;
@@ -379,6 +395,9 @@ export type BudgetMonthRows = {
   /** The most an Auto-Assign run may add: Ready to Assign, or in an earlier
    * month the lowest figure from it through the current month (#163). */
   autoAssignLimit: number;
+  /** Pinned at the top of the budget table. Null when the month has no
+   * uncategorized transactions and Available is zero (#225). */
+  uncategorized: UncategorizedRow | null;
 };
 
 /** Works out a row's Target state from its stored target rows, whether this month is snoozed, and its
@@ -450,10 +469,6 @@ async function loadMonthlyTotals(categoryIds: string[], nextMonth: Date) {
   return { assignedByMonth, activityByMonth };
 }
 
-/** The key Uncategorized activity goes under in the Ready to Assign math.
- * Not a category id, so it can never collide with one. */
-const UNCATEGORIZED = "__uncategorized__";
-
 /**
  * What Ready to Assign needs beyond the categories' own monthly totals
  * (ADR 0008, ADR 0009), in two queries:
@@ -496,6 +511,31 @@ async function loadReadyToAssignTotals(budgetId: string, categoryIds: string[], 
     (row.kind === "income" ? incomeByMonth : uncategorizedByMonth).set(row.month, Number(row.amount));
   }
   return { incomeByMonth, uncategorizedByMonth, assignedAfter: later?._sum.budgeted ?? 0 };
+}
+
+/**
+ * How many transactions the viewed month's uncategorized list shows.
+ * Same where as accounts/all (every account, starting-balance rows left
+ * out), plus the `__uncategorized__` filter and the month's dates, so
+ * "N need a category" matches that list (#225). Activity and Available
+ * stay the on-budget totals from loadReadyToAssignTotals; an off-budget
+ * row can change the count without changing those figures.
+ */
+async function countUncategorizedInMonth(budgetId: string, month: Date): Promise<number> {
+  const { from, to } = monthDateRange(month);
+  return prisma.transaction.count({
+    where: {
+      ...allAccountsTransactionWhere(budgetId),
+      ...transactionFiltersWhere({
+        dateFrom: from,
+        dateTo: to,
+        preset: null,
+        category: UNCATEGORIZED,
+        direction: "all",
+        q: "",
+      }),
+    },
+  });
 }
 
 /**
@@ -549,9 +589,10 @@ export async function getBudgetMonthRows(
   // the month itself.
   const isPast = month.getTime() < current.getTime();
   const totalsBound = isPast ? startOfNextMonth(current) : nextMonth;
-  const [{ assignedByMonth, activityByMonth }, readyToAssignTotals] = await Promise.all([
+  const [{ assignedByMonth, activityByMonth }, readyToAssignTotals, uncategorizedCount] = await Promise.all([
     loadMonthlyTotals(categoryIds, totalsBound),
     loadReadyToAssignTotals(budgetId, categoryIds, totalsBound),
+    countUncategorizedInMonth(budgetId, month),
   ]);
 
   function categoryRow(category: (typeof groups)[number]["categories"][number]): BudgetCategoryRow {
@@ -578,7 +619,7 @@ export async function getBudgetMonthRows(
   // Slimmed-down category list (just id/name/available) for the "move
   // money to…" popover on each Available cell. Includes hidden categories
   // too — they still have money in them, and still need somewhere to move
-  // it to/from.
+  // it to/from. Uncategorized is not a Move Money option (#134, #225).
   const categoryOptions = groups.map((group) => ({
     id: group.id,
     name: group.name,
@@ -610,7 +651,8 @@ export async function getBudgetMonthRows(
   const visibleRows = visibleGroups.flatMap((group) => group.categories);
 
   // Auto-Assign's inputs (#219): every ordinary category, hidden ones in
-  // their real group, in display order.
+  // their real group, in display order. Uncategorized is never a target
+  // (#147, #225).
   const rowsById = new Map([...visibleRows, ...hiddenCategories].map((row) => [row.id, row]));
   const autoAssignCategories: AutoAssignCategory[] = groups.flatMap((group, groupIndex) =>
     group.categories.map((category, categoryIndex) => {
@@ -630,6 +672,24 @@ export async function getBudgetMonthRows(
       };
     }),
   );
+
+  // The Uncategorized row's Available uses the same activity map Ready to
+  // Assign does (on-budget, categoryId null), under the sentinel key, with
+  // nothing assigned. `UNCATEGORIZED` is not a category id.
+  const uncategorizedActivity = readyToAssignTotals.uncategorizedByMonth;
+  const uncategorizedAvailable = balanceFor(
+    UNCATEGORIZED,
+    new Map(),
+    new Map([[UNCATEGORIZED, uncategorizedActivity]]),
+    month,
+  ).available;
+  const uncategorized: UncategorizedRow | null = showUncategorizedRow(uncategorizedCount, uncategorizedAvailable)
+    ? {
+        activity: uncategorizedActivity.get(formatBudgetMonth(month)) ?? 0,
+        available: uncategorizedAvailable,
+        count: uncategorizedCount,
+      }
+    : null;
 
   // Every ordinary category counts, hidden ones included (ADR 0009).
   const readyToAssignIn = (m: Date) =>
@@ -653,10 +713,18 @@ export async function getBudgetMonthRows(
     groups: visibleGroups,
     categoryOptions,
     hiddenCategories,
-    totals: planTotals([...visibleRows, ...hiddenCategories]),
+    // Uncategorized has no Target and its Budgeted is 0, so this only adds
+    // its cash overspending to the plan-wide total (#225). A hidden row's
+    // Available is 0, which adds nothing.
+    totals: planTotals([
+      ...visibleRows,
+      ...hiddenCategories,
+      ...(uncategorized ? [{ target: null, need: null, available: uncategorized.available }] : []),
+    ]),
     autoAssignCategories,
     autoAssignLimit,
     readyToAssign,
+    uncategorized,
   };
 }
 
