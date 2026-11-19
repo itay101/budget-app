@@ -114,7 +114,7 @@ export async function requireCategoryGroupAccess(categoryGroupId: string) {
 export async function requireCategoryAccess(categoryId: string) {
   const category = await prisma.category.findUnique({
     where: { id: categoryId },
-    select: { systemKind: true, categoryGroup: { select: { budgetId: true } } },
+    select: { systemKind: true, paymentForAccountId: true, categoryGroup: { select: { budgetId: true } } },
   });
   if (!category) {
     throw new Error("Category not found");
@@ -124,5 +124,6 @@ export async function requireCategoryAccess(categoryId: string) {
     user,
     budgetId: category.categoryGroup.budgetId,
     systemKind: category.systemKind,
+    paymentForAccountId: category.paymentForAccountId,
   };
 }

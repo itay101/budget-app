@@ -71,6 +71,10 @@ describe("assertNotSystem", () => {
   it.each(["INFLOW", "READY_TO_ASSIGN"] as const)("refuses a %s row", (kind) => {
     expect(() => assertNotSystem(kind)).toThrow("Inflow: Ready to Assign can't be changed");
   });
+
+  it("refuses the Credit Card Payments group on its own terms", () => {
+    expect(() => assertNotSystem("CREDIT_CARD_PAYMENTS")).toThrow("Credit Card Payments can't be changed");
+  });
 });
 
 describe("categoryUsableError", () => {
@@ -89,6 +93,12 @@ describe("categoryUsableError", () => {
   it("refuses Inflow: Ready to Assign on an off-budget account, which never counts as income", () => {
     expect(categoryUsableError(readyToAssign, offBudget)).toBe(
       "Inflow: Ready to Assign can only be used on an on-budget account",
+    );
+  });
+
+  it("refuses a Payment Category on any transaction", () => {
+    expect(categoryUsableError({ ...ordinary, paymentForAccountId: "visa" }, onBudget)).toBe(
+      "A Payment Category can't be used on a transaction",
     );
   });
 

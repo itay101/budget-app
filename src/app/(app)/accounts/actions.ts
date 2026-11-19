@@ -20,12 +20,14 @@ import { numberToMilliunits } from "@/lib/money";
 import { readNewTransaction } from "@/lib/newTransaction";
 import {
   ACCOUNT_TYPES,
+  accountTypeChangeError,
   isDebtAccountType,
   type AccountType,
 } from "@/lib/accountTypes";
 import { applyBalanceDelta, findOrCreatePayee } from "./ledger";
 import { STARTING_BALANCE_PAYEE } from "@/lib/payees";
 import { assertCategoryUsable, readyToAssignCategoryId } from "@/lib/systemCategories";
+import { ensurePaymentCategory, startingBalanceCategoryId, syncPaymentCategory } from "@/lib/paymentCategories";
 import {
   TRANSFER_LINK_WINDOW_DAYS,
   onBudgetChangeError,
@@ -81,7 +83,9 @@ export async function createAccount(
   const balance = numberToMilliunits(Number(balanceInput) || 0);
   const budget = await getCurrentBudget();
   const user = await getCurrentUser();
-  const onBudget = !isDebtAccountType(type);
+  // Cards and lines of credit default to on-budget (ADR 0010). Every other
+  // type already did.
+  const onBudget = true;
 
   const accountId = await prisma.$transaction(async (tx) => {
     const account = await auditedCreate({
@@ -107,11 +111,13 @@ export async function createAccount(
       STARTING_BALANCE_PAYEE,
       user.id,
     );
-    // An on-budget cash account's Starting Balance is Ready to Assign
-    // income (ADR 0008). `onBudget` is false exactly for credit and loan
-    // accounts, whose Starting Balance follows the credit-card rules
-    // instead (ADR 0010), so it stays uncategorized until those exist.
-    const categoryId = onBudget ? await readyToAssignCategoryId(tx, budget.id) : null;
+    // An on-budget Starting Balance is Ready to Assign income (ADR 0008),
+    // except a negative card balance, which stays uncategorized and outside
+    // the budget (ADR 0010).
+    const categoryId =
+      isDebtAccountType(type) && balance < 0
+        ? null
+        : startingBalanceCategoryId(type, balance, await readyToAssignCategoryId(tx, budget.id));
 
     await auditedCreate({
       tx,
@@ -140,6 +146,14 @@ export async function createAccount(
         memo: "Starting balance",
       }),
     });
+
+    if (isDebtAccountType(type)) {
+      await ensurePaymentCategory(tx, {
+        budgetId: budget.id,
+        actorId: user.id,
+        account: { id: account.id, name, closed: false },
+      });
+    }
 
     return account.id;
   });
@@ -970,19 +984,26 @@ export async function updateAccount(formData: FormData) {
   });
   // A Starting Balance counts (ADR 0007): close the account and open a new one.
   await assertOnBudgetStillEditable(accountId, before.onBudget, data.onBudget);
+  if (data.type !== undefined) {
+    const transactionCount = await prisma.transaction.count({ where: { accountId } });
+    const typeLocked = accountTypeChangeError(transactionCount > 0, data.type, before.type);
+    if (typeLocked) throw new Error(typeLocked);
+  }
+  const after = { ...before, ...data };
 
-  await prisma.$transaction((tx) =>
-    auditedUpdate({
+  await prisma.$transaction(async (tx) => {
+    await auditedUpdate({
       tx,
       budgetId,
       entityType: "ACCOUNT",
       entityId: accountId,
       actorId: user.id,
       before,
-      after: { ...before, ...data },
+      after,
       apply: () => tx.account.update({ where: { id: accountId }, data }),
-    }),
-  );
+    });
+    await syncPaymentCategory(tx, { budgetId, actorId: user.id, accountId, before, after });
+  });
 
   revalidateAccountPaths(accountId);
 }

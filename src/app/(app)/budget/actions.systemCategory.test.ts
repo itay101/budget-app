@@ -52,6 +52,20 @@ beforeEach(() => {
   jest.mocked(requireNavigableMonth).mockResolvedValue(new Date(Date.UTC(2026, 10, 1)));
 });
 
+describe("budget actions on a Payment Category", () => {
+  it("refuses a rename, because the name follows the account", async () => {
+    jest.mocked(requireCategoryAccess).mockResolvedValue({
+      ...ordinaryCategory,
+      paymentForAccountId: "visa",
+    } as never);
+
+    await expect(renameCategory(form({ categoryId: "pay-visa", name: "Other" }))).rejects.toThrow(
+      "name follows its account",
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
 describe("budget actions on the system Inflow: Ready to Assign category", () => {
   beforeEach(() => {
     jest.mocked(requireCategoryAccess).mockResolvedValue(systemCategory as never);

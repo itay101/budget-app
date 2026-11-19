@@ -22,7 +22,9 @@ async function getPayeeLastCategories(
     FROM "Transaction" t
     JOIN "Payee" p ON p.id = t."payeeId"
     JOIN "Account" a ON a.id = t."accountId"
+    JOIN "Category" c ON c.id = t."categoryId"
     WHERE a."budgetId" = ${budgetId} AND t."categoryId" IS NOT NULL
+      AND c."paymentForAccountId" IS NULL
     ORDER BY p.name, t.date DESC, t."createdAt" DESC
   `;
 
@@ -45,7 +47,7 @@ export async function getTransactionEditOptions(budgetId: string) {
       include: {
         categories: {
           orderBy: { sortOrder: "asc" },
-          select: { id: true, name: true },
+          select: { id: true, name: true, paymentForAccountId: true },
         },
       },
     }),
@@ -63,11 +65,15 @@ export async function getTransactionEditOptions(budgetId: string) {
   ]);
 
   return {
-    categoryGroups: categoryGroups.map((group) => ({
-      id: group.id,
-      name: group.name,
-      categories: group.categories,
-    })),
+    categoryGroups: categoryGroups
+      .filter((group) => group.systemKind !== "CREDIT_CARD_PAYMENTS")
+      .map((group) => ({
+        id: group.id,
+        name: group.name,
+        categories: group.categories
+          .filter((category) => category.paymentForAccountId == null)
+          .map(({ id, name }) => ({ id, name })),
+      })),
     payeeNames: payees.map((p) => p.name),
     payeeLastCategory,
     transferAccounts,
