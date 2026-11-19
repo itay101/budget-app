@@ -84,6 +84,42 @@ describe("MoveMoneyPopover", () => {
     expect(await submit("5", READY_TO_ASSIGN)).toEqual({ from: "rent", to: READY_TO_ASSIGN, amount: "5" });
   });
 
+  it("opens above a trigger that sits at the bottom of the screen", () => {
+    act(() => container.querySelector("button")!.click());
+    const button = container.querySelector("button")!;
+    button.getBoundingClientRect = () =>
+      ({
+        top: 600,
+        bottom: 640,
+        left: 100,
+        right: 220,
+        width: 120,
+        height: 40,
+        x: 100,
+        y: 600,
+        toJSON() {
+          return {};
+        },
+      }) as DOMRect;
+    const previousHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true,
+      get() {
+        return this.getAttribute?.("role") === "dialog" ? 280 : 0;
+      },
+    });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 720 });
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1280 });
+    try {
+      act(() => button.click());
+      const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+      // 600 − 4 − 280: the panel fits above the trigger and not below it.
+      expect(Number.parseFloat(dialog.style.top)).toBe(316);
+    } finally {
+      if (previousHeight) Object.defineProperty(HTMLElement.prototype, "offsetHeight", previousHeight);
+    }
+  });
+
   it("pulls money into the category once switched to Into", async () => {
     const into = [...dialog().querySelectorAll('[role="radio"]')].find((b) => b.textContent?.startsWith("Into"))!;
     act(() => (into as HTMLButtonElement).click());

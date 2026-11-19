@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export type PopoverAlign = "left" | "right";
 
@@ -107,26 +107,29 @@ export function usePopover({ width, align = "left", onDismiss }: UsePopoverOptio
   const onDismissRef = useRef(onDismiss);
   onDismissRef.current = onDismiss;
 
+  const updatePosition = useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const next = popoverPosition(rect, {
+      width,
+      align,
+      panelHeight: panelRef.current?.offsetHeight ?? 0,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    });
+    setPosition((prev) => (prev && prev.top === next.top && prev.left === next.left ? prev : next));
+  }, [align, width]);
+
+  // The panel mounts only after the first position is set, so this runs
+  // again with the measured height and lifts the panel above the trigger
+  // when it would not fit below. A frame callback is too late: it can run
+  // before that mount and then never correct the position.
+  useLayoutEffect(() => {
+    if (open) updatePosition();
+  }, [open, position, updatePosition]);
+
   useEffect(() => {
     if (!open) return;
-
-    function updatePosition() {
-      const rect = triggerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      setPosition(
-        popoverPosition(rect, {
-          width,
-          align,
-          panelHeight: panelRef.current?.offsetHeight ?? 0,
-          viewportWidth: window.innerWidth,
-          viewportHeight: window.innerHeight,
-        }),
-      );
-    }
-    updatePosition();
-    // The panel isn't mounted until `position` is set, so measure it on the
-    // next frame and lift it above the trigger if it doesn't fit below.
-    const frame = requestAnimationFrame(updatePosition);
 
     function handlePointerDown(e: MouseEvent) {
       if (
@@ -150,13 +153,12 @@ export function usePopover({ width, align = "left", onDismiss }: UsePopoverOptio
     document.addEventListener("mousedown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
     return () => {
-      cancelAnimationFrame(frame);
       window.removeEventListener("scroll", updatePosition, true);
       window.removeEventListener("resize", updatePosition);
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open, align, width]);
+  }, [open, updatePosition]);
 
   return { open, setOpen, position, triggerRef, panelRef };
 }
