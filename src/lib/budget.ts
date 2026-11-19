@@ -29,6 +29,13 @@ import {
   type ReadyToAssignBreakdown,
 } from "@/lib/readyToAssign";
 import {
+  deriveCreditCardMonths,
+  foldActivityRows,
+  minorUnitMilliunits,
+  type ActivityRow,
+  type CategoryMonthFigures,
+} from "@/lib/creditCardMath";
+import {
   addMonths,
   currentBudgetMonth,
   formatBudgetMonth,
@@ -352,9 +359,15 @@ export type BudgetCategoryRow = CategoryRow &
     /** Hidden categories show in their own section, or marked under a
      * quick filter other than All (#171). */
     hidden: boolean;
-    /** Cash overspending to cover this month: how far Available is below
-     * 0, else 0. The plan's total is `totals.overspending`. */
+    /** A Payment Category (ADR 0010). Its name follows the account, and
+     * its activity is derived rather than summed from transactions. */
+    payment: boolean;
+    /** Cash overspending to cover this month: how far the cash left this
+     * month is below 0. Credit overspending is not included. The plan's
+     * total is `totals.overspending`. */
     overspending: number;
+    /** Card spending this category didn't cover. It never lowers Ready to Assign. */
+    creditOverspending: number;
   };
 
 export type BudgetMonthRows = {
@@ -365,6 +378,8 @@ export type BudgetMonthRows = {
      * ones, which are filtered out of `categories` for display but still
      * count (see CategoryGroupSection's own `isEmpty` doc comment). */
     isEmpty: boolean;
+    /** The Credit Card Payments group can't be renamed, added to, or deleted. */
+    locked: boolean;
     categories: BudgetCategoryRow[];
   }[];
   categoryOptions: CategoryOption[];
@@ -389,6 +404,7 @@ function targetStateFor(
   snoozed: boolean,
   assignedByMonth: Map<string, number> | undefined,
   month: Date,
+  overspend: { cash: number; credit: number },
 ): CategoryTargetState {
   const effective = effectiveTarget(rows, month);
   const target = effective && pickTarget(effective);
@@ -399,8 +415,38 @@ function targetStateFor(
     history: historyFor(rows),
     need,
     snoozed,
-    status: targetStatus(target, need, { ...funding, available: row.available }),
+    status: targetStatus(target, need, {
+      ...funding,
+      available: row.available,
+      cashOverspending: overspend.cash,
+      creditOverspending: overspend.credit,
+    }),
   };
+}
+
+function displayedActivity(
+  category: { paymentForAccountId: string | null; transactions: { amount: number }[] },
+  derived: CategoryMonthFigures | undefined,
+): number {
+  if (category.paymentForAccountId != null) return derived?.activity ?? 0;
+  return category.transactions.reduce((sum, transaction) => sum + transaction.amount, 0);
+}
+
+function overspendFor(derived: CategoryMonthFigures | undefined, available: number): { cash: number; credit: number } {
+  return {
+    cash: derived?.cashOverspend ?? Math.max(0, -available),
+    credit: derived?.creditOverspend ?? 0,
+  };
+}
+
+function cashOverspendTotals(derived: Map<string, Map<string, CategoryMonthFigures>>): MonthlyTotals {
+  const totals: MonthlyTotals = new Map();
+  for (const [categoryId, months] of derived) {
+    for (const [key, figures] of months) {
+      if (figures.cashOverspend !== 0) addToMonthlyTotals(totals, categoryId, key, figures.cashOverspend);
+    }
+  }
+  return totals;
 }
 
 function addToMonthlyTotals(totals: MonthlyTotals, categoryId: string, monthKey: string, amount: number) {
@@ -411,32 +457,55 @@ function addToMonthlyTotals(totals: MonthlyTotals, categoryId: string, monthKey:
 
 /**
  * Every month's assigned and activity totals before `nextMonth`, per
- * category. Activity is grouped by month in SQL (#135): Prisma's groupBy
- * can't group by a truncated date. Transaction dates are UTC wall-clock
+ * category. Activity is grouped by category, account and month in SQL
+ * (#135): Prisma's groupBy can't group by a truncated date. Transaction
+ * dates are UTC wall-clock
  * times in a timestamp without time zone, so date_trunc gives the UTC
  * Budget Month. The upper bound is bound as a timestamp literal too: a JS
  * Date parameter arrives as timestamptz, and comparing it to the column
  * would depend on the database session's time zone.
  */
-async function loadMonthlyTotals(categoryIds: string[], nextMonth: Date) {
+async function loadMonthlyTotals(budgetId: string, categoryIds: string[], nextMonth: Date) {
   const assignedByMonth: MonthlyTotals = new Map();
-  const activityByMonth: MonthlyTotals = new Map();
-  if (categoryIds.length === 0) return { assignedByMonth, activityByMonth };
+  const activityRows: ActivityRow[] = [];
+  const cardTransfers: Map<string, Map<string, number>> = new Map();
+  if (categoryIds.length === 0) return { assignedByMonth, activityRows, cardTransfers };
 
-  const [assignments, activity] = await Promise.all([
+  const bound = `${formatBudgetMonth(nextMonth)}-01`;
+  const [assignments, activity, transfers] = await Promise.all([
     prisma.categoryMonth.findMany({
       where: { categoryId: { in: categoryIds }, month: { lt: nextMonth }, budgeted: { not: 0 } },
       select: { categoryId: true, month: true, budgeted: true },
     }),
-    prisma.$queryRaw<{ categoryId: string; month: string; amount: bigint }[]>`
-      SELECT t."categoryId",
+    // Per category, account, and month (#135, ADR 0010). The account's type
+    // says which of that activity is card spending.
+    prisma.$queryRaw<{ categoryId: string; accountId: string; accountType: string; month: string; amount: bigint }[]>`
+      SELECT t."categoryId" AS "categoryId",
+             t."accountId" AS "accountId",
+             a."type"::text AS "accountType",
              to_char(date_trunc('month', t."date"), 'YYYY-MM') AS "month",
              SUM(t."amount")::bigint AS "amount"
       FROM "Transaction" t
       JOIN "Account" a ON a.id = t."accountId"
       WHERE t."categoryId" IN (${Prisma.join(categoryIds)})
         AND a."onBudget" = true
-        AND t."date" < ${`${formatBudgetMonth(nextMonth)}-01`}::timestamp
+        AND t."date" < ${bound}::timestamp
+      GROUP BY 1, 2, 3, 4
+    `,
+    // The card side of an on-budget transfer: a payment in, or a cash advance out.
+    prisma.$queryRaw<{ accountId: string; month: string; amount: bigint }[]>`
+      SELECT t."accountId" AS "accountId",
+             to_char(date_trunc('month', t."date"), 'YYYY-MM') AS "month",
+             SUM(t."amount")::bigint AS "amount"
+      FROM "Transaction" t
+      JOIN "Account" a ON a.id = t."accountId"
+      JOIN "Transaction" other ON other.id = t."transferTransactionId"
+      JOIN "Account" otherAccount ON otherAccount.id = other."accountId"
+      WHERE a."budgetId" = ${budgetId}
+        AND a."onBudget" = true
+        AND otherAccount."onBudget" = true
+        AND a."type" IN ('CREDIT_CARD', 'LINE_OF_CREDIT')
+        AND t."date" < ${bound}::timestamp
       GROUP BY 1, 2
     `,
   ]);
@@ -445,9 +514,18 @@ async function loadMonthlyTotals(categoryIds: string[], nextMonth: Date) {
     addToMonthlyTotals(assignedByMonth, row.categoryId, formatBudgetMonth(row.month), row.budgeted);
   }
   for (const row of activity) {
-    addToMonthlyTotals(activityByMonth, row.categoryId, row.month, Number(row.amount));
+    activityRows.push({
+      categoryId: row.categoryId,
+      accountId: row.accountId,
+      accountType: row.accountType,
+      month: row.month,
+      amount: Number(row.amount),
+    });
   }
-  return { assignedByMonth, activityByMonth };
+  for (const row of transfers) {
+    addToMonthlyTotals(cardTransfers, row.accountId, row.month, Number(row.amount));
+  }
+  return { assignedByMonth, activityRows, cardTransfers };
 }
 
 /** The key Uncategorized activity goes under in the Ready to Assign math.
@@ -472,21 +550,31 @@ const UNCATEGORIZED = "__uncategorized__";
  */
 async function loadReadyToAssignTotals(budgetId: string, categoryIds: string[], nextMonth: Date) {
   const [onBudget, later] = await Promise.all([
-    prisma.$queryRaw<{ kind: "income" | "uncategorized"; month: string; amount: bigint }[]>`
+    prisma.$queryRaw<
+      { kind: "income" | "uncategorized"; month: string; amount: bigint; accountType: string; accountId: string }[]
+    >`
       SELECT CASE WHEN t."categoryId" IS NULL THEN 'uncategorized' ELSE 'income' END AS "kind",
              to_char(date_trunc('month', t."date"), 'YYYY-MM') AS "month",
-             SUM(t."amount")::bigint AS "amount"
+             SUM(t."amount")::bigint AS "amount",
+             CASE WHEN t."categoryId" IS NULL THEN a."type"::text ELSE '' END AS "accountType",
+             CASE WHEN t."categoryId" IS NULL THEN t."accountId" ELSE '' END AS "accountId"
       FROM "Transaction" t
       JOIN "Account" a ON a.id = t."accountId"
       LEFT JOIN "Category" c ON c.id = t."categoryId"
+      LEFT JOIN "Payee" p ON p.id = t."payeeId"
       WHERE a."budgetId" = ${budgetId}
         AND a."onBudget" = true
+        AND NOT (
+          t."categoryId" IS NULL
+          AND a."type" IN ('CREDIT_CARD', 'LINE_OF_CREDIT')
+          AND p."name" = 'Starting Balance'
+        )
         AND (
           (t."categoryId" IS NULL AND t."transferTransactionId" IS NULL)
           OR c."systemKind" = 'READY_TO_ASSIGN'
         )
         AND t."date" < ${`${formatBudgetMonth(nextMonth)}-01`}::timestamp
-      GROUP BY 1, 2
+      GROUP BY 1, 2, 4, 5
     `,
     categoryIds.length === 0
       ? null
@@ -497,11 +585,21 @@ async function loadReadyToAssignTotals(budgetId: string, categoryIds: string[], 
   ]);
 
   const incomeByMonth = new Map<string, number>();
-  const uncategorizedByMonth = new Map<string, number>();
+  const uncategorizedRows: ActivityRow[] = [];
   for (const row of onBudget) {
-    (row.kind === "income" ? incomeByMonth : uncategorizedByMonth).set(row.month, Number(row.amount));
+    if (row.kind === "income") {
+      incomeByMonth.set(row.month, (incomeByMonth.get(row.month) ?? 0) + Number(row.amount));
+    } else {
+      uncategorizedRows.push({
+        categoryId: UNCATEGORIZED,
+        month: row.month,
+        amount: Number(row.amount),
+        accountId: row.accountId || null,
+        accountType: row.accountType || null,
+      });
+    }
   }
-  return { incomeByMonth, uncategorizedByMonth, assignedAfter: later?._sum.budgeted ?? 0 };
+  return { incomeByMonth, uncategorizedRows, assignedAfter: later?._sum.budgeted ?? 0 };
 }
 
 /**
@@ -521,9 +619,14 @@ export async function getBudgetMonthRows(
 
   // The system Inflow group isn't a section of the budget page (ADR
   // 0008): Inflow: Ready to Assign can't be assigned to, and its money is
-  // the Ready to Assign figure instead of a row.
-  const groups = await prisma.categoryGroup.findMany({
-    where: { budgetId, systemKind: null },
+  // the Ready to Assign figure instead of a row. Credit Card Payments is
+  // (ADR 0010), pinned last, just above the synthetic Hidden section.
+  const [loadedGroups, budget] = await Promise.all([
+    prisma.categoryGroup.findMany({
+    where: {
+      budgetId,
+      OR: [{ systemKind: null }, { systemKind: "CREDIT_CARD_PAYMENTS" }],
+    },
     orderBy: { sortOrder: "asc" },
     include: {
       categories: {
@@ -543,9 +646,23 @@ export async function getBudgetMonthRows(
         },
       },
     },
-  });
+  }),
+    prisma.budget.findUniqueOrThrow({ where: { id: budgetId }, select: { currency: true } }),
+  ]);
+  const groups = [
+    ...loadedGroups.filter((group) => group.systemKind !== "CREDIT_CARD_PAYMENTS"),
+    ...loadedGroups.filter((group) => group.systemKind === "CREDIT_CARD_PAYMENTS"),
+  ];
 
   const categoryIds = groups.flatMap((g) => g.categories.map((c) => c.id));
+  const paymentCategoryByCard = new Map(
+    groups.flatMap((group) =>
+      group.categories.flatMap((category) =>
+        category.paymentForAccountId ? [[category.paymentForAccountId, category.id] as const] : [],
+      ),
+    ),
+  );
+  const paymentCategoryIds = new Set(paymentCategoryByCard.values());
 
   // Available rolls over month by month (ADR 0009, see balanceFor), so it
   // needs every earlier month's assigned and activity per category. An
@@ -555,29 +672,51 @@ export async function getBudgetMonthRows(
   // the month itself.
   const isPast = month.getTime() < current.getTime();
   const totalsBound = isPast ? startOfNextMonth(current) : nextMonth;
-  const [{ assignedByMonth, activityByMonth }, readyToAssignTotals] = await Promise.all([
-    loadMonthlyTotals(categoryIds, totalsBound),
+  const [{ assignedByMonth, activityRows, cardTransfers }, readyToAssignTotals] = await Promise.all([
+    loadMonthlyTotals(budgetId, categoryIds, totalsBound),
     loadReadyToAssignTotals(budgetId, categoryIds, totalsBound),
   ]);
+  const folded = foldActivityRows([...activityRows, ...readyToAssignTotals.uncategorizedRows], paymentCategoryIds);
+  const activityByMonth = folded.totals;
+  const derived = deriveCreditCardMonths({
+    spendingCategoryIds: [...categoryIds.filter((id) => !paymentCategoryIds.has(id)), UNCATEGORIZED],
+    paymentCategoryByCard,
+    assignedByCategory: assignedByMonth,
+    cash: folded.cash,
+    cards: folded.cards,
+    cardTransfers,
+    through: formatBudgetMonth(addMonths(totalsBound, -1)),
+    minorUnit: minorUnitMilliunits(budget.currency),
+  });
+  for (const categoryId of paymentCategoryIds) {
+    for (const [key, figures] of derived.get(categoryId) ?? []) {
+      if (figures.activity !== 0) addToMonthlyTotals(activityByMonth, categoryId, key, figures.activity);
+    }
+  }
+  const cashOverspentByMonth = cashOverspendTotals(derived);
+  const monthKey = formatBudgetMonth(month);
 
   function categoryRow(category: (typeof groups)[number]["categories"][number]): BudgetCategoryRow {
+    const derivedMonth = derived.get(category.id)?.get(monthKey);
     const row = rowFor(
       {
         id: category.id,
         name: category.name,
         budgeted: category.months[0]?.budgeted ?? 0,
-        activity: category.transactions.reduce((sum, t) => sum + t.amount, 0),
+        activity: displayedActivity(category, derivedMonth),
       },
       assignedByMonth,
       activityByMonth,
       month,
     );
-    const snoozed = category.targetSnoozes.length > 0;
+    const overspend = overspendFor(derivedMonth, row.available);
     return {
       ...row,
       hidden: category.hidden,
-      ...targetStateFor(row, category.targets, snoozed, assignedByMonth.get(category.id), month),
-      overspending: Math.max(0, -row.available),
+      payment: category.paymentForAccountId != null,
+      ...targetStateFor(row, category.targets, category.targetSnoozes.length > 0, assignedByMonth.get(category.id), month, overspend),
+      overspending: overspend.cash,
+      creditOverspending: overspend.credit,
     };
   }
 
@@ -611,6 +750,7 @@ export async function getBudgetMonthRows(
     id: group.id,
     name: group.name,
     isEmpty: group.categories.length === 0,
+    locked: group.systemKind === "CREDIT_CARD_PAYMENTS",
     categories: group.categories.filter((c) => !c.hidden).map(categoryRow),
   }));
   const visibleRows = visibleGroups.flatMap((group) => group.categories);
@@ -645,7 +785,8 @@ export async function getBudgetMonthRows(
       incomeByMonth: readyToAssignTotals.incomeByMonth,
       assignedByMonth,
       assignedAfter: readyToAssignTotals.assignedAfter,
-      activityByMonth: new Map([...activityByMonth, [UNCATEGORIZED, readyToAssignTotals.uncategorizedByMonth]]),
+      activityByMonth,
+      cashOverspentByMonth,
     });
   const readyToAssign = readyToAssignIn(month);
   // Adding money in an earlier month lowers it and every month after it, so
