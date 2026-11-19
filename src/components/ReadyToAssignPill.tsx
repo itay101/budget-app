@@ -61,7 +61,7 @@ function PillButton({
   warning,
   onOpen,
 }: {
-  buttonRef: RefObject<HTMLButtonElement | null>;
+  buttonRef: RefObject<HTMLButtonElement>;
   open: boolean;
   style: (typeof READY_TO_ASSIGN_STYLE)[ReadyToAssignState];
   total: number;
