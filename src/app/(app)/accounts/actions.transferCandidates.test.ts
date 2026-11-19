@@ -1,4 +1,5 @@
-import { findTransferLinkCandidates, readNewTransaction } from "@/app/(app)/accounts/actions";
+import { findTransferLinkCandidates } from "@/app/(app)/accounts/actions";
+import { readNewTransaction } from "@/lib/newTransaction";
 import { prisma } from "@/lib/prisma";
 import { requireAccountAccess } from "@/lib/authorization";
 
