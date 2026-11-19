@@ -73,8 +73,16 @@ export default async function BudgetPage({
   const { month } = viewed;
   const monthKey = formatBudgetMonth(month);
 
-  const { groups, categoryOptions, hiddenCategories, totals, readyToAssign, autoAssignCategories, autoAssignLimit } =
-    await getBudgetMonthRows(budget.id, month, current);
+  const {
+    groups,
+    categoryOptions,
+    hiddenCategories,
+    totals,
+    readyToAssign,
+    autoAssignCategories,
+    autoAssignLimit,
+    nextMonthWarning,
+  } = await getBudgetMonthRows(budget.id, month, current);
 
   const filter = parseQuickFilter(params.filter);
   const allRows = [...groups.flatMap((group) => group.categories), ...hiddenCategories];
@@ -106,8 +114,10 @@ export default async function BudgetPage({
               categoryOptions={categoryOptions}
               transferAvailable={transferAvailable}
               monthName={monthLabel(month)}
+              nextMonthName={monthLabel(addMonths(month, 1))}
               previousMonthName={monthLabel(addMonths(month, -1))}
               isPast={month.getTime() < current.getTime()}
+              nextMonthWarning={nextMonthWarning}
             />
           </div>
         </div>

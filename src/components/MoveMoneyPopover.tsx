@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { formatMilliunits } from "@/lib/money";
 import { READY_TO_ASSIGN } from "@/lib/readyToAssign";
@@ -13,6 +13,12 @@ type CategoryOption = { id: string; name: string; available: number };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
 
 type Direction = "out" | "in";
+
+function triggerClass(available: number, triggerClassName: string | undefined): string {
+  if (triggerClassName) return triggerClassName;
+  const tone = available < 0 ? "text-danger" : "text-success";
+  return `w-full rounded-sm px-1 py-0.5 text-right font-medium hover:bg-neutral-100 ${tone}`;
+}
 
 /**
  * The "Available" figure for a category, rendered as a button that opens a
@@ -34,6 +40,8 @@ export function MoveMoneyPopover({
   available,
   groups,
   transferAvailable,
+  trigger,
+  triggerClassName,
 }: {
   categoryId: string;
   categoryName: string;
@@ -42,6 +50,10 @@ export function MoveMoneyPopover({
   available: number;
   groups: GroupOption[];
   transferAvailable: (formData: FormData) => Promise<void>;
+  /** Replaces the Available amount as the button's contents. The Next-Month
+   * Warning's category list uses this; the popover itself is unchanged. */
+  trigger?: ReactNode;
+  triggerClassName?: string;
 }) {
   const [pending, startTransition] = useTransition();
   const readyToAssign = useReadyToAssign();
@@ -76,12 +88,9 @@ export function MoveMoneyPopover({
         type="button"
         onClick={() => setOpen((o) => !o)}
         title="Move money"
-        className={
-          "w-full rounded-sm px-1 py-0.5 text-right font-medium hover:bg-neutral-100 " +
-          (available < 0 ? "text-danger" : "text-success")
-        }
+        className={triggerClass(available, triggerClassName)}
       >
-        {formatMilliunits(available, currency)}
+        {trigger ?? formatMilliunits(available, currency)}
       </button>
 
       {open &&

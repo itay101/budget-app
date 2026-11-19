@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "@/components/Icon";
 import { MoneyInput } from "@/components/MoneyInput";
 import { AvailableOptions } from "@/components/AvailableOptions";
 import { AutoAssignMenu, AutoAssignToasts, type AutoAssignDone } from "@/components/AutoAssignMenu";
+import { NextMonthWarningCallout, NextMonthWarningDot } from "@/components/NextMonthWarning";
 import { useAutoAssign } from "@/components/ReadyToAssignContext";
 import { formatMilliunits, milliunitsToNumber, numberToMilliunits } from "@/lib/money";
 import {
@@ -13,6 +14,7 @@ import {
   type ReadyToAssignBreakdown,
   type ReadyToAssignState,
 } from "@/lib/readyToAssign";
+import type { NextMonthWarning } from "@/lib/nextMonthWarning";
 
 type CategoryOption = { id: string; name: string; available: number };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
@@ -48,6 +50,45 @@ const READY_TO_ASSIGN_STYLE: Record<
   },
 };
 
+/** The toolbar button: the month's figure, and a red dot when next month
+ * would start below $0 (#183). */
+function PillButton({
+  buttonRef,
+  open,
+  style,
+  total,
+  currency,
+  warning,
+  onOpen,
+}: {
+  buttonRef: RefObject<HTMLButtonElement | null>;
+  open: boolean;
+  style: (typeof READY_TO_ASSIGN_STYLE)[ReadyToAssignState];
+  total: number;
+  currency: string;
+  warning: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      ref={buttonRef}
+      type="button"
+      onClick={onOpen}
+      aria-haspopup="dialog"
+      aria-expanded={open}
+      title={warning ? "Next month will start negative" : undefined}
+      className={`flex items-center gap-1 rounded-full px-3 py-1 text-body font-semibold ${style.fill}`}
+    >
+      <Icon name={style.icon} />
+      <span className="tabular-nums">
+        <Amount milliunits={total} currency={currency} />
+      </span>
+      {warning && <NextMonthWarningDot />}
+      <span className="hidden font-normal md:inline">{style.label}</span>
+    </button>
+  );
+}
+
 /** An amount that never reorders next to right-to-left text. */
 function Amount({ milliunits, currency }: { milliunits: number; currency: string }) {
   return <bdi dir="ltr">{formatMilliunits(milliunits, currency)}</bdi>;
@@ -79,6 +120,65 @@ function BreakdownLine({
   );
 }
 
+function Breakdown({
+  breakdown,
+  currency,
+  monthName,
+  previousMonthName,
+  isPast,
+  fill,
+}: {
+  breakdown: ReadyToAssignBreakdown;
+  currency: string;
+  monthName: string;
+  previousMonthName: string;
+  isPast: boolean;
+  fill: string;
+}) {
+  return (
+    <dl>
+      <BreakdownLine
+        label={`Left over from ${previousMonthName}`}
+        sign="+"
+        amount={breakdown.leftOver}
+        currency={currency}
+      />
+      <BreakdownLine
+        label={`Inflow: Ready to Assign in ${monthName}`}
+        sign="+"
+        amount={breakdown.inflow}
+        currency={currency}
+      />
+      <BreakdownLine
+        label={`Cash overspending in ${previousMonthName}`}
+        sign="−"
+        amount={breakdown.overspent}
+        currency={currency}
+      />
+      <BreakdownLine
+        label={`Assigned in ${monthName}`}
+        sign="−"
+        amount={breakdown.assigned}
+        currency={currency}
+      />
+      {!isPast && (
+        <BreakdownLine
+          label="Assigned in future months"
+          sign="−"
+          amount={breakdown.assignedFuture}
+          currency={currency}
+        />
+      )}
+      <div className="mt-1 flex items-baseline justify-between gap-4 border-t border-neutral-200 pt-2">
+        <dt className="text-body font-semibold text-neutral-800">Ready to Assign</dt>
+        <dd className={`whitespace-nowrap rounded-sm px-1 text-body font-semibold tabular-nums ${fill}`}>
+          =<Amount milliunits={breakdown.total} currency={currency} />
+        </dd>
+      </div>
+    </dl>
+  );
+}
+
 /**
  * The Ready to Assign pill in the budget page's sticky month toolbar, and
  * the drawer it opens (#121, design from #136): a right-hand panel from
@@ -87,19 +187,21 @@ function BreakdownLine({
  * (ADR 0009). An earlier month shows its own figure, so it has no
  * "Assigned in future months" line.
  *
- * Below the Breakdown, Assign money moves money from Ready to Assign into
- * a category (#217, #136). The Month summary (#181) and the next-month
- * warning (#183) aren't part of this yet.
+ * Below the Breakdown, the Next-Month Warning (#183) when next month would
+ * start below $0, then Assign money, which moves money from Ready to Assign
+ * into a category (#217, #136). The Month summary (#181) isn't part of this yet.
  */
 export function ReadyToAssignPill({
   breakdown,
   currency,
   month,
   monthName,
+  nextMonthName,
   previousMonthName,
   isPast,
   categoryOptions,
   transferAvailable,
+  nextMonthWarning = null,
 }: {
   breakdown: ReadyToAssignBreakdown;
   currency: string;
@@ -110,10 +212,14 @@ export function ReadyToAssignPill({
   transferAvailable: (formData: FormData) => Promise<void>;
   /** The viewed month, e.g. "November 2026". */
   monthName: string;
+  /** The month after it, e.g. "December 2026". */
+  nextMonthName: string;
   /** The month before it, e.g. "October 2026". */
   previousMonthName: string;
   /** Whether the viewed month is before the current one. */
   isPast: boolean;
+  /** Shown on the pill and under the Breakdown when next month would start below $0. */
+  nextMonthWarning?: NextMonthWarning | null;
 }) {
   const [open, setOpen] = useState(false);
   const [lastRun, setLastRun] = useState<AutoAssignDone | null>(null);
@@ -139,20 +245,15 @@ export function ReadyToAssignPill({
 
   return (
     <>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        className={`flex items-center gap-1 rounded-full px-3 py-1 text-body font-semibold ${style.fill}`}
-      >
-        <Icon name={style.icon} />
-        <span className="tabular-nums">
-          <Amount milliunits={breakdown.total} currency={currency} />
-        </span>
-        <span className="hidden font-normal md:inline">{style.label}</span>
-      </button>
+      <PillButton
+        buttonRef={triggerRef}
+        open={open}
+        style={style}
+        total={breakdown.total}
+        currency={currency}
+        warning={nextMonthWarning !== null}
+        onOpen={() => setOpen(true)}
+      />
 
       {open &&
         createPortal(
@@ -196,48 +297,24 @@ export function ReadyToAssignPill({
               <h3 className="mb-1 mt-300 text-small font-medium uppercase tracking-wide text-neutral-600">
                 Breakdown
               </h3>
-              <dl>
-                <BreakdownLine
-                  label={`Left over from ${previousMonthName}`}
-                  sign="+"
-                  amount={breakdown.leftOver}
-                  currency={currency}
-                />
-                <BreakdownLine
-                  label={`Inflow: Ready to Assign in ${monthName}`}
-                  sign="+"
-                  amount={breakdown.inflow}
-                  currency={currency}
-                />
-                <BreakdownLine
-                  label={`Cash overspending in ${previousMonthName}`}
-                  sign="−"
-                  amount={breakdown.overspent}
-                  currency={currency}
-                />
-                <BreakdownLine
-                  label={`Assigned in ${monthName}`}
-                  sign="−"
-                  amount={breakdown.assigned}
-                  currency={currency}
-                />
-                {!isPast && (
-                  <BreakdownLine
-                    label="Assigned in future months"
-                    sign="−"
-                    amount={breakdown.assignedFuture}
-                    currency={currency}
-                  />
-                )}
-                <div className="mt-1 flex items-baseline justify-between gap-4 border-t border-neutral-200 pt-2">
-                  <dt className="text-body font-semibold text-neutral-800">Ready to Assign</dt>
-                  <dd
-                    className={`whitespace-nowrap rounded-sm px-1 text-body font-semibold tabular-nums ${style.fill}`}
-                  >
-                    =<Amount milliunits={breakdown.total} currency={currency} />
-                  </dd>
-                </div>
-              </dl>
+              <Breakdown
+                breakdown={breakdown}
+                currency={currency}
+                monthName={monthName}
+                previousMonthName={previousMonthName}
+                isPast={isPast}
+                fill={style.fill}
+              />
+
+              <NextMonthWarningCallout
+                warning={nextMonthWarning}
+                month={month}
+                monthName={monthName}
+                nextMonthName={nextMonthName}
+                currency={currency}
+                categoryOptions={categoryOptions}
+                transferAvailable={transferAvailable}
+              />
 
               {autoAssign && (
                 <div className="mt-300">
