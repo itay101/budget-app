@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { formatMilliunits } from "@/lib/money";
-import { ACCOUNT_TYPE_OPTIONS } from "@/lib/accountTypes";
+import { ACCOUNT_TYPE_LOCKED_MESSAGE, ACCOUNT_TYPE_OPTIONS } from "@/lib/accountTypes";
 import { useServerAction } from "@/components/useServerAction";
 import { ON_BUDGET_LOCKED_MESSAGE } from "@/lib/transfers";
 
@@ -72,15 +72,23 @@ export function AccountsTable({
 
 function AccountTypeSelect({
   type,
+  locked,
   onChange,
 }: {
   type: string;
+  locked: boolean;
   onChange: (value: string) => void;
 }) {
   return (
     <div className="col-span-2 md:col-span-1">
       <label className="mb-1 block text-small text-neutral-600 md:hidden">Type</label>
-      <select value={type} onChange={(event) => onChange(event.target.value)} className={inputClass}>
+      <select
+        value={type}
+        disabled={locked}
+        title={locked ? ACCOUNT_TYPE_LOCKED_MESSAGE : undefined}
+        onChange={(event) => onChange(event.target.value)}
+        className={inputClass}
+      >
         {ACCOUNT_TYPE_OPTIONS.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
@@ -155,7 +163,9 @@ function AccountRow({
 
       <AccountTypeSelect
         type={type}
+        locked={account.hasTransactions}
         onChange={(value) => {
+          if (account.hasTransactions) return;
           setType(value);
           commit("type", value);
         }}

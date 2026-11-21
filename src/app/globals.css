@@ -37,6 +37,10 @@
   --color-target-overspent-bg: #ffeceb;
   --color-target-overspent-fg: #ae2e24;
 
+  --color-target-credit: #b38600;
+  --color-target-credit-bg: #fff7d6;
+  --color-target-credit-fg: #7f5f01;
+
   --color-target-snoozed: #6e5dc6;
   --color-target-snoozed-bg: #f3f0ff;
   --color-target-snoozed-fg: #5e4db2;
@@ -168,6 +172,15 @@ body {
   background: repeating-linear-gradient(
     135deg,
     var(--color-target-overspent) 0 3px,
+    transparent 3px 7px
+  );
+}
+
+.target-excess.target-excess-credit {
+  border-color: var(--color-target-credit);
+  background: repeating-linear-gradient(
+    135deg,
+    var(--color-target-credit) 0 3px,
     transparent 3px 7px
   );
 }

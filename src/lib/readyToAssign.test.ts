@@ -103,6 +103,17 @@ describe("readyToAssignFor", () => {
     expect(result).toMatchObject({ overspent: 0, total: 0, state: "zero" });
   });
 
+  it("uses supplied cash overspending, so credit overspending does not lower Ready to Assign", () => {
+    // Activity alone would call the whole -$100 cash overspending. Only $40 of it is cash.
+    const result = rta({
+      month: feb,
+      incomeByMonth: byMonth({ "2026-01": 100_000 }),
+      activityByMonth: totals({ food: { "2026-01": -100_000 } }),
+      cashOverspentByMonth: totals({ food: { "2026-01": 40_000 } }),
+    });
+    expect(result).toMatchObject({ overspent: 40_000, total: 60_000 });
+  });
+
   it("counts Uncategorized overspending like a category's, and never its positive balance as income", () => {
     const uncategorized = totals({ __uncategorized__: { "2026-01": -8_000, "2026-02": 30_000 } });
     expect(rta({ month: feb, activityByMonth: uncategorized })).toMatchObject({ overspent: 8_000, total: -8_000 });

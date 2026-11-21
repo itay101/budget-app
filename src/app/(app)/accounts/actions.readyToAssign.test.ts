@@ -4,6 +4,7 @@ import { getCurrentBudget } from "@/lib/budget";
 import { getCurrentUser } from "@/lib/auth";
 import { requireAccountAccess, requireBudgetAccess } from "@/lib/authorization";
 import { assertCategoryUsable, readyToAssignCategoryId } from "@/lib/systemCategories";
+import { ensurePaymentCategory } from "@/lib/paymentCategories";
 
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/lib/auth", () => ({ getCurrentUser: jest.fn() }));
@@ -17,6 +18,12 @@ jest.mock("@/lib/authorization", () => ({
 jest.mock("@/lib/systemCategories", () => ({
   assertCategoryUsable: jest.fn(),
   readyToAssignCategoryId: jest.fn(),
+}));
+jest.mock("@/lib/paymentCategories", () => ({
+  ensurePaymentCategory: jest.fn(),
+  startingBalanceCategoryId: (type: string, balance: number, readyToAssignId: string) =>
+    (type === "CREDIT_CARD" || type === "LINE_OF_CREDIT") && balance < 0 ? null : readyToAssignId,
+  syncPaymentCategory: jest.fn(),
 }));
 jest.mock("./ledger", () => ({
   applyBalanceDelta: jest.fn(),
@@ -64,13 +71,32 @@ describe("createAccount's Starting Balance (ADR 0008)", () => {
     });
   });
 
-  it.each(["CREDIT_CARD", "LINE_OF_CREDIT"])("stays uncategorized on a %s account", async (type) => {
-    await createAccount(form({ name: "Card", type, balance: "-50" }));
+  it.each(["CREDIT_CARD", "LINE_OF_CREDIT"])(
+    "stays uncategorized on a %s with a negative balance, and the account is on-budget with a Payment Category",
+    async (type) => {
+      await createAccount(form({ name: "Card", type, balance: "-50" }));
 
-    expect(readyToAssignCategoryId).not.toHaveBeenCalled();
+      expect(readyToAssignCategoryId).not.toHaveBeenCalled();
+      expect(prisma.account.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ type, onBudget: true, balance: -50_000 }),
+      });
+      expect(transactionCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({ categoryId: null, amount: -50_000 }),
+      });
+      expect(ensurePaymentCategory).toHaveBeenCalledWith(
+        prisma,
+        expect.objectContaining({ account: { id: "account-1", name: "Card", closed: false } }),
+      );
+    },
+  );
+
+  it("categorizes a positive card Starting Balance as Ready to Assign", async () => {
+    await createAccount(form({ name: "Card", type: "CREDIT_CARD", balance: "25" }));
+
     expect(transactionCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({ categoryId: null, amount: -50_000 }),
+      data: expect.objectContaining({ categoryId: "category-rta", amount: 25_000 }),
     });
+    expect(ensurePaymentCategory).toHaveBeenCalled();
   });
 });
 

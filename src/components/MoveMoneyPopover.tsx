@@ -14,6 +14,15 @@ type GroupOption = { id: string; name: string; categories: CategoryOption[] };
 
 type Direction = "out" | "in";
 
+/** Cash overspending stays red. Credit overspending, with no cash shortfall, is amber. */
+function availableClassName(available: number, cashOverspending: number | undefined, creditOverspending: number): string {
+  if (available >= 0) return "text-success";
+  const cash = cashOverspending ?? -available;
+  if (cash > 0) return "text-danger";
+  if (creditOverspending > 0) return "text-warning";
+  return "text-danger";
+}
+
 /**
  * The "Available" figure for a category, rendered as a button that opens a
  * small popover (YNAB-style) for Move Money: click the amount, enter how
@@ -32,6 +41,8 @@ export function MoveMoneyPopover({
   month,
   currency,
   available,
+  cashOverspending,
+  creditOverspending = 0,
   groups,
   transferAvailable,
 }: {
@@ -40,6 +51,10 @@ export function MoveMoneyPopover({
   month: string;
   currency: string;
   available: number;
+  /** Cash shortfall. When omitted, a negative Available is treated as cash. */
+  cashOverspending?: number;
+  /** Uncovered card spending. Shown amber unless there is also a cash shortfall. */
+  creditOverspending?: number;
   groups: GroupOption[];
   transferAvailable: (formData: FormData) => Promise<void>;
 }) {
@@ -68,6 +83,7 @@ export function MoveMoneyPopover({
   }
 
   const selectLabel = direction === "out" ? "To" : "From";
+  const availableClass = availableClassName(available, cashOverspending, creditOverspending);
 
   return (
     <>
@@ -78,7 +94,7 @@ export function MoveMoneyPopover({
         title="Move money"
         className={
           "w-full rounded-sm px-1 py-0.5 text-right font-medium hover:bg-neutral-100 " +
-          (available < 0 ? "text-danger" : "text-success")
+          availableClass
         }
       >
         {formatMilliunits(available, currency)}

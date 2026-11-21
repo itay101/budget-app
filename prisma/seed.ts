@@ -34,6 +34,9 @@ async function main() {
     },
   });
 
+  // Stays off-budget. New cards default to on-budget (ADR 0010), but this
+  // seeded one is an existing off-budget card, and e2e/smoke.spec.ts asserts
+  // the on-budget total excludes it.
   const creditCard = await prisma.account.create({
     data: {
       budgetId: budget.id,

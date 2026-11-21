@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 
 jest.mock("@/lib/prisma", () => ({
   prisma: {
+    budget: { findUniqueOrThrow: jest.fn() },
     categoryGroup: {
       findMany: jest.fn(),
     },
@@ -31,16 +32,22 @@ const nextMonth = new Date(Date.UTC(2026, 3, 1)); // Apr 1, 2026 UTC
 // today's date.
 const current = month;
 
+const mockCardTransfers = jest.fn();
+
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.mocked(prisma.budget.findUniqueOrThrow).mockResolvedValue({ currency: "USD" } as never);
   mockAssignments.mockResolvedValue([]);
   mockAssignedLater.mockResolvedValue({ _sum: { budgeted: null } } as never);
   mockActivityByMonth.mockResolvedValue([]);
   mockReadyToAssignRows.mockResolvedValue([]);
-  jest.mocked(prisma.$queryRaw).mockImplementation(((sql: TemplateStringsArray, ...values: unknown[]) =>
-    sql.join("").includes('"kind"')
-      ? mockReadyToAssignRows(sql, ...values)
-      : mockActivityByMonth(sql, ...values)) as never);
+  mockCardTransfers.mockResolvedValue([]);
+  jest.mocked(prisma.$queryRaw).mockImplementation(((sql: TemplateStringsArray, ...values: unknown[]) => {
+    const text = sql.join("");
+    if (text.includes('"kind"')) return mockReadyToAssignRows(sql, ...values);
+    if (text.includes("otherAccount")) return mockCardTransfers(sql, ...values);
+    return mockActivityByMonth(sql, ...values);
+  }) as never);
 });
 
 describe("getBudgetMonthRows", () => {
@@ -51,7 +58,10 @@ describe("getBudgetMonthRows", () => {
 
     expect(mockFindMany).toHaveBeenCalledWith({
       // The system Inflow group is never a section of the page (ADR 0008).
-      where: { budgetId: "budget-1", systemKind: null },
+      where: {
+        budgetId: "budget-1",
+        OR: [{ systemKind: null }, { systemKind: "CREDIT_CARD_PAYMENTS" }],
+      },
       orderBy: { sortOrder: "asc" },
       include: {
         categories: {
@@ -92,7 +102,8 @@ describe("getBudgetMonthRows", () => {
     expect(sql.join("?")).toContain("date_trunc('month', t.\"date\")");
     // Off-budget accounts never count (ADR 0008).
     expect(sql.join("?")).toContain('a."onBudget" = true');
-    expect(sql.join("?")).toContain("GROUP BY 1, 2");
+    expect(sql.join("?")).toContain('a."type"');
+    expect(sql.join("?")).toContain("GROUP BY 1, 2, 3, 4");
     // A plain timestamp literal, so the session time zone can't move the bound.
     expect(values).toContainEqual("2026-04-01");
     expect(sql.join("?")).toContain("?::timestamp");
@@ -131,6 +142,7 @@ describe("getBudgetMonthRows", () => {
         id: "group-1",
         name: "Everyday Expenses",
         isEmpty: false,
+        locked: false,
         categories: [
           {
             id: "cat-1",
@@ -140,12 +152,14 @@ describe("getBudgetMonthRows", () => {
             carriedIn: 8000,
             available: 11000, // 8000 carried in + 5000 - 2000
             hidden: false,
+            payment: false,
             target: null,
             history: [],
             need: null,
             snoozed: false,
             status: "none",
             overspending: 0,
+            creditOverspending: 0,
           },
         ],
       },
@@ -160,7 +174,7 @@ describe("getBudgetMonthRows", () => {
     const result = await getBudgetMonthRows("budget-1", month, current);
 
     expect(result.groups).toEqual([
-      { id: "group-1", name: "Empty Group", isEmpty: true, categories: [] },
+      { id: "group-1", name: "Empty Group", isEmpty: true, locked: false, categories: [] },
     ]);
   });
 
@@ -184,7 +198,7 @@ describe("getBudgetMonthRows", () => {
     const result = await getBudgetMonthRows("budget-1", month, current);
 
     expect(result.groups).toEqual([
-      { id: "group-1", name: "Mixed", isEmpty: false, categories: [] },
+      { id: "group-1", name: "Mixed", isEmpty: false, locked: false, categories: [] },
     ]);
   });
 
@@ -443,6 +457,103 @@ describe("getBudgetMonthRows", () => {
       carriedIn: 0,
       need: { ask: 150000, needed: 150000, goal: { have: 600000, amount: 1200000 } },
     });
+  });
+});
+
+describe("getBudgetMonthRows credit cards (ADR 0010)", () => {
+  const groups = [
+    {
+      id: "group-1",
+      name: "Everyday Expenses",
+      systemKind: null,
+      categories: [
+        {
+          id: "groceries",
+          name: "Groceries",
+          hidden: false,
+          paymentForAccountId: null,
+          months: [{ budgeted: 40_000 }],
+          transactions: [{ amount: -100_000 }],
+          targets: [],
+          targetSnoozes: [],
+        },
+      ],
+    },
+    {
+      id: "cc",
+      name: "Credit Card Payments",
+      systemKind: "CREDIT_CARD_PAYMENTS",
+      categories: [
+        {
+          id: "pay-visa",
+          name: "Visa",
+          hidden: false,
+          paymentForAccountId: "visa",
+          months: [],
+          transactions: [],
+          targets: [],
+          targetSnoozes: [],
+        },
+      ],
+    },
+  ];
+
+  it("funds the Payment Category for covered card spending and keeps credit overspending out of Ready to Assign", async () => {
+    mockFindMany.mockResolvedValue(groups as never);
+    mockAssignments.mockResolvedValue([{ categoryId: "groceries", month, budgeted: 40_000 }] as never);
+    mockActivityByMonth.mockResolvedValue([
+      {
+        categoryId: "groceries",
+        accountId: "visa",
+        accountType: "CREDIT_CARD",
+        month: "2026-03",
+        amount: BigInt(-100_000),
+      },
+    ]);
+    mockReadyToAssignRows.mockResolvedValue([{ kind: "income", month: "2026-03", amount: BigInt(200_000), accountType: "" }]);
+
+    const result = await getBudgetMonthRows("budget-1", month, current);
+
+    expect(result.groups.map((group) => group.id)).toEqual(["group-1", "cc"]);
+    expect(result.groups[1].locked).toBe(true);
+    expect(result.groups[0].categories[0]).toMatchObject({
+      available: -60_000,
+      overspending: 0,
+      creditOverspending: 60_000,
+      status: "credit_overspent",
+      payment: false,
+    });
+    expect(result.groups[1].categories[0]).toMatchObject({
+      name: "Visa",
+      payment: true,
+      activity: 40_000,
+      available: 40_000,
+      overspending: 0,
+      creditOverspending: 0,
+    });
+    // Income 200 − assigned 40. The uncovered 60 is credit overspending, not cash.
+    expect(result.readyToAssign).toMatchObject({ overspent: 0, total: 160_000 });
+    expect(result.totals.overspending).toBe(0);
+  });
+
+  it("lowers Payment Category activity by an on-budget transfer into the card", async () => {
+    mockFindMany.mockResolvedValue(groups as never);
+    mockAssignments.mockResolvedValue([{ categoryId: "groceries", month, budgeted: 100_000 }] as never);
+    mockActivityByMonth.mockResolvedValue([
+      {
+        categoryId: "groceries",
+        accountId: "visa",
+        accountType: "CREDIT_CARD",
+        month: "2026-03",
+        amount: BigInt(-100_000),
+      },
+    ]);
+    mockCardTransfers.mockResolvedValue([{ accountId: "visa", month: "2026-03", amount: BigInt(100_000) }]);
+
+    const result = await getBudgetMonthRows("budget-1", month, current);
+
+    expect(result.groups[0].categories[0]).toMatchObject({ available: 0, creditOverspending: 0, overspending: 0 });
+    expect(result.groups[1].categories[0]).toMatchObject({ activity: 0, available: 0 });
   });
 });
 

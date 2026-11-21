@@ -78,6 +78,9 @@ model Account {
   // Cached running balance in milliunits, kept in sync when transactions change.
   balance      Int           @default(0)
   transactions Transaction[]
+  // The Payment Category for an on-budget card or line of credit (ADR 0010).
+  // Absent for every other account. Deleting the account removes it.
+  paymentCategory Category? @relation("PaymentCategory")
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -90,10 +93,11 @@ model CategoryGroup {
   budget     Budget     @relation(fields: [budgetId], references: [id], onDelete: Cascade)
   name       String
   sortOrder  Int        @default(0)
-  // Set only on system-owned groups (ADR 0008): exactly one INFLOW group
-  // per Budget, holding its Inflow: Ready to Assign category. Null for
-  // every ordinary group, and Postgres treats NULLs as distinct, so the
-  // unique index below never constrains those.
+  // Set only on system-owned groups. INFLOW holds Inflow: Ready to Assign
+  // (ADR 0008). CREDIT_CARD_PAYMENTS holds one Payment Category per
+  // on-budget card (ADR 0010). Null for every ordinary group, and
+  // Postgres treats NULLs as distinct, so the unique index below never
+  // constrains those.
   systemKind CategoryGroupSystemKind?
   categories Category[]
 
@@ -103,6 +107,7 @@ model CategoryGroup {
 
 enum CategoryGroupSystemKind {
   INFLOW
+  CREDIT_CARD_PAYMENTS
 }
 
 enum CategorySystemKind {
@@ -126,6 +131,11 @@ model Category {
   // can't be renamed, hidden, moved, deleted, assigned to or targeted,
   // and isn't a row on the budget page (src/lib/systemCategories.ts).
   systemKind      CategorySystemKind?
+  // Set only on a Payment Category (ADR 0010): the on-budget card or line
+  // of credit this category pays. Null on every other category. Unique, so
+  // an account has at most one.
+  paymentForAccountId String?  @unique
+  paymentForAccount   Account? @relation("PaymentCategory", fields: [paymentForAccountId], references: [id], onDelete: Cascade)
   months          CategoryMonth[]
   transactions    Transaction[]
   targets         CategoryTarget[]

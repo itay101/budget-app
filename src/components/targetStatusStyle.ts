@@ -3,8 +3,8 @@ import type { TargetStatus } from "@/lib/targets";
 /**
  * Each Category Target status's label, icon and colours (#148): every
  * chip has an icon and a label, so colour is never the only signal. Class
- * names are spelled out in full so Tailwind finds them. Overspent on
- * credit gets its own entry once Payment Categories exist (ADR 0010).
+ * names are spelled out in full so Tailwind finds them. Credit
+ * overspending is amber; cash overspending stays red (ADR 0010).
  */
 export const TARGET_STATUS_STYLE: Record<
   TargetStatus,
@@ -44,6 +44,13 @@ export const TARGET_STATUS_STYLE: Record<
     chip: "bg-target-overspent-bg text-target-overspent-fg",
     bar: "bg-target-overspent",
     text: "text-target-overspent-fg",
+  },
+  credit_overspent: {
+    label: "Credit overspending",
+    icon: "credit_card",
+    chip: "bg-target-credit-bg text-target-credit-fg",
+    bar: "bg-target-credit",
+    text: "text-target-credit-fg",
   },
   snoozed: {
     label: "Snoozed",

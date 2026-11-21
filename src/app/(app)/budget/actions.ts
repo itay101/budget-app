@@ -18,6 +18,7 @@ import {
 import { numberToMilliunits } from "@/lib/money";
 import { effectiveTarget, parseTargetInput, type Target } from "@/lib/targets";
 import { assertNotSystem } from "@/lib/systemCategories";
+import { PAYMENT_CATEGORY_MOVE, PAYMENT_CATEGORY_RENAME, PAYMENT_CATEGORY_UNHIDE } from "@/lib/paymentCategories";
 import { moveLegs } from "@/lib/readyToAssign";
 import { isAutoAssignOption } from "@/lib/autoAssign";
 
@@ -152,8 +153,9 @@ export async function renameCategory(formData: FormData) {
   if (!name) {
     throw new Error("Category name is required");
   }
-  const { user, budgetId, systemKind } = await requireCategoryAccess(categoryId);
+  const { user, budgetId, systemKind, paymentForAccountId } = await requireCategoryAccess(categoryId);
   assertNotSystem(systemKind);
+  if (paymentForAccountId) throw new Error(PAYMENT_CATEGORY_RENAME);
 
   const before = await prisma.category.findUniqueOrThrow({
     where: { id: categoryId },
@@ -192,8 +194,15 @@ export async function setCategoryHidden(formData: FormData) {
   if (!categoryId) {
     throw new Error("categoryId is required");
   }
-  const { user, budgetId, systemKind } = await requireCategoryAccess(categoryId);
+  const { user, budgetId, systemKind, paymentForAccountId } = await requireCategoryAccess(categoryId);
   assertNotSystem(systemKind);
+  if (paymentForAccountId && !hidden) {
+    const account = await prisma.account.findUnique({
+      where: { id: paymentForAccountId },
+      select: { closed: true },
+    });
+    if (account?.closed) throw new Error(PAYMENT_CATEGORY_UNHIDE);
+  }
 
   const before = await prisma.category.findUniqueOrThrow({
     where: { id: categoryId },
@@ -280,15 +289,17 @@ export async function moveCategory(formData: FormData) {
   }
 
   const [
-    { user, budgetId: sourceBudgetId, systemKind: categoryKind },
+    { user, budgetId: sourceBudgetId, systemKind: categoryKind, paymentForAccountId },
     { budgetId: targetBudgetId, systemKind: groupKind },
   ] = await Promise.all([
     requireCategoryAccess(categoryId),
     requireCategoryGroupAccess(targetGroupId),
   ]);
-  // Inflow: Ready to Assign can't leave its group, and nothing can join it.
+  // Inflow: Ready to Assign can't leave its group, and nothing can join it
+  // or the Credit Card Payments group. A Payment Category stays put.
   assertNotSystem(categoryKind);
   assertNotSystem(groupKind);
+  if (paymentForAccountId) throw new Error(PAYMENT_CATEGORY_MOVE);
   // Both ids are independently authorized above, but a move across
   // budgets would still corrupt data (a Category's budget is implied by
   // its CategoryGroup) even between two budgets the same user can

@@ -81,6 +81,9 @@ export async function readyToAssignCategoryId(
 export function assertNotSystem(
   systemKind: CategorySystemKind | CategoryGroupSystemKind | null | undefined,
 ): void {
+  if (systemKind === "CREDIT_CARD_PAYMENTS") {
+    throw new Error("Credit Card Payments can't be changed");
+  }
   if (systemKind) {
     throw new Error(`${READY_TO_ASSIGN_CATEGORY_NAME} can't be changed`);
   }
@@ -91,6 +94,8 @@ export function assertNotSystem(
 export type CategoryForTransaction = {
   budgetId: string;
   systemKind: CategorySystemKind | null;
+  /** Set on a Payment Category, which no transaction can use (ADR 0010). */
+  paymentForAccountId?: string | null;
 } | null;
 
 /**
@@ -104,6 +109,7 @@ export function categoryUsableError(
   { budgetId, accountOnBudget }: { budgetId: string; accountOnBudget: boolean },
 ): string | null {
   if (!category || category.budgetId !== budgetId) return "Category not found";
+  if (category.paymentForAccountId) return "A Payment Category can't be used on a transaction";
   if (category.systemKind === "READY_TO_ASSIGN" && !accountOnBudget) {
     return `${READY_TO_ASSIGN_CATEGORY_NAME} can only be used on an on-budget account`;
   }
@@ -122,12 +128,16 @@ export async function assertCategoryUsable(
   const [row, account] = await Promise.all([
     db.category.findUnique({
       where: { id: categoryId },
-      select: { systemKind: true, categoryGroup: { select: { budgetId: true } } },
+      select: { systemKind: true, paymentForAccountId: true, categoryGroup: { select: { budgetId: true } } },
     }),
     db.account.findUniqueOrThrow({ where: { id: accountId }, select: { onBudget: true } }),
   ]);
   const error = categoryUsableError(
-    row && { budgetId: row.categoryGroup.budgetId, systemKind: row.systemKind },
+    row && {
+      budgetId: row.categoryGroup.budgetId,
+      systemKind: row.systemKind,
+      paymentForAccountId: row.paymentForAccountId,
+    },
     { budgetId, accountOnBudget: account.onBudget },
   );
   if (error) throw new Error(error);
