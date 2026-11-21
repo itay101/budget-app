@@ -237,6 +237,12 @@ model Transaction {
   memo       String?
   cleared    ClearedStatus @default(UNCLEARED)
   approved   Boolean       @default(true)
+  // The other row of a Transfer (ADR 0007). Null on an ordinary
+  // transaction. The pair points at each other; the foreign key is
+  // DEFERRABLE so deleting a Budget can remove both sides in one cascade.
+  transferTransactionId String?      @unique
+  transferTransaction   Transaction? @relation("AccountTransfer", fields: [transferTransactionId], references: [id], onDelete: NoAction)
+  transferCounterpart   Transaction? @relation("AccountTransfer")
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
 

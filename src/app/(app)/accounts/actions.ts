@@ -12,20 +12,28 @@ import {
 } from "@/lib/authorization";
 import {
   auditedCreate,
-  auditedDelete,
   auditedUpdate,
   diffFields,
   recordAuditEntries,
 } from "@/lib/audit";
 import { numberToMilliunits } from "@/lib/money";
+import { readNewTransaction } from "@/lib/newTransaction";
 import {
   ACCOUNT_TYPES,
   isDebtAccountType,
   type AccountType,
 } from "@/lib/accountTypes";
-import { applyBalanceDelta, applyBalanceDeltas, findOrCreatePayee } from "./ledger";
+import { applyBalanceDelta, findOrCreatePayee } from "./ledger";
 import { STARTING_BALANCE_PAYEE } from "@/lib/payees";
 import { assertCategoryUsable, readyToAssignCategoryId } from "@/lib/systemCategories";
+import {
+  TRANSFER_LINK_WINDOW_DAYS,
+  onBudgetChangeError,
+  selectLinkCandidates,
+  transferAccountNameFromPayee,
+  type TransferLinkCandidate,
+} from "@/lib/transfers";
+import { applyTransferEdit, deleteTransferRows, startTransfer, type DeletableTransaction } from "./transferWrite";
 
 /**
  * The revalidatePath tail every account/transaction mutation below ends
@@ -148,48 +156,76 @@ export async function createAccount(
  * always increments the owning account's cached `balance` by the full
  * entered amount rather than a before/after delta.
  */
-export async function createTransaction(formData: FormData) {
-  const accountId = String(formData.get("accountId") ?? "");
-  if (!accountId) {
-    throw new Error("accountId is required");
-  }
+async function saveNewTransfer(
+  actorId: string,
+  budgetId: string,
+  input: ReturnType<typeof readNewTransaction>,
+) {
+  const { accountIds } = await prisma.$transaction((tx) =>
+    startTransfer(tx, {
+      budgetId,
+      actorId,
+      sourceAccountId: input.accountId,
+      transferAccountId: input.transferAccountId,
+      payeeName: input.payeeName,
+      fields: { date: input.date, amount: input.amount, memo: input.memo },
+      enteredCategoryId: input.categoryId,
+      linkTransactionId: input.linkTransactionId,
+    }),
+  );
+  revalidateAccountPaths(accountIds);
+}
 
-  const dateInput = String(formData.get("date") ?? "");
-  if (!dateInput) {
-    throw new Error("Date is required");
-  }
-
-  const { user, budgetId } = await requireAccountAccess(accountId);
-
-  const payeeName = String(formData.get("payeeName") ?? "").trim();
-  const categoryId = String(formData.get("categoryId") ?? "") || null;
-  const memo = String(formData.get("memo") ?? "").trim() || null;
-  const amount = numberToMilliunits(Number(formData.get("amount")) || 0);
-  const date = new Date(dateInput);
-
+async function saveOrdinaryTransaction(
+  actorId: string,
+  budgetId: string,
+  input: ReturnType<typeof readNewTransaction>,
+) {
   await prisma.$transaction(async (tx) => {
-    await assertCategoryUsable(tx, categoryId, { budgetId, accountId });
-    const payeeId = payeeName
-      ? await findOrCreatePayee(tx, budgetId, payeeName, user.id)
+    await assertCategoryUsable(tx, input.categoryId, { budgetId, accountId: input.accountId });
+    const payeeId = input.payeeName
+      ? await findOrCreatePayee(tx, budgetId, input.payeeName, actorId)
       : null;
-
     await auditedCreate({
       tx,
       budgetId,
       entityType: "TRANSACTION",
-      actorId: user.id,
+      actorId,
       apply: () =>
         tx.transaction.create({
-          data: { accountId, payeeId, categoryId, date, amount, memo },
+          data: {
+            accountId: input.accountId,
+            payeeId,
+            categoryId: input.categoryId,
+            date: input.date,
+            amount: input.amount,
+            memo: input.memo,
+          },
         }),
       entityId: (transaction) => transaction.id,
-      fields: () => ({ accountId, payeeId, categoryId, date, amount, memo }),
+      fields: () => ({
+        accountId: input.accountId,
+        payeeId,
+        categoryId: input.categoryId,
+        date: input.date,
+        amount: input.amount,
+        memo: input.memo,
+      }),
     });
-
-    await applyBalanceDelta(tx, accountId, amount);
+    await applyBalanceDelta(tx, input.accountId, input.amount);
   });
+  revalidateAccountPaths(input.accountId);
+}
 
-  revalidateAccountPaths(accountId);
+export async function createTransaction(formData: FormData) {
+  const input = readNewTransaction(formData);
+  const { user, budgetId } = await requireAccountAccess(input.accountId);
+  const asTransfer = input.transferAccountId || transferAccountNameFromPayee(input.payeeName);
+  if (asTransfer) {
+    await saveNewTransfer(user.id, budgetId, input);
+    return;
+  }
+  await saveOrdinaryTransaction(user.id, budgetId, input);
 }
 
 export type ImportRow = {
@@ -208,7 +244,8 @@ export type ImportRow = {
  *
  * Existing transactions are fetched once for the whole date range the
  * import covers, rather than one query per row, since a typical bank
- * export is tens to hundreds of rows.
+ * export is tens to hundreds of rows. A linked transfer row counts as an
+ * existing row (ADR 0007): this query doesn't skip them.
  */
 export async function checkImportDuplicates(
   formData: FormData,
@@ -247,6 +284,66 @@ export async function checkImportDuplicates(
       dupeKey(row.date, numberToMilliunits(row.amount), row.payeeName),
     ),
   );
+}
+
+/**
+ * Unlinked rows in another account that match a transfer being entered:
+ * the opposite amount, within a few days (see TRANSFER_LINK_WINDOW_DAYS).
+ * The editor offers to link one of these instead of creating a duplicate.
+ */
+export async function findTransferLinkCandidates(
+  formData: FormData,
+): Promise<TransferLinkCandidate[]> {
+  const otherAccountId = String(formData.get("accountId") ?? "");
+  if (!otherAccountId) throw new Error("accountId is required");
+  const { budgetId } = await requireAccountAccess(otherAccountId);
+
+  const sourceAccountId = String(formData.get("sourceAccountId") ?? "");
+  if (sourceAccountId) {
+    const source = await prisma.account.findUnique({
+      where: { id: sourceAccountId },
+      select: { budgetId: true },
+    });
+    if (!source || source.budgetId !== budgetId) throw new Error("Account not found");
+  }
+
+  const dateInput = String(formData.get("date") ?? "");
+  if (!dateInput) throw new Error("Date is required");
+  const date = new Date(dateInput);
+  const amount = numberToMilliunits(Number(formData.get("amount")) || 0);
+  const excludeId = String(formData.get("excludeTransactionId") ?? "") || undefined;
+  const windowMs = (TRANSFER_LINK_WINDOW_DAYS + 1) * 86_400_000;
+
+  const rows = await prisma.transaction.findMany({
+    where: {
+      accountId: otherAccountId,
+      transferTransactionId: null,
+      amount: -amount,
+      date: {
+        gte: new Date(date.getTime() - windowMs),
+        lte: new Date(date.getTime() + windowMs),
+      },
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
+    select: {
+      id: true,
+      date: true,
+      amount: true,
+      memo: true,
+      transferTransactionId: true,
+      payee: { select: { name: true } },
+    },
+  });
+
+  return selectLinkCandidates(
+    rows.map((row) => ({ ...row, payeeName: row.payee?.name ?? null })),
+    { amount, date, excludeId },
+  ).map((row) => ({
+    id: row.id,
+    date: row.date.toISOString().slice(0, 10),
+    amount: row.amount,
+    memo: row.memo,
+  }));
 }
 
 /**
@@ -332,6 +429,167 @@ export async function importTransactions(formData: FormData) {
  * Outflow commits it negated) keeps the owning account's cached `balance`
  * in sync by the delta between the old and new amount.
  */
+function optionalDate(formData: FormData): Date | undefined {
+  if (!formData.has("date")) return undefined;
+  const dateInput = String(formData.get("date") ?? "");
+  if (!dateInput) throw new Error("Date is required");
+  return new Date(dateInput);
+}
+
+function optionalTrimmed(formData: FormData, key: string): string | null | undefined {
+  if (!formData.has(key)) return undefined;
+  return String(formData.get(key) ?? "").trim() || null;
+}
+
+function optionalAmount(formData: FormData): number | undefined {
+  if (!formData.has("amount")) return undefined;
+  return numberToMilliunits(Number(formData.get("amount")) || 0);
+}
+
+function readTransactionPatch(formData: FormData) {
+  return {
+    date: optionalDate(formData),
+    categoryId: optionalTrimmed(formData, "categoryId"),
+    memo: optionalTrimmed(formData, "memo"),
+    amount: optionalAmount(formData),
+    payeeName: formData.has("payeeName")
+      ? String(formData.get("payeeName") ?? "").trim()
+      : undefined,
+    transferAccountId: formData.has("transferAccountId")
+      ? String(formData.get("transferAccountId") ?? "") || null
+      : null,
+  };
+}
+
+function transferEditRequested(
+  transferTransactionId: string | null,
+  patch: ReturnType<typeof readTransactionPatch>,
+): boolean {
+  if (transferTransactionId) return true;
+  if (patch.transferAccountId) return true;
+  return Boolean(patch.payeeName && transferAccountNameFromPayee(patch.payeeName));
+}
+
+function ordinaryPatchTouches(patch: ReturnType<typeof readTransactionPatch>): boolean {
+  return (
+    patch.payeeName !== undefined ||
+    patch.date !== undefined ||
+    patch.categoryId !== undefined ||
+    patch.memo !== undefined ||
+    patch.amount !== undefined
+  );
+}
+
+async function saveTransferEdit(
+  actorId: string,
+  transaction: { account: { budgetId: string } },
+  transactionId: string,
+  patch: ReturnType<typeof readTransactionPatch>,
+  formData: FormData,
+) {
+  const { accountIds } = await prisma.$transaction((tx) =>
+    applyTransferEdit(tx, {
+      budgetId: transaction.account.budgetId,
+      actorId,
+      sourceId: transactionId,
+      fields: {
+        date: patch.date,
+        amount: patch.amount,
+        memo: patch.memo,
+        categoryId: patch.categoryId,
+        payeeName: patch.payeeName,
+      },
+      transferAccountId: patch.transferAccountId,
+      confirmUnlink: formData.get("confirmUnlink") === "true",
+      linkTransactionId: String(formData.get("linkTransactionId") ?? "") || null,
+    }),
+  );
+  revalidateAccountPaths(accountIds);
+}
+
+async function categoryIfChanged(
+  tx: Parameters<typeof assertCategoryUsable>[0],
+  next: string | null | undefined,
+  transaction: { categoryId: string | null; accountId: string; account: { budgetId: string } },
+) {
+  if (next === undefined || next === transaction.categoryId) return;
+  await assertCategoryUsable(tx, next, {
+    budgetId: transaction.account.budgetId,
+    accountId: transaction.accountId,
+  });
+}
+
+// A new payee is created inside the same transaction as the row update, so a
+// failed update doesn't leave the payee behind. Two concurrent requests can
+// still each create a duplicate for a brand-new name: Payee has no unique
+// (budgetId, name) constraint.
+async function payeeIdForUpdate(
+  tx: Parameters<typeof findOrCreatePayee>[0],
+  budgetId: string,
+  actorId: string,
+  payeeName: string | undefined,
+): Promise<string | null | undefined> {
+  if (payeeName === undefined) return undefined;
+  if (!payeeName) return null;
+  return findOrCreatePayee(tx, budgetId, payeeName, actorId);
+}
+
+function definedFields(entries: [string, unknown][]): Record<string, unknown> {
+  return Object.fromEntries(entries.filter((entry) => entry[1] !== undefined));
+}
+
+async function saveOrdinaryEdit(
+  actorId: string,
+  transaction: {
+    accountId: string;
+    amount: number;
+    date: Date;
+    payeeId: string | null;
+    categoryId: string | null;
+    memo: string | null;
+    account: { budgetId: string };
+  },
+  transactionId: string,
+  patch: ReturnType<typeof readTransactionPatch>,
+) {
+  await prisma.$transaction(async (tx) => {
+    await categoryIfChanged(tx, patch.categoryId, transaction);
+    const payeeId = await payeeIdForUpdate(
+      tx,
+      transaction.account.budgetId,
+      actorId,
+      patch.payeeName,
+    );
+    const data = definedFields([
+      ["date", patch.date],
+      ["categoryId", patch.categoryId],
+      ["memo", patch.memo],
+      ["amount", patch.amount],
+      ["payeeId", payeeId],
+    ]);
+    await auditedUpdate({
+      tx,
+      budgetId: transaction.account.budgetId,
+      entityType: "TRANSACTION",
+      entityId: transactionId,
+      actorId,
+      before: {
+        date: transaction.date,
+        payeeId: transaction.payeeId,
+        categoryId: transaction.categoryId,
+        memo: transaction.memo,
+        amount: transaction.amount,
+      },
+      after: data,
+      apply: () => tx.transaction.update({ where: { id: transactionId }, data }),
+    });
+    if (patch.amount !== undefined && patch.amount !== transaction.amount) {
+      await applyBalanceDelta(tx, transaction.accountId, patch.amount - transaction.amount);
+    }
+  });
+  revalidateAccountPaths(transaction.accountId);
+}
+
 export async function updateTransaction(formData: FormData) {
   const transactionId = String(formData.get("transactionId") ?? "");
   if (!transactionId) {
@@ -347,99 +605,19 @@ export async function updateTransaction(formData: FormData) {
       payeeId: true,
       categoryId: true,
       memo: true,
+      transferTransactionId: true,
       account: { select: { budgetId: true } },
     },
   });
   const { user } = await requireBudgetAccess(transaction.account.budgetId);
 
-  const data: {
-    date?: Date;
-    payeeId?: string | null;
-    categoryId?: string | null;
-    memo?: string | null;
-    amount?: number;
-  } = {};
-
-  if (formData.has("date")) {
-    const dateInput = String(formData.get("date") ?? "");
-    if (!dateInput) {
-      throw new Error("Date is required");
-    }
-    data.date = new Date(dateInput);
-  }
-
-  // Resolved inside the prisma.$transaction below (via findOrCreatePayee)
-  // so the find-or-create and the transaction-row write it feeds commit
-  // together as one unit - if the transaction.update fails, the payee it
-  // just created isn't left behind orphaned. This doesn't by itself
-  // prevent two concurrent requests from each creating a duplicate payee
-  // for the same brand-new name (there's no unique constraint on
-  // Payee(budgetId, name) to catch that under Postgres's default
-  // Read Committed isolation) - that race predates this helper and is
-  // unrelated to #47's balance-invariant consolidation.
-  const payeeName = formData.has("payeeName")
-    ? String(formData.get("payeeName") ?? "").trim()
-    : undefined;
-
-  if (formData.has("categoryId")) {
-    data.categoryId = String(formData.get("categoryId") ?? "") || null;
-  }
-
-  if (formData.has("memo")) {
-    data.memo = String(formData.get("memo") ?? "").trim() || null;
-  }
-
-  if (formData.has("amount")) {
-    data.amount = numberToMilliunits(Number(formData.get("amount")) || 0);
-  }
-
-  if (payeeName === undefined && Object.keys(data).length === 0) {
+  const patch = readTransactionPatch(formData);
+  if (transferEditRequested(transaction.transferTransactionId, patch)) {
+    await saveTransferEdit(user.id, transaction, transactionId, patch, formData);
     return;
   }
-
-  await prisma.$transaction(async (tx) => {
-    // Only a changed category is checked: the row editor resends the
-    // current one with every edit, and a row whose account later went
-    // off-budget must still be editable (and re-categorizable) there.
-    if (data.categoryId !== undefined && data.categoryId !== transaction.categoryId) {
-      await assertCategoryUsable(tx, data.categoryId, {
-        budgetId: transaction.account.budgetId,
-        accountId: transaction.accountId,
-      });
-    }
-    if (payeeName !== undefined) {
-      data.payeeId = payeeName
-        ? await findOrCreatePayee(tx, transaction.account.budgetId, payeeName, user.id)
-        : null;
-    }
-
-    await auditedUpdate({
-      tx,
-      budgetId: transaction.account.budgetId,
-      entityType: "TRANSACTION",
-      entityId: transactionId,
-      actorId: user.id,
-      before: {
-        date: transaction.date,
-        payeeId: transaction.payeeId,
-        categoryId: transaction.categoryId,
-        memo: transaction.memo,
-        amount: transaction.amount,
-      },
-      after: data,
-      apply: () => tx.transaction.update({ where: { id: transactionId }, data }),
-    });
-
-    if (data.amount !== undefined && data.amount !== transaction.amount) {
-      await applyBalanceDelta(
-        tx,
-        transaction.accountId,
-        data.amount - transaction.amount,
-      );
-    }
-  });
-
-  revalidateAccountPaths(transaction.accountId);
+  if (!ordinaryPatchTouches(patch)) return;
+  await saveOrdinaryEdit(user.id, transaction, transactionId, patch);
 }
 
 /**
@@ -462,42 +640,70 @@ export async function deleteTransaction(formData: FormData) {
       payeeId: true,
       categoryId: true,
       memo: true,
+      transferTransactionId: true,
       account: { select: { budgetId: true } },
     },
   });
   const { user } = await requireBudgetAccess(transaction.account.budgetId);
 
-  await prisma.$transaction(async (tx) => {
-    await auditedDelete({
-      tx,
+  const rows: DeletableTransaction[] = [
+    {
+      id: transactionId,
+      accountId: transaction.accountId,
       budgetId: transaction.account.budgetId,
-      entityType: "TRANSACTION",
-      entityId: transactionId,
-      actorId: user.id,
-      before: {
-        accountId: transaction.accountId,
-        date: transaction.date,
-        payeeId: transaction.payeeId,
-        categoryId: transaction.categoryId,
-        memo: transaction.memo,
-        amount: transaction.amount,
+      payeeId: transaction.payeeId,
+      categoryId: transaction.categoryId,
+      date: transaction.date,
+      amount: transaction.amount,
+      memo: transaction.memo,
+      transferTransactionId: transaction.transferTransactionId,
+      payeeName: null,
+    },
+  ];
+  // Deleting either side of a transfer deletes both (ADR 0007).
+  if (transaction.transferTransactionId) {
+    const other = await prisma.transaction.findUnique({
+      where: { id: transaction.transferTransactionId },
+      select: {
+        id: true,
+        accountId: true,
+        amount: true,
+        date: true,
+        payeeId: true,
+        categoryId: true,
+        memo: true,
+        transferTransactionId: true,
+        account: { select: { budgetId: true } },
       },
-      apply: () => tx.transaction.delete({ where: { id: transactionId } }),
     });
-    await applyBalanceDelta(tx, transaction.accountId, -transaction.amount);
-  });
+    if (!other || other.account.budgetId !== transaction.account.budgetId) {
+      throw new Error("Transaction not found");
+    }
+    rows.push({
+      id: other.id,
+      accountId: other.accountId,
+      budgetId: other.account.budgetId,
+      payeeId: other.payeeId,
+      categoryId: other.categoryId,
+      date: other.date,
+      amount: other.amount,
+      memo: other.memo,
+      transferTransactionId: other.transferTransactionId,
+      payeeName: null,
+    });
+  }
 
-  revalidateAccountPaths(transaction.accountId);
+  const accountIds = await prisma.$transaction((tx) => deleteTransferRows(tx, user.id, rows));
+  revalidateAccountPaths(accountIds);
 }
 
 /**
  * Deletes several transactions at once (#41) - the multi-select counterpart
  * to deleteTransaction, backing this action for the table's "Delete N
  * selected" bulk action. Transactions can span more than one account on the
- * /accounts/all view, so - unlike deleteTransaction, which only ever has one
- * owning account to adjust - balance deltas are summed per account first and
- * applied via applyBalanceDeltas, all inside the same prisma.$transaction as
- * the deletes.
+ * /accounts/all view. A selected transfer also deletes its other side, even
+ * when that row wasn't selected (ADR 0007). Balance deltas are applied once
+ * per deleted row, inside the same prisma.$transaction as the deletes.
  */
 export async function deleteTransactions(formData: FormData) {
   const transactionIds: string[] = JSON.parse(
@@ -526,46 +732,64 @@ export async function deleteTransactions(formData: FormData) {
       payeeId: true,
       categoryId: true,
       memo: true,
+      transferTransactionId: true,
       account: { select: { budgetId: true } },
     },
   });
-  const authorizedIds = transactions.map((t) => t.id);
 
-  const deltaByAccount = new Map<string, number>();
-  for (const t of transactions) {
-    deltaByAccount.set(
-      t.accountId,
-      (deltaByAccount.get(t.accountId) ?? 0) - t.amount,
-    );
+  const selected: DeletableTransaction[] = transactions.map((t) => ({
+    id: t.id,
+    accountId: t.accountId,
+    budgetId: t.account.budgetId,
+    payeeId: t.payeeId,
+    categoryId: t.categoryId,
+    date: t.date,
+    amount: t.amount,
+    memo: t.memo,
+    transferTransactionId: t.transferTransactionId,
+    payeeName: null,
+  }));
+  const known = new Set(selected.map((t) => t.id));
+  const counterpartIds = selected
+    .map((t) => t.transferTransactionId)
+    .filter((id): id is string => id !== null && !known.has(id));
+  if (counterpartIds.length > 0) {
+    const others = await prisma.transaction.findMany({
+      where: {
+        id: { in: counterpartIds },
+        account: { budget: { deleted: false, ...accessibleBudgetWhere(user.id) } },
+      },
+      select: {
+        id: true,
+        accountId: true,
+        amount: true,
+        date: true,
+        payeeId: true,
+        categoryId: true,
+        memo: true,
+        transferTransactionId: true,
+        account: { select: { budgetId: true } },
+      },
+    });
+    if (others.length !== counterpartIds.length) throw new Error("Transaction not found");
+    for (const t of others) {
+      selected.push({
+        id: t.id,
+        accountId: t.accountId,
+        budgetId: t.account.budgetId,
+        payeeId: t.payeeId,
+        categoryId: t.categoryId,
+        date: t.date,
+        amount: t.amount,
+        memo: t.memo,
+        transferTransactionId: t.transferTransactionId,
+        payeeName: null,
+      });
+    }
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.transaction.deleteMany({ where: { id: { in: authorizedIds } } });
-    await recordAuditEntries(
-      tx,
-      transactions.map((t) => ({
-        budgetId: t.account.budgetId,
-        entityType: "TRANSACTION" as const,
-        entityId: t.id,
-        action: "deleted",
-        actorId: user.id,
-        changes: diffFields(
-          {
-            accountId: t.accountId,
-            date: t.date,
-            payeeId: t.payeeId,
-            categoryId: t.categoryId,
-            memo: t.memo,
-            amount: t.amount,
-          },
-          {},
-        ),
-      })),
-    );
-    await applyBalanceDeltas(tx, deltaByAccount);
-  });
-
-  revalidateAccountPaths([...deltaByAccount.keys()]);
+  const accountIds = await prisma.$transaction((tx) => deleteTransferRows(tx, user.id, selected));
+  revalidateAccountPaths(accountIds);
 }
 
 /**
@@ -694,52 +918,58 @@ export async function unreconcileTransaction(formData: FormData) {
  * derived from the account's transactions (see createAccount's Starting
  * Balance transaction), not a bare field to overwrite.
  */
-export async function updateAccount(formData: FormData) {
-  const accountId = String(formData.get("accountId") ?? "");
-  if (!accountId) {
-    throw new Error("accountId is required");
-  }
-  const { user, budgetId } = await requireAccountAccess(accountId);
+function readAccountName(formData: FormData): string | undefined {
+  if (!formData.has("name")) return undefined;
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) throw new Error("Account name is required");
+  return name;
+}
 
-  const data: {
+function readAccountType(formData: FormData): AccountType | undefined {
+  if (!formData.has("type")) return undefined;
+  const typeInput = String(formData.get("type") ?? "");
+  if (!ACCOUNT_TYPES.includes(typeInput as AccountType)) throw new Error("Invalid account type");
+  return typeInput as AccountType;
+}
+
+function readAccountFields(formData: FormData) {
+  return definedFields([
+    ["name", readAccountName(formData)],
+    ["type", readAccountType(formData)],
+    ["onBudget", formData.has("onBudget") ? formData.get("onBudget") === "true" : undefined],
+    ["closed", formData.has("closed") ? formData.get("closed") === "true" : undefined],
+  ]) as {
     name?: string;
     type?: AccountType;
     onBudget?: boolean;
     closed?: boolean;
-  } = {};
+  };
+}
 
-  if (formData.has("name")) {
-    const name = String(formData.get("name") ?? "").trim();
-    if (!name) {
-      throw new Error("Account name is required");
-    }
-    data.name = name;
-  }
+async function assertOnBudgetStillEditable(
+  accountId: string,
+  current: boolean,
+  next: boolean | undefined,
+) {
+  if (next === undefined || next === current) return;
+  const transactionCount = await prisma.transaction.count({ where: { accountId } });
+  const locked = onBudgetChangeError(transactionCount > 0, next, current);
+  if (locked) throw new Error(locked);
+}
 
-  if (formData.has("type")) {
-    const typeInput = String(formData.get("type") ?? "");
-    if (!ACCOUNT_TYPES.includes(typeInput as AccountType)) {
-      throw new Error("Invalid account type");
-    }
-    data.type = typeInput as AccountType;
-  }
-
-  if (formData.has("onBudget")) {
-    data.onBudget = formData.get("onBudget") === "true";
-  }
-
-  if (formData.has("closed")) {
-    data.closed = formData.get("closed") === "true";
-  }
-
-  if (Object.keys(data).length === 0) {
-    return;
-  }
+export async function updateAccount(formData: FormData) {
+  const accountId = String(formData.get("accountId") ?? "");
+  if (!accountId) throw new Error("accountId is required");
+  const { user, budgetId } = await requireAccountAccess(accountId);
+  const data = readAccountFields(formData);
+  if (Object.keys(data).length === 0) return;
 
   const before = await prisma.account.findUniqueOrThrow({
     where: { id: accountId },
     select: { name: true, type: true, onBudget: true, closed: true },
   });
+  // A Starting Balance counts (ADR 0007): close the account and open a new one.
+  await assertOnBudgetStillEditable(accountId, before.onBudget, data.onBudget);
 
   await prisma.$transaction((tx) =>
     auditedUpdate({

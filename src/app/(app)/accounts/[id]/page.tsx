@@ -21,6 +21,7 @@ import {
   unreconcileTransaction,
   checkImportDuplicates,
   importTransactions,
+  findTransferLinkCandidates,
 } from "../actions";
 import { isColumnDetectionEnabled } from "@/lib/importColumnDetection";
 
@@ -55,7 +56,7 @@ export default async function AccountPage({
 
   const [
     { transactions, totalCount },
-    { categoryGroups, payeeNames, payeeLastCategory },
+    { categoryGroups, payeeNames, payeeLastCategory, transferAccounts },
   ] = await Promise.all([
     loadTransactionsView({
       budgetId: budget.id,
@@ -110,6 +111,9 @@ export default async function AccountPage({
           categoryGroups={categoryGroups}
           payeeNames={payeeNames}
           payeeLastCategory={payeeLastCategory}
+          transferAccounts={transferAccounts}
+          findTransferLinkCandidates={findTransferLinkCandidates}
+          accountOnBudget={account.onBudget}
           createTransaction={createTransaction}
           updateTransaction={updateTransaction}
           deleteTransaction={deleteTransaction}

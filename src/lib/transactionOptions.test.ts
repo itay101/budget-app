@@ -5,12 +5,14 @@ jest.mock("@/lib/prisma", () => ({
   prisma: {
     categoryGroup: { findMany: jest.fn() },
     payee: { findMany: jest.fn() },
+    account: { findMany: jest.fn() },
     $queryRaw: jest.fn(),
   },
 }));
 
 const mockCategoryGroupFindMany = jest.mocked(prisma.categoryGroup.findMany);
 const mockPayeeFindMany = jest.mocked(prisma.payee.findMany);
+const mockAccountFindMany = jest.mocked(prisma.account.findMany);
 const mockQueryRaw = jest.mocked(prisma.$queryRaw);
 
 describe("getTransactionEditOptions", () => {
@@ -18,6 +20,7 @@ describe("getTransactionEditOptions", () => {
     jest.clearAllMocks();
     mockCategoryGroupFindMany.mockResolvedValue([]);
     mockPayeeFindMany.mockResolvedValue([]);
+    mockAccountFindMany.mockResolvedValue([]);
     mockQueryRaw.mockResolvedValue([]);
   });
 
@@ -29,6 +32,9 @@ describe("getTransactionEditOptions", () => {
     );
     expect(mockPayeeFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { budgetId: "budget-1" } }),
+    );
+    expect(mockAccountFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { budgetId: "budget-1", closed: false } }),
     );
 
     // payeeLastCategory's lookup (#88) is a raw query rather than a

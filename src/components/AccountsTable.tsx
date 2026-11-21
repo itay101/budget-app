@@ -5,6 +5,7 @@ import { useState } from "react";
 import { formatMilliunits } from "@/lib/money";
 import { ACCOUNT_TYPE_OPTIONS } from "@/lib/accountTypes";
 import { useServerAction } from "@/components/useServerAction";
+import { ON_BUDGET_LOCKED_MESSAGE } from "@/lib/transfers";
 
 type AccountRowData = {
   id: string;
@@ -13,6 +14,7 @@ type AccountRowData = {
   onBudget: boolean;
   closed: boolean;
   balance: number;
+  hasTransactions: boolean;
 };
 
 const inputClass =
@@ -41,6 +43,15 @@ export function AccountsTable({
         <div className="text-right">Balance</div>
       </div>
 
+      {accounts.some((account) => account.hasTransactions) && (
+        <p
+          id="on-budget-lock-note"
+          className="border-b border-neutral-100 px-200 py-2 text-small text-neutral-600"
+        >
+          {ON_BUDGET_LOCKED_MESSAGE}
+        </p>
+      )}
+
       {accounts.map((account) => (
         <AccountRow
           key={account.id}
@@ -55,6 +66,53 @@ export function AccountsTable({
           No accounts yet.
         </div>
       )}
+    </div>
+  );
+}
+
+function AccountTypeSelect({
+  type,
+  onChange,
+}: {
+  type: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="col-span-2 md:col-span-1">
+      <label className="mb-1 block text-small text-neutral-600 md:hidden">Type</label>
+      <select value={type} onChange={(event) => onChange(event.target.value)} className={inputClass}>
+        {ACCOUNT_TYPE_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function OnBudgetCheckbox({
+  checked,
+  locked,
+  onChange,
+}: {
+  checked: boolean;
+  locked: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 md:justify-center">
+      <input
+        type="checkbox"
+        aria-label="On budget"
+        defaultChecked={checked}
+        disabled={locked}
+        title={locked ? ON_BUDGET_LOCKED_MESSAGE : undefined}
+        aria-describedby={locked ? "on-budget-lock-note" : undefined}
+        onChange={(event) => onChange(String(event.target.checked))}
+        className="h-4 w-4 rounded-sm border-neutral-200 text-brand-700 focus:ring-1 focus:ring-brand-700 disabled:cursor-not-allowed"
+      />
+      <span className="text-small text-neutral-600 md:hidden">On budget</span>
     </div>
   );
 }
@@ -95,37 +153,20 @@ function AccountRow({
         className={`col-span-2 md:col-span-1 ${inputClass}`}
       />
 
-      <div className="col-span-2 md:col-span-1">
-        <label className="mb-1 block text-small text-neutral-600 md:hidden">
-          Type
-        </label>
-        <select
-          value={type}
-          onChange={(e) => {
-            setType(e.target.value);
-            commit("type", e.target.value);
-          }}
-          className={inputClass}
-        >
-          {ACCOUNT_TYPE_OPTIONS.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="flex items-center gap-2 md:justify-center">
-        <input
-          type="checkbox"
-          defaultChecked={account.onBudget}
-          onChange={(e) => commit("onBudget", String(e.target.checked))}
-          className="h-4 w-4 rounded-sm border-neutral-200 text-brand-700 focus:ring-1 focus:ring-brand-700"
-        />
-        <span className="text-small text-neutral-600 md:hidden">
-          On budget
-        </span>
-      </div>
+      <AccountTypeSelect
+        type={type}
+        onChange={(value) => {
+          setType(value);
+          commit("type", value);
+        }}
+      />
+      <OnBudgetCheckbox
+        checked={account.onBudget}
+        locked={account.hasTransactions}
+        onChange={(value) => {
+          if (!account.hasTransactions) commit("onBudget", value);
+        }}
+      />
 
       <div className="flex items-center gap-2 md:justify-center">
         <input

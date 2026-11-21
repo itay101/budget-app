@@ -38,7 +38,7 @@ async function getPayeeLastCategories(
  * category as soon as its payee is set.
  */
 export async function getTransactionEditOptions(budgetId: string) {
-  const [categoryGroups, payees, payeeLastCategory] = await Promise.all([
+  const [categoryGroups, payees, payeeLastCategory, transferAccounts] = await Promise.all([
     prisma.categoryGroup.findMany({
       where: { budgetId },
       orderBy: { sortOrder: "asc" },
@@ -55,6 +55,11 @@ export async function getTransactionEditOptions(budgetId: string) {
       select: { name: true },
     }),
     getPayeeLastCategories(budgetId),
+    prisma.account.findMany({
+      where: { budgetId, closed: false },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, onBudget: true },
+    }),
   ]);
 
   return {
@@ -65,5 +70,6 @@ export async function getTransactionEditOptions(budgetId: string) {
     })),
     payeeNames: payees.map((p) => p.name),
     payeeLastCategory,
+    transferAccounts,
   };
 }

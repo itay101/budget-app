@@ -57,7 +57,19 @@ describe("loadTransactionsView", () => {
 
     expect(mockFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        include: { payee: true, category: true },
+        include: {
+          payee: true,
+          category: true,
+          account: { select: { id: true, onBudget: true } },
+          transferTransaction: {
+            select: {
+              id: true,
+              categoryId: true,
+              cleared: true,
+              account: { select: { id: true, name: true, onBudget: true } },
+            },
+          },
+        },
       }),
     );
   });
@@ -89,7 +101,15 @@ describe("loadTransactionsView", () => {
         include: {
           payee: true,
           category: true,
-          account: { select: { name: true } },
+          account: { select: { id: true, name: true, onBudget: true } },
+          transferTransaction: {
+            select: {
+              id: true,
+              categoryId: true,
+              cleared: true,
+              account: { select: { id: true, name: true, onBudget: true } },
+            },
+          },
         },
       }),
     );

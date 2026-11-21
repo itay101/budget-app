@@ -2,6 +2,8 @@ import {
   hasActiveTransactionFilters,
   parseTransactionFilters,
   parseTransactionFiltersFromSearchParams,
+  transactionFiltersWhere,
+  UNCATEGORIZED,
 } from "./transactionFilters";
 
 describe("parseTransactionFilters", () => {
@@ -72,6 +74,25 @@ describe("parseTransactionFiltersFromSearchParams", () => {
         q: "coffee",
       }),
     );
+  });
+});
+
+describe("transactionFiltersWhere", () => {
+  it("treats a transfer as categorized, even with no category", () => {
+    expect(transactionFiltersWhere(parseTransactionFilters({ category: UNCATEGORIZED }))).toEqual({
+      categoryId: null,
+      transferTransactionId: null,
+    });
+  });
+
+  it("matches a transfer by the other account's name", () => {
+    expect(transactionFiltersWhere(parseTransactionFilters({ q: "Transfer: Savings" }))).toEqual({
+      OR: [
+        { memo: { contains: "Transfer: Savings", mode: "insensitive" } },
+        { payee: { name: { contains: "Transfer: Savings", mode: "insensitive" } } },
+        { transferTransaction: { account: { name: { contains: "Savings", mode: "insensitive" } } } },
+      ],
+    });
   });
 });
 

@@ -7,6 +7,17 @@ import {
 } from "@/lib/transactionFilters";
 import type { TransactionInput } from "@/components/TransactionsTable";
 
+const transferInclude = {
+  transferTransaction: {
+    select: {
+      id: true,
+      categoryId: true,
+      cleared: true,
+      account: { select: { id: true, name: true, onBudget: true } },
+    },
+  },
+} satisfies Prisma.TransactionInclude;
+
 /**
  * The query seam shared by accounts/[id]/page.tsx and accounts/all/page.tsx
  * (#97): one parameterized `transaction.findMany`/`count` pair instead of
@@ -36,7 +47,12 @@ export async function loadTransactionsView({
       prisma.transaction.findMany({
         where: { ...baseWhere, ...filterWhere },
         orderBy: { date: "desc" },
-        include: { payee: true, category: true },
+        include: {
+          payee: true,
+          category: true,
+          account: { select: { id: true, onBudget: true } },
+          ...transferInclude,
+        },
       }),
       prisma.transaction.count({ where: baseWhere }),
     ]);
@@ -59,7 +75,8 @@ export async function loadTransactionsView({
       include: {
         payee: true,
         category: true,
-        account: { select: { name: true } },
+        account: { select: { id: true, name: true, onBudget: true } },
+        ...transferInclude,
       },
     }),
     prisma.transaction.count({ where: baseWhere }),

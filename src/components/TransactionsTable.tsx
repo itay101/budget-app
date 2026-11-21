@@ -25,52 +25,27 @@ import { ImportTransactionsModal } from "@/components/ImportTransactionsModal";
 import { useServerAction } from "@/components/useServerAction";
 import type { AccountType } from "@/lib/accountTypes";
 import { STARTING_BALANCE_PAYEE } from "@/lib/payees";
+import { PayeeInput } from "@/components/PayeeInput";
+import {
+  matchingTransferAccount,
+  transferCategoryPlacement,
+  transferPayeeLabel,
+  type TransferAccountOption,
+  type TransferLinkCandidate,
+} from "@/lib/transfers";
+import {
+  bulkDeleteMessage,
+  categoryEditorState,
+  linkOfferMessage,
+  toRowData,
+  type TransactionInput,
+  type TransactionRowData,
+} from "@/lib/transferEditor";
+
+export type { TransactionInput };
 
 type CategoryOption = { id: string; name: string };
 type GroupOption = { id: string; name: string; categories: CategoryOption[] };
-
-type ClearedStatus = "UNCLEARED" | "CLEARED" | "RECONCILED";
-
-type TransactionRowData = {
-  id: string;
-  date: string; // ISO string
-  payeeName: string;
-  categoryId: string;
-  memo: string;
-  amount: number; // milliunits
-  cleared: ClearedStatus;
-  accountName?: string;
-};
-
-// The shape TransactionsTable takes each transaction in, close to what a
-// `prisma.transaction.findMany` with a `payee` include (and `account` when
-// `showAccount` is set) returns - so both accounts/[id]/page.tsx and
-// accounts/all/page.tsx can hand over their query results directly instead
-// of each independently re-deriving the same
-// {id, date, payeeName, categoryId, memo, amount, cleared} row shape (#48).
-export type TransactionInput = {
-  id: string;
-  date: Date;
-  payee: { name: string } | null;
-  categoryId: string | null;
-  memo: string | null;
-  amount: number;
-  cleared: ClearedStatus;
-  account?: { name: string };
-};
-
-function toRowData(t: TransactionInput): TransactionRowData {
-  return {
-    id: t.id,
-    date: t.date.toISOString(),
-    payeeName: t.payee?.name ?? "",
-    categoryId: t.categoryId ?? "",
-    memo: t.memo ?? "",
-    amount: t.amount,
-    cleared: t.cleared,
-    accountName: t.account?.name,
-  };
-}
 
 function draftFrom(t: TransactionRowData): Draft {
   return {
@@ -94,6 +69,63 @@ function blankDraft(): Draft {
     inflow: "",
     outflow: "",
   };
+}
+
+function confirmTransferLink(accountName: string, candidates: TransferLinkCandidate[]): string | null {
+  const message = linkOfferMessage(accountName, candidates);
+  if (!message || !window.confirm(message)) return null;
+  return candidates[0].id;
+}
+
+function linkTarget(
+  transfer: { id: string; name: string } | null,
+  currentId: string,
+): { id: string; name: string } | null {
+  if (!transfer || transfer.id === currentId) return null;
+  return transfer;
+}
+
+function accountIdOf(transfer: { id: string } | null): string {
+  if (!transfer) return "";
+  return transfer.id;
+}
+
+function confirmUnlinkValue(currentId: string, transfer: { id: string } | null): string | undefined {
+  if (currentId && !transfer) return "true";
+  return undefined;
+}
+
+function declined(message: string | null): boolean {
+  return message !== null && !window.confirm(message);
+}
+
+function reconcilePrompt(cleared: string, counterpartCleared: string | null): string | null {
+  if (cleared === "RECONCILED" || counterpartCleared === "RECONCILED") {
+    return "This transaction is reconciled. Save changes anyway?";
+  }
+  return null;
+}
+
+function unlinkPrompt(currentName: string, stillTransfer: boolean): string | null {
+  if (!currentName || stillTransfer) return null;
+  return `This will unlink the transfer and delete the other side in ${currentName}. Continue?`;
+}
+
+async function offerToLink(
+  run: (fields: Record<string, string | undefined>) => Promise<TransferLinkCandidate[] | undefined>,
+  transfer: { id: string; name: string } | null,
+  fields: { sourceAccountId: string; date: string; amount: string; excludeTransactionId?: string },
+): Promise<string | undefined> {
+  if (!transfer) return undefined;
+  const candidates =
+    (await run({
+      accountId: transfer.id,
+      sourceAccountId: fields.sourceAccountId,
+      date: fields.date,
+      amount: fields.amount,
+      excludeTransactionId: fields.excludeTransactionId,
+    })) ?? [];
+  return confirmTransferLink(transfer.name, candidates) ?? undefined;
 }
 
 function categoryNameFor(
@@ -132,12 +164,16 @@ const GRID_COLS_WITH_ACCOUNT =
   "md:grid-cols-[28px_130px_110px_1fr_1fr_1fr_100px_100px_80px]";
 const GRID_COLS = "md:grid-cols-[28px_130px_1fr_1fr_1fr_100px_100px_80px]";
 
+// fallow-ignore-next-line complexity
 export function TransactionsTable({
   transactions,
   totalCount,
   categoryGroups,
   payeeNames,
   payeeLastCategory,
+  transferAccounts,
+  findTransferLinkCandidates,
+  accountOnBudget = true,
   createTransaction,
   updateTransaction,
   deleteTransaction,
@@ -166,6 +202,11 @@ export function TransactionsTable({
   // `payeeNames`) - used to auto-fill a row's category as soon as its
   // payee is set, as long as the row doesn't already have one.
   payeeLastCategory: Record<string, string>;
+  /** Open accounts in this budget, offered as transfer payees (ADR 0007). */
+  transferAccounts: TransferAccountOption[];
+  findTransferLinkCandidates: (formData: FormData) => Promise<TransferLinkCandidate[]>;
+  /** The account a new row is added to. Existing rows carry their own. */
+  accountOnBudget?: boolean;
   // Only passed (together with `accountId`) on the single-account page
   // (#34) - accounts/all has no single implicit account for a new
   // transaction to land on, so "Add Transaction" doesn't render there.
@@ -257,13 +298,8 @@ export function TransactionsTable({
   async function handleBulkDelete() {
     const count = selectedIds.size;
     if (count === 0) return;
-    if (
-      !window.confirm(
-        `Delete ${count} transaction${count === 1 ? "" : "s"}? This can't be undone.`,
-      )
-    ) {
-      return;
-    }
+    const includesTransfer = rows.some((row) => selectedIds.has(row.id) && Boolean(row.transferAccountId));
+    if (!window.confirm(bulkDeleteMessage(count, includesTransfer))) return;
     try {
       await runBulkDelete({
         transactionIds: JSON.stringify([...selectedIds]),
@@ -427,6 +463,9 @@ export function TransactionsTable({
           {payeeNames.map((name) => (
             <option key={name} value={name} />
           ))}
+          {transferAccounts.map((account) => (
+            <option key={`transfer-${account.id}`} value={transferPayeeLabel(account.name)} />
+          ))}
         </datalist>
 
         <div
@@ -455,8 +494,12 @@ export function TransactionsTable({
         {addingNew && createTransaction && accountId && (
           <NewTransactionRow
             accountId={accountId}
+            accountOnBudget={accountOnBudget}
             categoryGroups={categoryGroups}
+            payeeNames={payeeNames}
             payeeLastCategory={payeeLastCategory}
+            transferAccounts={transferAccounts}
+            findTransferLinkCandidates={findTransferLinkCandidates}
             createTransaction={createTransaction}
             gridCols={gridCols}
             currency={currency}
@@ -479,7 +522,10 @@ export function TransactionsTable({
               <TransactionRow
                 transaction={t}
                 categoryGroups={categoryGroups}
+                payeeNames={payeeNames}
                 payeeLastCategory={payeeLastCategory}
+                transferAccounts={transferAccounts}
+                findTransferLinkCandidates={findTransferLinkCandidates}
                 updateTransaction={updateTransaction}
                 deleteTransaction={deleteTransaction}
                 reconcileTransaction={reconcileTransaction}
@@ -622,10 +668,14 @@ function ReconciliationBar({
   );
 }
 
+// fallow-ignore-next-line complexity
 function TransactionRow({
   transaction,
   categoryGroups,
+  payeeNames,
   payeeLastCategory,
+  transferAccounts,
+  findTransferLinkCandidates,
   updateTransaction,
   deleteTransaction,
   reconcileTransaction,
@@ -639,7 +689,10 @@ function TransactionRow({
 }: {
   transaction: TransactionRowData;
   categoryGroups: GroupOption[];
+  payeeNames: string[];
   payeeLastCategory: Record<string, string>;
+  transferAccounts: TransferAccountOption[];
+  findTransferLinkCandidates: (formData: FormData) => Promise<TransferLinkCandidate[]>;
   updateTransaction: (formData: FormData) => Promise<void>;
   deleteTransaction: (formData: FormData) => Promise<void>;
   reconcileTransaction: (formData: FormData) => Promise<void>;
@@ -657,16 +710,19 @@ function TransactionRow({
   const deleteAction = useServerAction(deleteTransaction);
   const reconcileAction = useServerAction(reconcileTransaction);
   const unreconcileAction = useServerAction(unreconcileTransaction);
+  const linkAction = useServerAction(findTransferLinkCandidates);
   const pending =
     updateAction.pending ||
     deleteAction.pending ||
     reconcileAction.pending ||
-    unreconcileAction.pending;
+    unreconcileAction.pending ||
+    linkAction.pending;
   const error =
     updateAction.error ||
     deleteAction.error ||
     reconcileAction.error ||
-    unreconcileAction.error;
+    unreconcileAction.error ||
+    linkAction.error;
 
   // On mobile, a transaction shows as a compact YNAB-style summary row
   // until tapped; `expanded` reveals the full editor below it. Desktop
@@ -706,31 +762,74 @@ function TransactionRow({
     setDraft((d) => ({ ...d, ...fields }));
   }
 
+  const currentTransfer: TransferAccountOption | null = transaction.transferAccountId
+    ? {
+        id: transaction.transferAccountId,
+        name: transaction.transferAccountName,
+        onBudget: transaction.transferAccountOnBudget ?? false,
+      }
+    : null;
+
+  function selectedTransfer(payeeName: string) {
+    return matchingTransferAccount(
+      payeeName,
+      transferAccounts,
+      transaction.accountId,
+      currentTransfer,
+    );
+  }
+
   function handlePayeeChange(name: string) {
-    setDraft((d) => applyPayeeChange(d, name, payeeLastCategory));
+    setDraft((d) => {
+      const next = applyPayeeChange(d, name, payeeLastCategory);
+      const transfer = selectedTransfer(name);
+      if (!transfer) return next;
+      if (transferCategoryPlacement(transaction.accountOnBudget, transfer.onBudget) === "none") {
+        return { ...next, categoryId: "" };
+      }
+      return next;
+    });
   }
 
   function handleCancel() {
     setDraft(committed);
   }
 
-  async function handleSubmit() {
-    if (
-      transaction.cleared === "RECONCILED" &&
-      !window.confirm("This transaction is reconciled. Save changes anyway?")
-    ) {
-      return;
-    }
+  function saveDeclined(transfer: TransferAccountOption | null): boolean {
+    const reconciled = declined(reconcilePrompt(transaction.cleared, transaction.counterpartCleared));
+    if (reconciled) return true;
+    return declined(unlinkPrompt(transaction.transferAccountName, Boolean(transfer)));
+  }
 
-    try {
-      await updateAction.run({
-        transactionId: transaction.id,
+  async function editedFields(transfer: TransferAccountOption | null) {
+    const linkTransactionId = await offerToLink(
+      linkAction.run,
+      linkTarget(transfer, transaction.transferAccountId),
+      {
+        sourceAccountId: transaction.accountId,
         date: draft.date,
-        payeeName: draft.payeeName,
-        categoryId: draft.categoryId,
-        memo: draft.memo,
         amount: String(draftAmountInput(draft)),
-      });
+        excludeTransactionId: transaction.id,
+      },
+    );
+    return {
+      transactionId: transaction.id,
+      date: draft.date,
+      payeeName: draft.payeeName,
+      categoryId: draft.categoryId,
+      memo: draft.memo,
+      amount: String(draftAmountInput(draft)),
+      transferAccountId: accountIdOf(transfer),
+      linkTransactionId,
+      confirmUnlink: confirmUnlinkValue(transaction.transferAccountId, transfer),
+    };
+  }
+
+  async function handleSubmit() {
+    const transfer = selectedTransfer(draft.payeeName);
+    if (saveDeclined(transfer)) return;
+    try {
+      await updateAction.run(await editedFields(transfer));
       setCommitted(draft);
       setExpanded(false);
     } catch {
@@ -740,7 +839,10 @@ function TransactionRow({
 
   async function handleDelete() {
     setMenuOpen(false);
-    if (!window.confirm("Delete this transaction? This can't be undone.")) {
+    const message = transaction.transferAccountName
+      ? `Delete this transfer? The matching transaction in ${transaction.transferAccountName} will be deleted too. This can't be undone.`
+      : "Delete this transaction? This can't be undone.";
+    if (!window.confirm(message)) {
       return;
     }
     try {
@@ -777,8 +879,19 @@ function TransactionRow({
   }
 
   const categoryName = categoryNameFor(categoryGroups, committed.categoryId);
+  const draftTransfer = selectedTransfer(draft.payeeName);
+  const categoryState = categoryEditorState({
+    isStartingBalance: transaction.payeeName === STARTING_BALANCE_PAYEE,
+    accountOnBudget: transaction.accountOnBudget,
+    transfer: draftTransfer,
+    existingTransfer: Boolean(transaction.transferAccountId),
+    categoryGroups,
+    counterpartCategoryId: transaction.counterpartCategoryId,
+  });
   const summaryAmount = amountFromDraft(committed);
-  const isStartingBalance = transaction.payeeName === STARTING_BALANCE_PAYEE;
+  const summaryCategory = transaction.transferAccountId
+    ? (categoryName ?? "No category")
+    : (categoryName ?? "Uncategorized");
   const isReconciled = transaction.cleared === "RECONCILED";
 
   return (
@@ -833,7 +946,7 @@ function TransactionRow({
               </span>
             </div>
             <span className="mt-1 inline-block max-w-full truncate rounded-full bg-neutral-100 px-2 py-0.5 text-small text-neutral-600">
-              {categoryName ?? "Uncategorized"}
+              {summaryCategory}
             </span>
           </div>
           <div className="shrink-0 text-right">
@@ -914,12 +1027,12 @@ function TransactionRow({
           <label className="mb-1 block text-small text-neutral-600 md:hidden">
             Payee
           </label>
-          <input
-            type="text"
+          <PayeeInput
             value={draft.payeeName}
-            list="payee-suggestions"
-            placeholder="Payee"
-            onChange={(e) => handlePayeeChange(e.target.value)}
+            accountId={transaction.accountId}
+            payeeNames={payeeNames}
+            transferAccounts={transferAccounts}
+            onChange={handlePayeeChange}
             className={inputClass}
           />
         </div>
@@ -932,10 +1045,14 @@ function TransactionRow({
             groups={categoryGroups}
             value={draft.categoryId}
             onChange={(value) => patch({ categoryId: value })}
-            disabled={isStartingBalance}
-            disabledTitle="Starting balance can't be categorized"
+            disabled={categoryState.disabled}
+            disabledLabel={categoryState.disabledLabel}
+            disabledTitle={categoryState.disabledTitle}
             className={inputClass}
           />
+          {categoryState.hint && (
+            <p className="mt-1 text-small text-neutral-600">{categoryState.hint}</p>
+          )}
         </div>
 
         <div className="col-span-2 md:col-span-1">
@@ -1094,24 +1211,36 @@ function TransactionRow({
  * Save (commit + close), and "Save and add another" (commit + stay open on
  * a fresh blank draft) for entering several transactions back-to-back.
  */
+// fallow-ignore-next-line complexity
 function NewTransactionRow({
   accountId,
+  accountOnBudget,
   categoryGroups,
+  payeeNames,
   payeeLastCategory,
+  transferAccounts,
+  findTransferLinkCandidates,
   createTransaction,
   gridCols,
   currency,
   onClose,
 }: {
   accountId: string;
+  accountOnBudget: boolean;
   categoryGroups: GroupOption[];
+  payeeNames: string[];
   payeeLastCategory: Record<string, string>;
+  transferAccounts: TransferAccountOption[];
+  findTransferLinkCandidates: (formData: FormData) => Promise<TransferLinkCandidate[]>;
   createTransaction: (formData: FormData) => Promise<void>;
   gridCols: string;
   currency: string;
   onClose: () => void;
 }) {
-  const { run, pending, error } = useServerAction(createTransaction);
+  const createAction = useServerAction(createTransaction);
+  const linkAction = useServerAction(findTransferLinkCandidates);
+  const pending = createAction.pending || linkAction.pending;
+  const error = createAction.error || linkAction.error;
   const [draft, setDraft] = useState<Draft>(blankDraft);
 
   function patch(fields: Partial<Draft>) {
@@ -1119,10 +1248,23 @@ function NewTransactionRow({
   }
 
   function handlePayeeChange(name: string) {
-    setDraft((d) => applyPayeeChange(d, name, payeeLastCategory));
+    setDraft((d) => {
+      const next = applyPayeeChange(d, name, payeeLastCategory);
+      const transfer = matchingTransferAccount(name, transferAccounts, accountId, null);
+      if (transfer && transferCategoryPlacement(accountOnBudget, transfer.onBudget) === "none") {
+        return { ...next, categoryId: "" };
+      }
+      return next;
+    });
   }
 
-  function fieldsFromDraft() {
+  async function fieldsFromDraft() {
+    const transfer = matchingTransferAccount(draft.payeeName, transferAccounts, accountId, null);
+    const linkTransactionId = await offerToLink(linkAction.run, transfer, {
+      sourceAccountId: accountId,
+      date: draft.date,
+      amount: String(draftAmountInput(draft)),
+    });
     return {
       accountId,
       date: draft.date,
@@ -1130,12 +1272,14 @@ function NewTransactionRow({
       categoryId: draft.categoryId,
       memo: draft.memo,
       amount: String(draftAmountInput(draft)),
+      transferAccountId: transfer?.id ?? "",
+      linkTransactionId,
     };
   }
 
   async function handleSave() {
     try {
-      await run(fieldsFromDraft());
+      await createAction.run(await fieldsFromDraft());
       onClose();
     } catch {
       // error is surfaced via `error` below
@@ -1144,12 +1288,22 @@ function NewTransactionRow({
 
   async function handleSaveAndAddAnother() {
     try {
-      await run(fieldsFromDraft());
+      await createAction.run(await fieldsFromDraft());
       setDraft(blankDraft());
     } catch {
       // error is surfaced via `error` below
     }
   }
+
+  const draftTransfer = matchingTransferAccount(draft.payeeName, transferAccounts, accountId, null);
+  const categoryState = categoryEditorState({
+    isStartingBalance: false,
+    accountOnBudget,
+    transfer: draftTransfer,
+    existingTransfer: false,
+    categoryGroups,
+    counterpartCategoryId: null,
+  });
 
   return (
     <div className="border-b border-neutral-100 bg-brand-700/5 text-body">
@@ -1183,12 +1337,12 @@ function NewTransactionRow({
           <label className="mb-1 block text-small text-neutral-600 md:hidden">
             Payee
           </label>
-          <input
-            type="text"
+          <PayeeInput
             value={draft.payeeName}
-            list="payee-suggestions"
-            placeholder="Payee"
-            onChange={(e) => handlePayeeChange(e.target.value)}
+            accountId={accountId}
+            payeeNames={payeeNames}
+            transferAccounts={transferAccounts}
+            onChange={handlePayeeChange}
             className={inputClass}
           />
         </div>
@@ -1201,8 +1355,14 @@ function NewTransactionRow({
             groups={categoryGroups}
             value={draft.categoryId}
             onChange={(value) => patch({ categoryId: value })}
+            disabled={categoryState.disabled}
+            disabledLabel={categoryState.disabledLabel}
+            disabledTitle={categoryState.disabledTitle}
             className={inputClass}
           />
+          {categoryState.hint && (
+            <p className="mt-1 text-small text-neutral-600">{categoryState.hint}</p>
+          )}
         </div>
 
         <div className="col-span-2 md:col-span-1">
